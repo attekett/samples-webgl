@@ -28,8 +28,10 @@ workflow_package/
 ├── ITERATIVE_CORPUS_EXPANSION_WORKFLOW.md      # Complete workflow guide
 ├── RADAMSA_INTEGRATION_GUIDE.md                # Fuzzing guide
 ├── scripts/
-│   ├── analyze_corpus.sh                       # Generate corpus statistics
-│   ├── feature_matrix.sh                       # Feature coverage matrix
+│   ├── analyze_corpus.sh                       # Generate corpus statistics (basic)
+│   ├── feature_matrix.sh                       # Feature coverage matrix (basic)
+│   ├── detailed_coverage_analysis.py           # 🆕 Comprehensive analysis tool
+│   ├── DETAILED_ANALYSIS_GUIDE.md              # 🆕 Detailed analysis documentation
 │   ├── calculate_gap_seeds.sh                  # Calculate seeds needed per category
 │   ├── validate_new_seeds.sh                   # Validate new seeds
 │   ├── analyze_failures.sh                     # Analyze test failures
@@ -77,13 +79,39 @@ your-project/
 
 ### 1. Generate Corpus Statistics
 
+#### Basic Analysis (Fast)
+
 ```bash
-# Full analysis
+# Full analysis with basic scripts
 ./workflow_package/scripts/analyze_corpus.sh > corpus_stats.txt
 ./workflow_package/scripts/feature_matrix.sh >> corpus_stats.txt
 
 # View results
 cat corpus_stats.txt
+```
+
+#### Detailed Analysis (Comprehensive) 🆕
+
+```bash
+# Generate comprehensive analysis report
+python3 ./workflow_package/scripts/detailed_coverage_analysis.py \
+  --corpus-dir agent_outputs \
+  --output detailed_analysis.md \
+  --heatmap coverage_heatmap.csv
+
+# View results
+cat detailed_analysis.md
+
+# Includes:
+#  - API call frequency analysis
+#  - Feature co-occurrence matrix
+#  - Complexity scoring per seed
+#  - API diversity metrics
+#  - Automatic gap identification
+#  - Unused API detection
+#  - CSV heatmap for visualization
+
+# See scripts/DETAILED_ANALYSIS_GUIDE.md for full documentation
 ```
 
 ### 2. Identify Coverage Gaps

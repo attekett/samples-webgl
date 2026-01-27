@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    let vertexCount = 512;
+    let queryPollCount = 128;
+    let tfBufferSize = 8192;
+    let nestedQueryDepth = 3;
+    let primitivesExpected = 256;
+    let occlusionSamples = 64;
+
+    const TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN = 0x8C88;
+    const ANY_SAMPLES_PASSED = 0x8C2F;
+    const QUERY_RESULT = 0x8866;
+    const QUERY_RESULT_AVAILABLE = 0x8867;
+
+    let tfQueryTarget = TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN;
+    let occlusionQueryTarget = ANY_SAMPLES_PASSED;
+    let tfMode = gl.TRIANGLES;
+    let tfBufferTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+
+    const vertexShader = `#version 300 es
+        in vec3 a_position;
+        in vec4 a_color;
+        in vec2 a_texcoord;
+        out vec3 v_position;
+        out vec4 v_color;
+        out vec2 v_texcoord;
+        uniform float u_scale;
+        uniform mat4 u_matrix;
+        void main() {
+            v_position = a_position * u_scale;
+            v_color = a_color;
+            v_texcoord = a_texcoord;
+            gl_Position = u_matrix * vec4(v_position, 1.0);
+        }
+    `;
+
+    const fragmentShader = `#version 300 es
+        precision highp float;
+        in vec4 v_color;
+        in vec2 v_texcoord;
+        out vec4 fragColor;
+        void main() {
+            fragColor = v_color * vec4(v_texcoord, 0.5, 1.0);
+        }
+    `;
+
+    let program;
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vertexShader);
+        gl.compileShader(vs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(vs));
+        }
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fragmentShader);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(fs));
+        }
+
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.transformFeedbackVaryings(program, ['v_position', 'v_color', 'v_texcoord'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program));
+        }
+    } catch (e) {}
+
+    function createVertexData(count) {
+        const stride = 9;
+        const data = new Float32Array(count * stride);
+        for (let i = 0; i < count; i++) {
+            const base = i * stride;
+            data[base + 0] = (Math.random() - 0.5) * 1.5;
+            data[base + 1] = (Math.random() - 0.5) * 1.5;
+            data[base + 2] = (Math.random() - 0.5) * 0.5;
+            data[base + 3] = Math.random();
+            data[base + 4] = Math.random();
+            data[base + 5] = Math.random();
+            data[base + 6] = 1.0;
+            data[base + 7] = Math.random();
+            data[base + 8] = Math.random();
+        }
+        return data;
+    }
+
+    const vertexData = createVertexData(vertexCount);
+
+    let vbo;
+    try {
+        vbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    } catch (e) {}
+
+    let tfBuffer;
+    try {
+        tfBuffer = gl.createBuffer();
+        gl.bindBuffer(tfBufferTarget, tfBuffer);
+        gl.bufferData(tfBufferTarget, tfBufferSize, gl.DYNAMIC_COPY);
+        gl.bindBuffer(tfBufferTarget, null);
+    } catch (e) {}
+
+    let vao;
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+
+        const posLoc = gl.getAttribLocation(program, 'a_position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 36, 0);
+
+        const colorLoc = gl.getAttribLocation(program, 'a_color');
+        gl.enableVertexAttribArray(colorLoc);
+        gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, 36, 12);
+
+        const texLoc = gl.getAttribLocation(program, 'a_texcoord');
+        gl.enableVertexAttribArray(texLoc);
+        gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 36, 28);
+
+        gl.bindVertexArray(null);
+    } catch (e) {}
+
+    let tf;
+    try {
+        tf = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.bindBufferBase(tfBufferTarget, 0, tfBuffer);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    } catch (e) {}
+
+    let tfQuery;
+    try {
+        tfQuery = gl.createQuery();
+    } catch (e) {}
+
+    let occlusionQuery;
+    try {
+        occlusionQuery = gl.createQuery();
+    } catch (e) {}
+
+    let nestedQueries = [];
+    try {
+        for (let i = 0; i < nestedQueryDepth; i++) {
+            const q = gl.createQuery();
+            nestedQueries.push(q);
+        }
+    } catch (e) {}
+
+    try {
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+
+        const scaleLoc = gl.getUniformLocation(program, 'u_scale');
+        const matrixLoc = gl.getUniformLocation(program, 'u_matrix');
+
+        const matrix = new Float32Array([
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0
+        ]);
+
+        gl.uniform1f(scaleLoc, 0.8);
+        gl.uniformMatrix4fv(matrixLoc, false, matrix);
+
+        gl.enable(gl.RASTERIZER_DISCARD);
+
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.beginQuery(tfQueryTarget, tfQuery);
+        gl.beginQuery(occlusionQueryTarget, occlusionQuery);
+
+        gl.beginTransformFeedback(tfMode);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.endTransformFeedback();
+
+        gl.endQuery(tfQueryTarget);
+        gl.endQuery(occlusionQueryTarget);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindVertexArray(null);
+    } catch (e) {}
+
+    try {
+        let available = false;
+        let pollCount = 0;
+        while (!available && pollCount < queryPollCount) {
+            available = gl.getQueryParameter(tfQuery, QUERY_RESULT_AVAILABLE);
+            pollCount++;
+        }
+        if (available) {
+            const tfResult = gl.getQueryParameter(tfQuery, QUERY_RESULT);
+        }
+    } catch (e) {}
+
+    try {
+        let occAvailable = false;
+        let occPollCount = 0;
+        while (!occAvailable && occPollCount < queryPollCount) {
+            occAvailable = gl.getQueryParameter(occlusionQuery, QUERY_RESULT_AVAILABLE);
+            occPollCount++;
+        }
+        if (occAvailable) {
+            const occResult = gl.getQueryParameter(occlusionQuery, QUERY_RESULT);
+        }
+    } catch (e) {}
+
+    try {
+        gl.bindVertexArray(vao);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+
+        for (let i = 0; i < nestedQueryDepth; i++) {
+            gl.beginQuery(tfQueryTarget, nestedQueries[i]);
+        }
+
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, vertexCount / 2);
+        gl.endTransformFeedback();
+
+        for (let i = nestedQueryDepth - 1; i >= 0; i--) {
+            gl.endQuery(tfQueryTarget);
+        }
+
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.bindVertexArray(null);
+    } catch (e) {}
+
+    try {
+        for (let i = 0; i < nestedQueries.length; i++) {
+            let qAvailable = false;
+            let qPollCount = 0;
+            while (!qAvailable && qPollCount < 50) {
+                qAvailable = gl.getQueryParameter(nestedQueries[i], QUERY_RESULT_AVAILABLE);
+                qPollCount++;
+            }
+            if (qAvailable) {
+                const qResult = gl.getQueryParameter(nestedQueries[i], QUERY_RESULT);
+            }
+        }
+    } catch (e) {}
+
+    try {
+        gl.clearColor(0.15, 0.1, 0.2, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.viewport(0, 0, 256, 256);
+
+        gl.bindVertexArray(vao);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.bindVertexArray(null);
+    } catch (e) {}
+
+    try {
+        gl.deleteQuery(tfQuery);
+        gl.deleteQuery(occlusionQuery);
+        for (let i = 0; i < nestedQueries.length; i++) {
+            gl.deleteQuery(nestedQueries[i]);
+        }
+    } catch (e) {}
+
+    try {
+        gl.deleteTransformFeedback(tf);
+        gl.deleteVertexArray(vao);
+        gl.deleteBuffer(vbo);
+        gl.deleteBuffer(tfBuffer);
+        gl.deleteProgram(program);
+    } catch (e) {}
+
+    gl.flush();
+    gl.finish();
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
