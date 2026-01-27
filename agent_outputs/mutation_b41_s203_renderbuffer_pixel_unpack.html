@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const rboCount = 6;
+const rboSize = 256;
+const unpackAlignment = 8;
+const unpackRowLength = 512;
+const unpackSkipPixels = 32;
+const unpackSkipRows = 16;
+const unpackImageHeight = 512;
+
+const RGBA8 = 32856;
+const RGBA16F = 34842;
+const RGB10_A2 = 32857;
+const R11F_G11F_B10F = 35898;
+const RG16F = 33327;
+const R32F = 33326;
+const RENDERBUFFER = 36161;
+const FRAMEBUFFER = 36160;
+const READ_FRAMEBUFFER = 36008;
+const DRAW_FRAMEBUFFER = 36009;
+const COLOR_ATTACHMENT0 = 36064;
+const TEXTURE_2D = 3553;
+const RGBA = 6408;
+const RGB = 6407;
+const RG = 33319;
+const RED = 6403;
+const UNSIGNED_BYTE = 5121;
+const FLOAT = 5126;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const rbo1 = gl.createRenderbuffer();
+        const rbo2 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(RENDERBUFFER, rbo1);
+        gl.bindRenderbuffer(RENDERBUFFER, rbo2);
+        gl.bindRenderbuffer(RENDERBUFFER, rbo1);
+        gl.renderbufferStorage(RENDERBUFFER, RGBA8, rboSize, rboSize);
+        gl.renderbufferStorage(RENDERBUFFER, 32856, 256, 256);
+    } catch(e) {}
+
+    try {
+        const rbo3 = gl.createRenderbuffer();
+        const rbo4 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(RENDERBUFFER, rbo3);
+        gl.renderbufferStorage(RENDERBUFFER, RGBA16F, rboSize, rboSize);
+        gl.bindRenderbuffer(RENDERBUFFER, rbo4);
+        gl.renderbufferStorage(RENDERBUFFER, RGB10_A2, 256, 256);
+    } catch(e) {}
+
+    try {
+        const rbo5 = gl.createRenderbuffer();
+        const rbo6 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(RENDERBUFFER, rbo5);
+        gl.renderbufferStorage(RENDERBUFFER, R11F_G11F_B10F, rboSize, rboSize);
+        gl.bindRenderbuffer(RENDERBUFFER, rbo6);
+        gl.renderbufferStorage(RENDERBUFFER, RG16F, 256, 256);
+    } catch(e) {}
+
+    try {
+        const fboRead = gl.createFramebuffer();
+        const fboDraw1 = gl.createFramebuffer();
+        gl.bindFramebuffer(READ_FRAMEBUFFER, fboRead);
+        gl.framebufferRenderbuffer(READ_FRAMEBUFFER, COLOR_ATTACHMENT0, RENDERBUFFER, rbo1);
+        gl.bindFramebuffer(DRAW_FRAMEBUFFER, fboDraw1);
+        gl.framebufferRenderbuffer(DRAW_FRAMEBUFFER, COLOR_ATTACHMENT0, RENDERBUFFER, rbo2);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(READ_FRAMEBUFFER, fboRead);
+        gl.clearColor(0.1, 0.2, 0.3, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.blitFramebuffer(0, 0, rboSize, rboSize, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.blitFramebuffer(0, 0, 256, 256, 64, 64, 192, 192, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+    } catch(e) {}
+
+    try {
+        gl.pixelStorei(gl.PACK_ALIGNMENT, unpackAlignment);
+        gl.pixelStorei(gl.PACK_ROW_LENGTH, unpackRowLength);
+        gl.pixelStorei(gl.PACK_SKIP_PIXELS, unpackSkipPixels);
+        gl.pixelStorei(gl.PACK_SKIP_ROWS, unpackSkipRows);
+        const pixels = new Uint8Array(rboSize * rboSize * 4);
+        gl.bindFramebuffer(FRAMEBUFFER, fboRead);
+        gl.readPixels(0, 0, rboSize, rboSize, RGBA, UNSIGNED_BYTE, pixels);
+    } catch(e) {}
+
+    try {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, unpackAlignment);
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, unpackRowLength);
+        gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, unpackSkipPixels);
+        gl.pixelStorei(gl.UNPACK_SKIP_ROWS, unpackSkipRows);
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, unpackImageHeight);
+    } catch(e) {}
+
+    try {
+        const tex1 = gl.createTexture();
+        const tex2 = gl.createTexture();
+        gl.bindTexture(TEXTURE_2D, tex1);
+        const uploadData = new Uint8Array(rboSize * rboSize * 4);
+        gl.texImage2D(TEXTURE_2D, 0, RGBA8, rboSize, rboSize, 0, RGBA, UNSIGNED_BYTE, uploadData);
+        gl.bindTexture(TEXTURE_2D, tex2);
+        gl.texImage2D(TEXTURE_2D, 0, RGBA8, 256, 256, 0, RGBA, UNSIGNED_BYTE, uploadData);
+    } catch(e) {}
+
+    try {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 1024);
+        gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 64);
+        gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 32);
+        const subData = new Uint8Array(128 * 128 * 4);
+        gl.bindTexture(TEXTURE_2D, tex1);
+        gl.texSubImage2D(TEXTURE_2D, 0, 64, 64, 128, 128, RGBA, UNSIGNED_BYTE, subData);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(READ_FRAMEBUFFER, fboRead);
+        gl.framebufferRenderbuffer(READ_FRAMEBUFFER, COLOR_ATTACHMENT0, RENDERBUFFER, rbo3);
+        gl.bindFramebuffer(DRAW_FRAMEBUFFER, fboDraw1);
+        gl.framebufferRenderbuffer(DRAW_FRAMEBUFFER, COLOR_ATTACHMENT0, RENDERBUFFER, rbo4);
+        gl.bindFramebuffer(READ_FRAMEBUFFER, fboRead);
+        gl.clearColor(0.4, 0.5, 0.6, 0.8);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.blitFramebuffer(0, 0, rboSize, rboSize, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    } catch(e) {}
+
+    try {
+        gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
+        gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
+        gl.pixelStorei(gl.PACK_SKIP_PIXELS, 0);
+        gl.pixelStorei(gl.PACK_SKIP_ROWS, 0);
+        const floatPixels = new Float32Array(rboSize * rboSize * 4);
+        gl.bindFramebuffer(FRAMEBUFFER, fboRead);
+        gl.readPixels(0, 0, rboSize, rboSize, RGBA, FLOAT, floatPixels);
+    } catch(e) {}
+
+    try {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+        gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
+        gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
+        const normalData = new Uint8Array(rboSize * rboSize * 4);
+        gl.bindTexture(TEXTURE_2D, tex2);
+        gl.texImage2D(TEXTURE_2D, 0, RGBA8, rboSize, rboSize, 0, RGBA, UNSIGNED_BYTE, normalData);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(READ_FRAMEBUFFER, fboRead);
+        gl.framebufferRenderbuffer(READ_FRAMEBUFFER, COLOR_ATTACHMENT0, RENDERBUFFER, rbo5);
+        gl.clearColor(0.7, 0.8, 0.9, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(DRAW_FRAMEBUFFER, fboDraw1);
+        gl.framebufferRenderbuffer(DRAW_FRAMEBUFFER, COLOR_ATTACHMENT0, RENDERBUFFER, rbo6);
+        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, rboSize, rboSize, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(FRAMEBUFFER, null);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

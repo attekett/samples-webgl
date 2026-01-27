@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const rboCount = 16;
+const texSize = 256;
+const bufSize = texSize * texSize * 4;
+const mipLevels = 4;
+const fboCount = 8;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const rbTarget = gl.RENDERBUFFER;
+    const fboTarget = gl.FRAMEBUFFER;
+
+    try {
+        const rbo1 = gl.createRenderbuffer();
+        const rbo2 = gl.createRenderbuffer();
+        const rbo3 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, rbo1);
+        gl.bindRenderbuffer(rbTarget, rbo2);
+        gl.bindRenderbuffer(rbTarget, rbo1);
+        gl.renderbufferStorage(rbTarget, gl.RGBA8, texSize, texSize);
+        gl.renderbufferStorage(rbTarget, gl.RGBA16F, 512, 512);
+        gl.renderbufferStorage(rbTarget, gl.RGBA8, 128, 128);
+    } catch(e) {}
+
+    try {
+        const rbo4 = gl.createRenderbuffer();
+        const rbo5 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, rbo4);
+        gl.renderbufferStorage(rbTarget, gl.RGBA32F, texSize, texSize);
+        gl.bindRenderbuffer(rbTarget, rbo5);
+        gl.renderbufferStorage(rbTarget, gl.R11F_G11F_B10F, 256, 256);
+        gl.bindRenderbuffer(rbTarget, rbo4);
+        gl.renderbufferStorage(rbTarget, gl.RGB10_A2, 512, 512);
+    } catch(e) {}
+
+    try {
+        const rbo6 = gl.createRenderbuffer();
+        const rbo7 = gl.createRenderbuffer();
+        const rbo8 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, rbo6);
+        gl.renderbufferStorage(rbTarget, gl.DEPTH_COMPONENT32F, texSize, texSize);
+        gl.bindRenderbuffer(rbTarget, rbo7);
+        gl.renderbufferStorage(rbTarget, gl.DEPTH_COMPONENT24, 512, 512);
+        gl.bindRenderbuffer(rbTarget, rbo8);
+        gl.renderbufferStorage(rbTarget, gl.DEPTH24_STENCIL8, 256, 256);
+        gl.bindRenderbuffer(rbTarget, rbo6);
+    } catch(e) {}
+
+    try {
+        const rbo9 = gl.createRenderbuffer();
+        const rbo10 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, rbo9);
+        gl.renderbufferStorage(rbTarget, gl.STENCIL_INDEX8, texSize, texSize);
+        gl.bindRenderbuffer(rbTarget, rbo10);
+        gl.renderbufferStorage(rbTarget, gl.DEPTH32F_STENCIL8, 512, 512);
+        gl.bindRenderbuffer(rbTarget, rbo9);
+        gl.renderbufferStorage(rbTarget, gl.RGBA16F, 128, 128);
+    } catch(e) {}
+
+    try {
+        const rbo11 = gl.createRenderbuffer();
+        const rbo12 = gl.createRenderbuffer();
+        const rbo13 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, rbo11);
+        gl.renderbufferStorage(rbTarget, gl.RGB8, texSize, texSize);
+        gl.bindRenderbuffer(rbTarget, rbo12);
+        gl.renderbufferStorage(rbTarget, gl.RGB565, 256, 256);
+        gl.bindRenderbuffer(rbTarget, rbo13);
+        gl.renderbufferStorage(rbTarget, gl.RGBA4, 512, 512);
+    } catch(e) {}
+
+    try {
+        const rbo14 = gl.createRenderbuffer();
+        const rbo15 = gl.createRenderbuffer();
+        const rbo16 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, rbo14);
+        gl.renderbufferStorage(rbTarget, gl.RGB5_A1, texSize, texSize);
+        gl.bindRenderbuffer(rbTarget, rbo15);
+        gl.renderbufferStorage(rbTarget, gl.R8, 256, 256);
+        gl.bindRenderbuffer(rbTarget, rbo16);
+        gl.renderbufferStorage(rbTarget, gl.RG8, 512, 512);
+        gl.bindRenderbuffer(rbTarget, rbo14);
+    } catch(e) {}
+
+    try {
+        const fbo1 = gl.createFramebuffer();
+        const fbo2 = gl.createFramebuffer();
+        const fbo3 = gl.createFramebuffer();
+        const fbo4 = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo1);
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo4);
+        gl.bindFramebuffer(fboTarget, fbo3);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo11);
+        gl.bindFramebuffer(fboTarget, fbo4);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo14);
+        gl.bindFramebuffer(fboTarget, fbo1);
+    } catch(e) {}
+
+    try {
+        const fbo5 = gl.createFramebuffer();
+        const fbo6 = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo5);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo1);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_ATTACHMENT, rbTarget, rbo6);
+        gl.bindFramebuffer(fboTarget, fbo6);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo4);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, rbTarget, rbo8);
+        gl.bindFramebuffer(fboTarget, fbo5);
+    } catch(e) {}
+
+    try {
+        gl.bindRenderbuffer(rbTarget, rbo1);
+        gl.renderbufferStorage(rbTarget, gl.RGBA16F, 512, 512);
+        gl.bindRenderbuffer(rbTarget, rbo4);
+        gl.renderbufferStorage(rbTarget, gl.RGB10_A2, 128, 128);
+        gl.bindRenderbuffer(rbTarget, rbo11);
+        gl.renderbufferStorage(rbTarget, gl.RGBA8, 256, 256);
+        gl.bindRenderbuffer(rbTarget, rbo6);
+        gl.renderbufferStorage(rbTarget, gl.DEPTH_COMPONENT16, 512, 512);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo4);
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo1);
+        gl.bindFramebuffer(fboTarget, fbo3);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo14);
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rbo11);
+    } catch(e) {}
+
+    try {
+        gl.bindRenderbuffer(rbTarget, rbo1);
+        gl.renderbufferStorage(rbTarget, gl.RGBA8, 64, 64);
+        gl.bindRenderbuffer(rbTarget, rbo2);
+        gl.renderbufferStorage(rbTarget, gl.RGBA16F, 32, 32);
+        gl.bindRenderbuffer(rbTarget, rbo3);
+        gl.renderbufferStorage(rbTarget, gl.RGB10_A2, 128, 128);
+        gl.bindRenderbuffer(rbTarget, rbo1);
+        gl.renderbufferStorage(rbTarget, gl.RGBA32F, texSize, texSize);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.clearColor(0.2, 0.4, 0.6, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.clearColor(0.8, 0.3, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(fboTarget, fbo3);
+        gl.clearColor(0.1, 0.9, 0.5, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, null);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.5, 0.5, 0.5, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+
+    try {
+        gl.bindRenderbuffer(rbTarget, rbo1);
+        gl.deleteRenderbuffer(rbo1);
+        gl.bindRenderbuffer(rbTarget, rbo1);
+        gl.bindRenderbuffer(rbTarget, rbo2);
+        gl.deleteRenderbuffer(rbo2);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
