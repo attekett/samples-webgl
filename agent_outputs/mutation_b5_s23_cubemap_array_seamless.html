@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const cubeCount = 4;
+    const faceSize = 128;
+    const facePixels = faceSize * faceSize;
+    const vertexCount = 6;
+    const totalLayers = cubeCount * 6;
+    const bufferSize = vertexCount * 24;
+
+    const cubemapTarget = gl.TEXTURE_CUBE_MAP_ARRAY;
+    const textureFormat = gl.RGBA8;
+    const filterMode = gl.LINEAR;
+    const bufferTarget = gl.ARRAY_BUFFER;
+
+    try {
+        const cubeArray1 = gl.createTexture();
+        const cubeArray2 = gl.createTexture();
+        const cubeArray3 = gl.createTexture();
+        gl.bindTexture(cubemapTarget, cubeArray1);
+        gl.bindTexture(cubemapTarget, cubeArray2);
+        gl.bindTexture(cubemapTarget, cubeArray1);
+        gl.texStorage3D(cubemapTarget, 4, textureFormat, faceSize, faceSize, totalLayers);
+        gl.texParameteri(cubemapTarget, gl.TEXTURE_MIN_FILTER, filterMode);
+        gl.texParameteri(cubemapTarget, gl.TEXTURE_MAG_FILTER, filterMode);
+        gl.texParameteri(cubemapTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(cubemapTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const faceData = new Uint8Array(facePixels * 4);
+        for (let cube = 0; cube < cubeCount; cube++) {
+            for (let face = 0; face < 6; face++) {
+                const layer = cube * 6 + face;
+                for (let y = 0; y < faceSize; y++) {
+                    for (let x = 0; x < faceSize; x++) {
+                        const idx = (y * faceSize + x) * 4;
+                        faceData[idx + 0] = (cube / cubeCount) * 255;
+                        faceData[idx + 1] = (face / 6) * 255;
+                        faceData[idx + 2] = ((x + y) / (2 * faceSize)) * 255;
+                        faceData[idx + 3] = 255;
+                    }
+                }
+                gl.texSubImage3D(cubemapTarget, 0, 0, 0, layer, faceSize, faceSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, faceData);
+            }
+        }
+        gl.generateMipmap(cubemapTarget);
+        gl.bindTexture(cubemapTarget, cubeArray2);
+        gl.texStorage3D(cubemapTarget, 2, textureFormat, 64, 64, 12);
+        gl.bindTexture(cubemapTarget, cubeArray1);
+    } catch(e) {}
+
+    try {
+        const regularCube = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_CUBE_MAP, regularCube);
+        gl.texStorage2D(gl.TEXTURE_CUBE_MAP, 1, textureFormat, faceSize, faceSize);
+        gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        const simpleFaceData = new Uint8Array(facePixels * 4);
+        simpleFaceData.fill(128);
+        for (let i = 0; i < 6; i++) {
+            gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, 0, 0, faceSize, faceSize, gl.RGBA, gl.UNSIGNED_BYTE, simpleFaceData);
+        }
+    } catch(e) {}
+
+    const vertexShaderSource = `#version 300 es
+        in vec2 position;
+        in vec3 direction;
+        out vec3 vDirection;
+        void main() {
+            gl_Position = vec4(position, 0.0, 1.0);
+            vDirection = direction;
+        }`;
+
+    const fragmentShaderSource = `#version 300 es
+        precision highp float;
+        precision highp samplerCubeArray;
+        in vec3 vDirection;
+        uniform samplerCubeArray uCubeArray;
+        uniform float uCubeIndex;
+        uniform int uCubeIndexInt;
+        out vec4 fragColor;
+        void main() {
+            vec4 coords1 = vec4(vDirection, uCubeIndex);
+            vec4 coords2 = vec4(vDirection, float(uCubeIndexInt));
+            vec4 color1 = texture(uCubeArray, coords1);
+            vec4 color2 = texture(uCubeArray, coords2);
+            vec3 dir2 = normalize(vDirection + vec3(0.1, 0.1, 0.0));
+            vec4 color3 = texture(uCubeArray, vec4(dir2, uCubeIndex));
+            fragColor = (color1 + color2 + color3) / 3.0;
+        }`;
+
+    try {
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        const vertexShader2 = gl.createShader(gl.VERTEX_SHADER);
+        const vertexShader3 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.shaderSource(vertexShader2, vertexShaderSource);
+        gl.compileShader(vertexShader);
+        gl.compileShader(vertexShader2);
+        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(vertexShader));
+        }
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(fragmentShader));
+        }
+        const program = gl.createProgram();
+        const program2 = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.attachShader(program2, vertexShader2);
+        gl.linkProgram(program);
+        gl.linkProgram(program2);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program));
+        }
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const fbo1 = gl.createFramebuffer();
+        const fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        const renderTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, renderTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, textureFormat, 256, 256);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, renderTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, renderTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        const vertices = new Float32Array([
+            -1.0, -1.0,  1.0,  0.0,  1.0,
+             1.0, -1.0,  1.0,  1.0,  0.0,
+            -1.0,  1.0,  0.0,  1.0,  1.0,
+            -1.0,  1.0,  0.0,  1.0,  1.0,
+             1.0, -1.0,  1.0,  1.0,  0.0,
+             1.0,  1.0, -1.0,  0.0, -1.0
+        ]);
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, vertices, gl.STATIC_DRAW);
+        gl.bufferSubData(bufferTarget, 0, new Float32Array([0.5, 0.5, 0.5]));
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bufferData(bufferTarget, 2048, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(bufferTarget, buffer1);
+    } catch(e) {}
+
+    try {
+        const posLoc = gl.getAttribLocation(program, 'position');
+        const dirLoc = gl.getAttribLocation(program, 'direction');
+        const cubeArrayLoc = gl.getUniformLocation(program, 'uCubeArray');
+        const cubeIdxLoc = gl.getUniformLocation(program, 'uCubeIndex');
+        const cubeIdxIntLoc = gl.getUniformLocation(program, 'uCubeIndexInt');
+        gl.enableVertexAttribArray(posLoc);
+        gl.disableVertexAttribArray(posLoc);
+        gl.enableVertexAttribArray(posLoc);
+        gl.enableVertexAttribArray(dirLoc);
+        gl.disableVertexAttribArray(dirLoc);
+        gl.enableVertexAttribArray(dirLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 20, 0);
+        gl.vertexAttribPointer(dirLoc, 3, gl.FLOAT, false, 20, 8);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(cubemapTarget, cubeArray1);
+        gl.uniform1i(cubeArrayLoc, 0);
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.0, 0.0, 0.15, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.CULL_FACE);
+        gl.disable(gl.CULL_FACE);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
+        gl.viewport(0, 0, 256, 256);
+        for (let i = 0; i < cubeCount; i++) {
+            gl.uniform1f(cubeIdxLoc, i);
+            gl.uniform1i(cubeIdxIntLoc, i);
+            gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        }
+        gl.viewport(0, 0, faceSize, faceSize);
+        gl.uniform1f(cubeIdxLoc, 2.5);
+        gl.uniform1i(cubeIdxIntLoc, 1);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.viewport(0, 0, 128, 128);
+        gl.uniform1f(cubeIdxLoc, 3.0);
+        gl.uniform1i(cubeIdxIntLoc, 2);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    } catch(e) {}
+
+    try {
+        gl.bindTexture(cubemapTarget, cubeArray1);
+        gl.deleteTexture(cubeArray1);
+        gl.bindTexture(cubemapTarget, cubeArray2);
+        gl.deleteTexture(cubeArray2);
+        gl.deleteTexture(cubeArray3);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.deleteBuffer(buffer1);
+        gl.deleteBuffer(buffer2);
+        gl.deleteFramebuffer(fbo1);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const precisionLevels = 3;
+    const vertexCount = 6;
+    const computeIntensity = 16;
+    const bufferSize = vertexCount * 32;
+    const iterationCount = computeIntensity * 2;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+    const primitiveType = gl.TRIANGLES;
+
+    const vertexShader = `#version 300 es
+    precision highp float;
+    in vec2 position;
+    in highp vec3 highData;
+    in mediump vec3 medData;
+    in lowp vec3 lowData;
+    out highp vec3 vHighData;
+    out mediump vec3 vMedData;
+    out lowp vec3 vLowData;
+    out highp float vHighCompute;
+    out mediump float vMedCompute;
+    void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+        vHighData = highData;
+        vMedData = medData;
+        vLowData = lowData;
+
+        highp float hVal = 0.0;
+        for (int i = 0; i < 16; i++) {
+            hVal += sin(float(i) * 0.1 + highData.x) * 0.01;
+        }
+        vHighCompute = hVal;
+
+        mediump float mVal = 0.0;
+        for (int i = 0; i < 8; i++) {
+            mVal += cos(float(i) * 0.2 + medData.x) * 0.1;
+        }
+        vMedCompute = mVal;
+    }`;
+
+    const fragmentShader = `#version 300 es
+    precision highp float;
+    in highp vec3 vHighData;
+    in mediump vec3 vMedData;
+    in lowp vec3 vLowData;
+    in highp float vHighCompute;
+    in mediump float vMedCompute;
+    out vec4 fragColor;
+    void main() {
+        highp float hResult = 0.0;
+        for (int i = 0; i < 16; i++) {
+            hResult += vHighData.x * 0.01 + vHighCompute * 0.1;
+        }
+
+        mediump float mResult = 0.0;
+        for (int i = 0; i < 8; i++) {
+            mResult += vMedData.y * 0.1 + vMedCompute * 0.2;
+        }
+
+        lowp float lResult = vLowData.z;
+
+        highp vec3 mixedPrecision = vec3(hResult, mResult, lResult);
+        mediump vec3 converted = vec3(mixedPrecision);
+        lowp vec3 finalColor = vec3(converted);
+
+        fragColor = vec4(finalColor, 1.0);
+    }`;
+
+    let buffer1, buffer2, highBuffer, medBuffer, lowBuffer, program, vao;
+
+    try {
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
+        highBuffer = gl.createBuffer();
+        medBuffer = gl.createBuffer();
+        lowBuffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, bufferSize, bufferUsage);
+    } catch(e) {}
+
+    try {
+        const positions = new Float32Array([
+            -1.0, -1.0,
+             1.0, -1.0,
+            -1.0,  1.0,
+            -1.0,  1.0,
+             1.0, -1.0,
+             1.0,  1.0
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, positions);
+    } catch(e) {}
+
+    try {
+        const highData = new Float32Array([
+            0.9, 0.8, 0.7,
+            0.6, 0.5, 0.4,
+            0.3, 0.2, 0.1,
+            0.8, 0.7, 0.6,
+            0.5, 0.4, 0.3,
+            0.2, 0.1, 0.9
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, highBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, highBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, 128, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, highData);
+    } catch(e) {}
+
+    try {
+        const medData = new Float32Array([
+            0.5, 0.5, 0.5,
+            0.6, 0.4, 0.5,
+            0.7, 0.3, 0.5,
+            0.4, 0.6, 0.5,
+            0.3, 0.7, 0.5,
+            0.5, 0.5, 0.5
+        ]);
+        const lowData = new Float32Array([
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0,
+            1.0, 1.0, 0.0,
+            1.0, 0.0, 1.0,
+            0.0, 1.0, 1.0
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, medBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, 96, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, medData);
+        gl.bindBuffer(gl.ARRAY_BUFFER, lowBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, 96, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, lowData);
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(vs, vertexShader);
+        gl.shaderSource(fs, fragmentShader);
+        gl.compileShader(vs);
+        gl.compileShader(fs);
+
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        const posLoc = gl.getAttribLocation(program, 'position');
+        const highLoc = gl.getAttribLocation(program, 'highData');
+        const medLoc = gl.getAttribLocation(program, 'medData');
+        const lowLoc = gl.getAttribLocation(program, 'lowData');
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 8, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, highBuffer);
+        gl.enableVertexAttribArray(highLoc);
+        gl.vertexAttribPointer(highLoc, 3, gl.FLOAT, false, 12, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, medBuffer);
+        gl.enableVertexAttribArray(medLoc);
+        gl.vertexAttribPointer(medLoc, 3, gl.FLOAT, false, 12, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, lowBuffer);
+        gl.enableVertexAttribArray(lowLoc);
+        gl.vertexAttribPointer(lowLoc, 3, gl.FLOAT, false, 12, 0);
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.2, 0.2, 0.2, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+        gl.drawArrays(primitiveType, 0, vertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.drawArrays(primitiveType, 0, vertexCount);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.deleteBuffer(buffer1);
+        gl.bindBuffer(bufferTarget, highBuffer);
+        gl.deleteBuffer(highBuffer);
+        gl.deleteBuffer(medBuffer);
+        gl.deleteBuffer(lowBuffer);
+        gl.deleteBuffer(buffer2);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

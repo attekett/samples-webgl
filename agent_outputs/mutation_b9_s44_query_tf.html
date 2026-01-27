@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    let queryCount = 6;
+    let tfPrimitives = 500;
+    let vertexCount = 300;
+    let tfIterations = 4;
+    let bufferSize = 4096;
+    let varyingCount = 3;
+
+    const TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN = 0x8C88;
+    const QUERY_RESULT = 0x8866;
+    const QUERY_RESULT_AVAILABLE = 0x8867;
+
+    let queryTarget = TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN;
+    let tfMode = gl.TRIANGLES;
+    let bufferTarget = gl.ARRAY_BUFFER;
+    let tfBufferTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+
+    const vertexShader = `#version 300 es
+        in vec3 a_position;
+        in vec3 a_velocity;
+        in float a_lifetime;
+        out vec3 v_position;
+        out vec3 v_velocity;
+        out float v_lifetime;
+        uniform float u_time;
+        uniform float u_decay;
+        void main() {
+            vec3 newPos = a_position + a_velocity * u_time;
+            vec3 newVel = a_velocity * u_decay;
+            float newLife = a_lifetime - 0.01;
+
+            v_position = newPos;
+            v_velocity = newVel;
+            v_lifetime = max(newLife, 0.0);
+
+            gl_Position = vec4(newPos, 1.0);
+            gl_PointSize = 2.0;
+        }
+    `;
+
+    const fragmentShader = `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        void main() {
+            fragColor = vec4(1.0, 0.8, 0.3, 1.0);
+        }
+    `;
+
+    let program;
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vertexShader);
+        gl.compileShader(vs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(vs));
+        }
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fragmentShader);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(fs));
+        }
+
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+
+        gl.transformFeedbackVaryings(program, ['v_position', 'v_velocity', 'v_lifetime'], gl.INTERLEAVED_ATTRIBS);
+        gl.transformFeedbackVaryings(program, ['v_position', 'v_velocity', 'v_lifetime'], gl.INTERLEAVED_ATTRIBS);
+
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program));
+        }
+    } catch (e) {
+        throw e;
+    }
+
+    function createParticleData(count) {
+        const data = new Float32Array(count * 7);
+        for (let i = 0; i < count; i++) {
+            const base = i * 7;
+            data[base + 0] = (Math.random() - 0.5) * 2.0;
+            data[base + 1] = (Math.random() - 0.5) * 2.0;
+            data[base + 2] = (Math.random() - 0.5) * 0.5;
+            data[base + 3] = (Math.random() - 0.5) * 0.02;
+            data[base + 4] = (Math.random() - 0.5) * 0.02;
+            data[base + 5] = (Math.random() - 0.5) * 0.01;
+            data[base + 6] = Math.random();
+        }
+        return data;
+    }
+
+    const particleData = createParticleData(vertexCount);
+
+    let vbo1;
+    try {
+        vbo1 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vbo1);
+        gl.bufferData(bufferTarget, particleData, gl.DYNAMIC_COPY);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo1);
+        gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.DYNAMIC_COPY);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    } catch (e) {
+        throw e;
+    }
+
+    let vbo2;
+    try {
+        vbo2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vbo2);
+        gl.bufferData(bufferTarget, particleData.byteLength, gl.DYNAMIC_COPY);
+        gl.bindBuffer(bufferTarget, null);
+    } catch (e) {
+        throw e;
+    }
+
+    let vao1;
+    try {
+        vao1 = gl.createVertexArray();
+        gl.bindVertexArray(vao1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo1);
+
+        const posLoc = gl.getAttribLocation(program, 'a_position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 28, 0);
+
+        const velLoc = gl.getAttribLocation(program, 'a_velocity');
+        gl.enableVertexAttribArray(velLoc);
+        gl.vertexAttribPointer(velLoc, 3, gl.FLOAT, false, 28, 12);
+
+        const lifeLoc = gl.getAttribLocation(program, 'a_lifetime');
+        gl.enableVertexAttribArray(lifeLoc);
+        gl.vertexAttribPointer(lifeLoc, 1, gl.FLOAT, false, 28, 24);
+        gl.vertexAttribPointer(lifeLoc, 1, gl.FLOAT, false, 28, 24);
+
+        gl.bindVertexArray(null);
+    } catch (e) {
+        throw e;
+    }
+
+    let vao2;
+    try {
+        vao2 = gl.createVertexArray();
+        gl.bindVertexArray(vao2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo2);
+
+        const posLoc = gl.getAttribLocation(program, 'a_position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 28, 0);
+
+        const velLoc = gl.getAttribLocation(program, 'a_velocity');
+        gl.enableVertexAttribArray(velLoc);
+        gl.vertexAttribPointer(velLoc, 3, gl.FLOAT, false, 28, 12);
+
+        const lifeLoc = gl.getAttribLocation(program, 'a_lifetime');
+        gl.enableVertexAttribArray(lifeLoc);
+        gl.vertexAttribPointer(lifeLoc, 1, gl.FLOAT, false, 28, 24);
+
+        gl.bindVertexArray(null);
+    } catch (e) {
+        throw e;
+    }
+
+    const tf = gl.createTransformFeedback();
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+    let queries = [];
+    try {
+        for (let i = 0; i < queryCount; i++) {
+            const query = gl.createQuery();
+            if (query) {
+                queries.push(query);
+            }
+        }
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.useProgram(program);
+        const timeLoc = gl.getUniformLocation(program, 'u_time');
+        const decayLoc = gl.getUniformLocation(program, 'u_decay');
+
+        let readBuffer = vbo1;
+        let writeBuffer = vbo2;
+        let readVao = vao1;
+        let writeVao = vao2;
+
+        for (let iter = 0; iter < tfIterations; iter++) {
+            const queryIdx = iter % queries.length;
+            const query = queries[queryIdx];
+
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+            gl.bindBufferBase(tfBufferTarget, 0, writeBuffer);
+            gl.bindBufferBase(tfBufferTarget, 0, writeBuffer);
+
+            gl.bindVertexArray(readVao);
+
+            gl.uniform1f(timeLoc, iter * 0.016);
+            gl.uniform1f(decayLoc, 0.98);
+
+            gl.beginQuery(queryTarget, query);
+            gl.beginQuery(queryTarget, query);
+
+            gl.beginTransformFeedback(tfMode);
+            gl.beginTransformFeedback(tfMode);
+            gl.drawArrays(gl.POINTS, 0, vertexCount);
+            gl.drawArrays(gl.POINTS, 0, vertexCount / 2);
+            gl.endTransformFeedback();
+            gl.endTransformFeedback();
+
+            gl.endQuery(queryTarget);
+            gl.endQuery(queryTarget);
+
+            gl.bindVertexArray(null);
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+            const temp = readBuffer;
+            readBuffer = writeBuffer;
+            writeBuffer = temp;
+            const tempVao = readVao;
+            readVao = writeVao;
+            writeVao = tempVao;
+        }
+
+        gl.disable(gl.RASTERIZER_DISCARD);
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        let resultsPending = true;
+        let checkCount = 0;
+        while (resultsPending && checkCount < 100) {
+            resultsPending = false;
+            for (let i = 0; i < queries.length; i++) {
+                const available = gl.getQueryParameter(queries[i], QUERY_RESULT_AVAILABLE);
+                if (available) {
+                    const result = gl.getQueryParameter(queries[i], QUERY_RESULT);
+                } else {
+                    resultsPending = true;
+                }
+            }
+            checkCount++;
+        }
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        gl.clearColor(0.1, 0.1, 0.15, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.viewport(0, 0, 256, 256);
+
+        gl.bindVertexArray(vao1);
+        gl.uniform1f(gl.getUniformLocation(program, 'u_time'), 0.0);
+        gl.uniform1f(gl.getUniformLocation(program, 'u_decay'), 1.0);
+        gl.drawArrays(gl.POINTS, 0, vertexCount);
+        gl.bindVertexArray(null);
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        const finalQuery = gl.createQuery();
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, vbo2);
+        gl.bindVertexArray(vao1);
+
+        gl.beginQuery(TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, finalQuery);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, vertexCount);
+        gl.endTransformFeedback();
+        gl.endQuery(TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
+
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindVertexArray(null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+        gl.flush();
+
+        let available = false;
+        let attempts = 0;
+        while (!available && attempts < 50) {
+            available = gl.getQueryParameter(finalQuery, QUERY_RESULT_AVAILABLE);
+            attempts++;
+        }
+
+        if (available) {
+            const result = gl.getQueryParameter(finalQuery, QUERY_RESULT);
+        }
+
+        gl.deleteQuery(finalQuery);
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        for (let i = 0; i < queries.length; i++) {
+            gl.deleteQuery(queries[i]);
+        }
+    } catch (e) {
+        throw e;
+    }
+
+    gl.flush();
+    gl.finish();
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_color_buffer_float'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    // ============ DECLARATION ZONE ============
+    // Tier 1: Amplification Variables
+    const texSize = 256;
+    const texPixels = texSize * texSize;
+    const mrtCount = 4;
+    const bufferSize = texPixels * 16;
+    const vertexCount = 6;
+    const blendFactors = 4;
+
+    // Tier 3: Enum Constants
+    const textureTarget = gl.TEXTURE_2D;
+    const textureFormat = gl.RGBA32F;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const blendMode = gl.FUNC_ADD;
+
+    // ============ SETUP ZONE ============
+
+    // Block 1: Buffer creation with bind ping-pong
+    try {
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, bufferSize, gl.STATIC_DRAW);
+        const vertices = new Float32Array([
+            -1.0, -1.0, 0.0,
+             1.0, -1.0, 0.0,
+            -1.0,  1.0, 0.0,
+            -1.0,  1.0, 0.0,
+             1.0, -1.0, 0.0,
+             1.0,  1.0, 0.0
+        ]);
+        gl.bufferSubData(bufferTarget, 0, vertices);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bufferData(bufferTarget, 2048, gl.DYNAMIC_DRAW);
+    } catch(e) {}
+
+    // Block 2: Float texture 1 creation with redundancy
+    try {
+        const floatTex1 = gl.createTexture();
+        const floatTex1_alt = gl.createTexture();
+        gl.bindTexture(textureTarget, floatTex1);
+        gl.bindTexture(textureTarget, floatTex1_alt);
+        gl.bindTexture(textureTarget, floatTex1);
+        gl.texImage2D(textureTarget, 0, textureFormat, texSize, texSize, 0, gl.RGBA, gl.FLOAT, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    } catch(e) {}
+
+    // Block 3: Float texture 2 creation
+    try {
+        const floatTex2 = gl.createTexture();
+        gl.bindTexture(textureTarget, floatTex2);
+        gl.texImage2D(textureTarget, 0, gl.RGBA32F, 512, 512, 0, gl.RGBA, gl.FLOAT, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.bindTexture(textureTarget, floatTex2);
+        gl.bindTexture(textureTarget, floatTex2);
+    } catch(e) {}
+
+    // Block 4: Float texture 3 and 4 creation
+    try {
+        const floatTex3 = gl.createTexture();
+        const floatTex4 = gl.createTexture();
+        gl.bindTexture(textureTarget, floatTex3);
+        gl.texImage2D(textureTarget, 0, textureFormat, texSize, texSize, 0, gl.RGBA, gl.FLOAT, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.bindTexture(textureTarget, floatTex4);
+        gl.texImage2D(textureTarget, 0, gl.RGBA16F, 128, 128, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    } catch(e) {}
+
+    // Block 5: Shader compilation
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            out vec2 vTexCoord;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                vTexCoord = position.xy * 0.5 + 0.5;
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            in vec2 vTexCoord;
+            layout(location = 0) out vec4 fragColor0;
+            layout(location = 1) out vec4 fragColor1;
+            layout(location = 2) out vec4 fragColor2;
+            layout(location = 3) out vec4 fragColor3;
+            void main() {
+                fragColor0 = vec4(vTexCoord, 0.0, 1.0);
+                fragColor1 = vec4(1.0 - vTexCoord.x, vTexCoord.y, 0.5, 1.0);
+                fragColor2 = vec4(vTexCoord.y, 0.0, vTexCoord.x, 1.0);
+                fragColor3 = vec4(0.5, vTexCoord.x * vTexCoord.y, 0.5, 1.0);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const posLoc = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 12, 0);
+    } catch(e) {}
+
+    // Block 6: FBO setup with 4 MRT attachments - attachment swapping
+    try {
+        const fbo1 = gl.createFramebuffer();
+        const fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, textureTarget, floatTex1, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, textureTarget, floatTex2, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, textureTarget, floatTex3, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, textureTarget, floatTex4, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, textureTarget, floatTex3, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.drawBuffers([
+            gl.COLOR_ATTACHMENT0,
+            gl.COLOR_ATTACHMENT1,
+            gl.COLOR_ATTACHMENT2,
+            gl.COLOR_ATTACHMENT3
+        ]);
+    } catch(e) {}
+
+    // ============ EXECUTION ZONE ============
+
+    // Block 7: Blend state thrashing with multiple mode changes
+    try {
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.blendEquation(blendMode);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_SUBTRACT);
+        gl.blendEquation(blendMode);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+        gl.blendEquationSeparate(gl.FUNC_ADD, gl.MAX);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ZERO);
+    } catch(e) {}
+
+    // Block 8: Draw calls to MRT with blend modes
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.disable(gl.BLEND);
+        gl.clearColor(0.2, 0.3, 0.4, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 18);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

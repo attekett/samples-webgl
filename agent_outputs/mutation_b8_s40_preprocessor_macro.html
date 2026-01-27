@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const macroCount = 8;
+    const defineValue = 4;
+    const vertexCount = 6;
+    const bufferSize = vertexCount * 16;
+    const iterCount = defineValue * 2;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+    const primitiveType = gl.TRIANGLES;
+
+    const vertexShader = `#version 300 es
+    #define ITERATIONS 4
+    #define SCALE 0.5
+    #define OFFSET 0.1
+    #define COLOR_MULT 2.0
+    #define USE_FEATURE_A 1
+    #define USE_FEATURE_B 0
+    #define MAX_COUNT 16
+    #define PI 3.14159265359
+
+    #if USE_FEATURE_A
+        #define TRANSFORM(p) ((p) * SCALE + OFFSET)
+    #else
+        #define TRANSFORM(p) ((p) * 0.8)
+    #endif
+
+    #if USE_FEATURE_B
+        #define COLOR_TRANSFORM(c) ((c) * 0.5)
+    #else
+        #define COLOR_TRANSFORM(c) ((c) * COLOR_MULT)
+    #endif
+
+    in vec2 position;
+    in vec3 color;
+    out vec3 vColor;
+    out float vComputed;
+
+    void main() {
+        vec2 transformedPos = TRANSFORM(position);
+        gl_Position = vec4(transformedPos, 0.0, 1.0);
+
+        vec3 transformedColor = COLOR_TRANSFORM(color);
+        vColor = transformedColor;
+
+        float computed = 0.0;
+        #if ITERATIONS > 0
+            for (int i = 0; i < ITERATIONS; i++) {
+                computed += sin(float(i) * PI / float(ITERATIONS));
+            }
+        #endif
+        vComputed = computed / float(MAX_COUNT);
+    }`;
+
+    const fragmentShader = `#version 300 es
+    precision highp float;
+    #define ITERATIONS 4
+    #define BRIGHTNESS 1.2
+    #define CONTRAST 0.8
+    #define USE_EFFECT_A 1
+    #define USE_EFFECT_B 0
+    #define GAMMA 2.2
+    #define INV_GAMMA 0.4545
+
+    #if USE_EFFECT_A
+        #define APPLY_EFFECT(c) (pow((c), vec3(GAMMA)))
+    #else
+        #define APPLY_EFFECT(c) ((c) * BRIGHTNESS)
+    #endif
+
+    #if USE_EFFECT_B
+        #define FINAL_ADJUST(c) ((c) * CONTRAST)
+    #else
+        #define FINAL_ADJUST(c) (pow((c), vec3(INV_GAMMA)))
+    #endif
+
+    in vec3 vColor;
+    in float vComputed;
+    out vec4 fragColor;
+
+    void main() {
+        vec3 color = vColor + vComputed;
+
+        vec3 processed = APPLY_EFFECT(color);
+        vec3 final = FINAL_ADJUST(processed);
+
+        #if ITERATIONS > 2
+            float pattern = 0.0;
+            for (int i = 0; i < ITERATIONS; i++) {
+                pattern += float(i) * 0.1;
+            }
+            final += vec3(pattern * 0.1);
+        #endif
+
+        fragColor = vec4(final, 1.0);
+    }`;
+
+    let buffer1, buffer2, colorBuffer, program, vao;
+
+    try {
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
+        colorBuffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, bufferSize, bufferUsage);
+    } catch(e) {}
+
+    try {
+        const positions = new Float32Array([
+            -1.0, -1.0,
+             1.0, -1.0,
+            -1.0,  1.0,
+            -1.0,  1.0,
+             1.0, -1.0,
+             1.0,  1.0
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, positions);
+    } catch(e) {}
+
+    try {
+        const colors = new Float32Array([
+            0.8, 0.2, 0.2,
+            0.2, 0.8, 0.2,
+            0.2, 0.2, 0.8,
+            0.8, 0.8, 0.2,
+            0.8, 0.2, 0.8,
+            0.2, 0.8, 0.8
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, 128, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, colors);
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(vs, vertexShader);
+        gl.shaderSource(fs, fragmentShader);
+        gl.compileShader(vs);
+        gl.compileShader(fs);
+
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        const posLoc = gl.getAttribLocation(program, 'position');
+        const colorLoc = gl.getAttribLocation(program, 'color');
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 8, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.enableVertexAttribArray(colorLoc);
+        gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 12, 0);
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+        gl.drawArrays(primitiveType, 0, vertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.drawArrays(primitiveType, 0, vertexCount);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.deleteBuffer(buffer1);
+        gl.bindBuffer(bufferTarget, colorBuffer);
+        gl.deleteBuffer(colorBuffer);
+        gl.deleteBuffer(buffer2);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const texPixels = texSize * texSize;
+    const lodBias = 2.0;
+    const vertexCount = 6;
+    const mipLevels = 8;
+    const drawPasses = 3;
+
+    const textureTarget = gl.TEXTURE_2D;
+    const filterMode = gl.LINEAR_MIPMAP_LINEAR;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+
+    const vertexShader = `#version 300 es
+    in vec2 a_position;
+    in vec2 a_texCoord;
+
+    out vec2 v_texCoord;
+    out vec2 v_screenPos;
+
+    void main() {
+        v_texCoord = a_texCoord;
+        v_screenPos = a_position;
+        gl_Position = vec4(a_position, 0.0, 1.0);
+    }
+    `;
+
+    const fragmentShader = `#version 300 es
+    precision highp float;
+
+    uniform sampler2D u_texture;
+    uniform float u_lodBias;
+
+    in vec2 v_texCoord;
+    in vec2 v_screenPos;
+    out vec4 fragColor;
+
+    void main() {
+        vec2 tc = v_texCoord;
+        float dFdxTcX = dFdx(tc.x);
+        float dFdyTcX = dFdy(tc.x);
+        float dFdxTcY = dFdx(tc.y);
+        float dFdyTcY = dFdy(tc.y);
+        vec2 tcDeriv = vec2(dFdxTcX + dFdyTcX, dFdxTcY + dFdyTcY);
+        float fwidthVal = fwidth(tc.x) + fwidth(tc.y);
+        vec2 dFdxPos = dFdx(v_screenPos);
+        vec2 dFdyPos = dFdy(v_screenPos);
+        vec4 color1 = texture(u_texture, tc);
+        vec4 color2 = textureLod(u_texture, tc, u_lodBias);
+        vec4 color3 = textureLod(u_texture, tc, u_lodBias * 0.5);
+        vec4 color4 = textureLod(u_texture, tc + tcDeriv * 0.1, 0.0);
+        vec4 color5 = textureLod(u_texture, tc, fwidthVal * 10.0);
+        float derivFactor = length(dFdxPos) + length(dFdyPos);
+        vec4 derivColor = vec4(abs(dFdxTcX), abs(dFdyTcY), fwidthVal * 2.0, 1.0);
+        fragColor = mix(color1, color2, 0.3) + mix(color3, color4, 0.2) * 0.5 + color5 * 0.3 + derivColor * 0.1 * derivFactor;
+    }
+    `;
+
+    try {
+        const positions = new Float32Array([
+            -0.95, -0.95,
+            0.95, -0.95,
+            0.95, 0.95,
+            -0.95, -0.95,
+            0.95, 0.95,
+            -0.95, 0.95
+        ]);
+        const texCoords = new Float32Array([
+            0, 0,
+            4, 0,
+            4, 4,
+            0, 0,
+            4, 4,
+            0, 4
+        ]);
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        const buffer3 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, positions, bufferUsage);
+        gl.bufferData(bufferTarget, 1024, bufferUsage);
+        gl.bufferData(bufferTarget, positions, bufferUsage);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bufferData(bufferTarget, texCoords, bufferUsage);
+    } catch(e) {}
+
+    try {
+        const tex1 = gl.createTexture();
+        const tex2 = gl.createTexture();
+        const tex3 = gl.createTexture();
+        gl.bindTexture(textureTarget, tex1);
+        gl.bindTexture(textureTarget, tex2);
+        gl.bindTexture(textureTarget, tex1);
+        gl.texStorage2D(textureTarget, mipLevels, gl.RGBA8, texSize, texSize);
+        gl.texStorage2D(textureTarget, 4, gl.RGBA8, 512, 512);
+        gl.texStorage2D(textureTarget, mipLevels, gl.RGBA8, texSize, texSize);
+        for (let level = 0; level < mipLevels; level++) {
+            const levelSize = texSize >> level;
+            if (levelSize < 1) break;
+            const levelPixels = levelSize * levelSize;
+            const data = new Uint8Array(levelPixels * 4);
+            for (let i = 0; i < levelPixels; i++) {
+                const x = i % levelSize;
+                const y = Math.floor(i / levelSize);
+                const idx = i * 4;
+                data[idx + 0] = ((x * level) ^ (y * level)) % 256;
+                data[idx + 1] = ((x + level * 20) ^ y) % 256;
+                data[idx + 2] = ((y + level * 30) ^ x) % 256;
+                data[idx + 3] = 255;
+            }
+            gl.texSubImage2D(textureTarget, level, 0, 0, levelSize, levelSize, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        }
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, filterMode);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, filterMode);
+    } catch(e) {}
+
+    let program;
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(vs, vertexShader);
+        gl.shaderSource(fs, fragmentShader);
+        gl.compileShader(vs);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(vs));
+        }
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(fs));
+        }
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program));
+        }
+        gl.useProgram(program);
+        gl.useProgram(null);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const vao1 = gl.createVertexArray();
+        const vao2 = gl.createVertexArray();
+        gl.bindVertexArray(vao1);
+        gl.bindVertexArray(vao2);
+        gl.bindVertexArray(vao1);
+        const posLoc = gl.getAttribLocation(program, 'a_position');
+        const tcLoc = gl.getAttribLocation(program, 'a_texCoord');
+        gl.enableVertexAttribArray(posLoc);
+        gl.disableVertexAttribArray(posLoc);
+        gl.enableVertexAttribArray(posLoc);
+        gl.enableVertexAttribArray(tcLoc);
+        gl.disableVertexAttribArray(tcLoc);
+        gl.enableVertexAttribArray(tcLoc);
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.vertexAttribPointer(tcLoc, 2, gl.FLOAT, false, 0, 0);
+    } catch(e) {}
+
+    try {
+        const texLoc = gl.getUniformLocation(program, 'u_texture');
+        const lodLoc = gl.getUniformLocation(program, 'u_lodBias');
+        gl.uniform1i(texLoc, 0);
+        gl.uniform1i(texLoc, 1);
+        gl.uniform1i(texLoc, 0);
+        gl.uniform1f(lodLoc, lodBias);
+        gl.uniform1f(lodLoc, 0.0);
+        gl.uniform1f(lodLoc, lodBias);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(textureTarget, gl.createTexture());
+        gl.bindTexture(textureTarget, gl.createTexture());
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_ADD);
+    } catch(e) {}
+
+    try {
+        const lodLoc = gl.getUniformLocation(program, 'u_lodBias');
+        for (let i = 0; i < drawPasses; i++) {
+            const lod = lodBias * (i / drawPasses);
+            gl.uniform1f(lodLoc, lod);
+            gl.uniform1f(lodLoc, lod * 1.5);
+            gl.uniform1f(lodLoc, lod);
+            gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+            gl.drawArrays(gl.TRIANGLES, 0, 12);
+            gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+            gl.uniform1f(lodLoc, lod * 0.5);
+            gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        }
+    } catch(e) {}
+
+    try {
+        gl.bindTexture(textureTarget, null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+        const delTex = gl.createTexture();
+        gl.bindTexture(textureTarget, delTex);
+        gl.deleteTexture(delTex);
+        gl.bindTexture(textureTarget, delTex);
+        gl.texImage2D(textureTarget, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

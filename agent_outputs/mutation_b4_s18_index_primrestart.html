@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const indexCount = 24;
+const restartIndex = 65535;
+const vertexCount = 12;
+const primitiveCount = 4;
+const indexBufferSize = indexCount * 4;
+
+const indexType = 0x1405;
+const bufferTarget = 0x8892;
+const bufferUsage = 0x88E4;
+const elementTarget = 0x8893;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const vertexBuffer = gl.createBuffer();
+        const indexBuffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vertexBuffer);
+        gl.bufferData(bufferTarget, 512, bufferUsage);
+        gl.bindBuffer(elementTarget, indexBuffer);
+        gl.bufferData(elementTarget, indexBufferSize, 0x88E8);
+    } catch(e) {}
+
+    try {
+        const positions = new Float32Array([
+            -0.8, -0.8, 0.0,  -0.4, -0.8, 0.0,  -0.6, -0.4, 0.0,
+             0.4, -0.8, 0.0,   0.8, -0.8, 0.0,   0.6, -0.4, 0.0,
+            -0.8,  0.4, 0.0,  -0.4,  0.4, 0.0,  -0.6,  0.8, 0.0,
+             0.4,  0.4, 0.0,   0.8,  0.4, 0.0,   0.6,  0.8, 0.0
+        ]);
+        gl.bindBuffer(bufferTarget, vertexBuffer);
+        gl.bufferSubData(bufferTarget, 0, positions);
+    } catch(e) {}
+
+    try {
+        const indices = new Uint32Array([
+            0, 1, 2, restartIndex,
+            3, 4, 5, 65535,
+            6, 7, 8, restartIndex,
+            9, 10, 11, 0xFFFF,
+            0, 3, 6, 9, restartIndex,
+            2, 5, 8, 11
+        ]);
+        gl.bindBuffer(elementTarget, indexBuffer);
+        gl.bufferSubData(elementTarget, 0, indices);
+        gl.bindBuffer(elementTarget, indexBuffer);
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(0x8B31);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `);
+        gl.compileShader(vs);
+        const fs = gl.createShader(0x8B30);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(0.8, 0.3, 0.5, 1.0);
+            }
+        `);
+        gl.compileShader(fs);
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const posLoc = gl.getAttribLocation(program, 'position');
+        gl.bindBuffer(bufferTarget, vertexBuffer);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, 0x1406, false, 12, 0);
+    } catch(e) {}
+
+    try {
+        gl.enable(0x8F9E);
+        gl.disable(0x8F9E);
+        gl.enable(0x8F9E);
+        gl.primitiveRestartFixedIndex();
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.1, 0.1, 0.1, 1.0);
+        gl.clear(0x4000);
+        gl.bindBuffer(elementTarget, indexBuffer);
+        gl.drawElements(0x0004, 8, indexType, 0);
+        gl.drawElements(0x0005, 12, 0x1405, 32);
+        gl.disable(0x8F9E);
+        gl.drawElements(0x0004, indexCount, indexType, 0);
+    } catch(e) {}
+
+    try {
+        gl.enable(0x8F9E);
+        gl.bindBuffer(elementTarget, indexBuffer);
+        gl.drawElements(0x0004, 16, indexType, 0);
+        gl.drawElements(0x0000, primitiveCount, indexType, 64);
+    } catch(e) {}
+
+    try {
+        const newIndices = new Uint32Array([
+            0, 1, 2, 3, 0xFFFFFFFF, 4, 5, 6
+        ]);
+        gl.bindBuffer(elementTarget, indexBuffer);
+        gl.bufferSubData(elementTarget, 0, newIndices);
+        gl.drawElements(0x0005, 8, indexType, 0);
+    } catch(e) {}
+
+    try {
+        gl.disable(0x8F9E);
+        gl.bindBuffer(elementTarget, indexBuffer);
+        gl.deleteBuffer(indexBuffer);
+        gl.deleteBuffer(vertexBuffer);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

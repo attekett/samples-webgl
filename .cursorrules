@@ -1,0 +1,211 @@
+# WebGL/WebGL2 Fuzzing Project Rules
+
+## Core Mission
+Create **fuzzable WebGL/WebGL2 test cases** that systematically increase coverage of the WebGL specifications while producing visually interesting outputs. Test cases must be **minimalist, self-contained, and machine-parseable** for mutation-based fuzzing, while demonstrating advanced WebGL features through complex visual demos.
+
+## Prerequisites
+- **Read AGENTS.md thoroughly** - understand the fuzzing-first mentality and WebGL adaptation approach
+- **Read docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md** - comprehensive guide for creating mutation-optimized seeds for radamsa
+- **Review TODO.md** - identify under-tested features and edge cases
+- **Examine existing test cases** in `examples/` and `testcases/` directories
+- **Study WebGL/WebGL2 specifications** for accurate feature implementation
+- **Check UNSUPPORTED.md** - avoid features known to be unsupported in target environments
+
+## Test Case Requirements
+
+### Technical Constraints
+- **Self-contained HTML file** - no external dependencies, libraries, or resources
+- **No user interaction** required - demos run automatically on page load
+- **256x256 canvas** (standard test resolution)
+- **No console logging** - test runner captures all necessary information
+- **No code comments** - code must be self-documenting
+- **Simple structures** - avoid complex classes, verbose patterns, or abstractions
+- **Fuzzing-friendly** - inline some values, parameterize others for mutation testing
+- **Extension-aware** - check for required WebGL extensions before use
+
+### Visual Output
+- **Complex visual demo** as primary validation method
+- **Deterministic output** for reliable testing
+- **Feature demonstration** through visual results (not just API calls)
+- **Edge case coverage** that produces visible differences
+
+## Development Workflow
+
+### Step 1: Feature Selection
+1. **Consult TODO.md** - identify under-covered features or edge cases
+2. **Check existing coverage** in project documentation
+3. **Select target feature** - focus on one specific WebGL/WebGL2 capability
+4. **Plan visual demonstration** - how will the feature's behavior be made visible?
+5. **Check UNSUPPORTED.md** - ensure feature isn't known to be unsupported
+
+### Step 2: Directory and Naming
+- **Output directory**: Output files to `agent_outputs/` and leave them there
+- **Naming convention**: `category_feature_description.html` (snake_case, descriptive)
+
+### Step 3: Implementation Guidelines
+
+#### WebGL Setup (Required Boilerplate)
+```html
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    // e.g., 'WEBGL_draw_buffers', 'OES_texture_float'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) throw new Error("WebGL not supported");
+
+    // Check required extensions
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    // Enable required extensions
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    // Your implementation here
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
+```
+
+#### Feature Implementation
+- **Direct WebGL API usage** - no helper libraries
+- **GLSL shaders embedded as template literals** - no external shader files
+- **Resource creation with explicit parameters** - mix inline values and variables for fuzzing
+- **Extension checking** - validate extension availability before use
+- **Error handling through exceptions** - let test runner capture validation errors
+
+#### Fuzzing Optimization
+
+Follow the **Variable Tier System** from docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md:
+
+- **Tier 1 (Amplification Variables)**: Variables where one mutation cascades through multiple operations
+  - Example: `const texSize = 256; const bufSize = texSize * texSize * 4;`
+- **Tier 2 (Hot Spot Inlines)**: Critical values as inline literals for localized mutation
+  - Example: `gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)`
+- **Tier 3 (Enum Constants)**: WebGL enums as variables for line-repetition based corruption
+  - Example: `const bufferTarget = gl.ARRAY_BUFFER;`
+- **Line Repetition Patterns**: Redundant operations (bind ping-pong, enable/disable thrashing, FBO swapping)
+- **Simple control flow** - prefer linear execution over complex branching
+
+See the design document for complete pattern catalog and mutation strategy.
+
+### Step 4: Validation Process
+
+#### Automated Testing
+```bash
+# Test with Chromium (most feature-complete)
+./run_tests.sh --test-file agent_outputs/your_test.html --browsers chromium
+```
+
+#### Result Validation
+- **Check JSON output** for your test file (created automatically)
+- **Required success criteria**:
+  - `"passed": true`
+  - `"console_logs": []` (no warnings/errors)
+  - `"javascript_errors": []` (empty array)
+  - `"webgl_errors": []` (empty array)
+  - `"errors": []` (empty array)
+
+#### Iterative Fixing
+- **If warnings/errors exist**: Fix the code and re-run tests
+- **No compromises**: Remove test case if it cannot pass cleanly
+- **Verify fixes work**: Never assume - always re-run validation
+
+### Step 5: Documentation Updates
+After successful validation:
+1. **Update coverage documentation** in project files
+2. **Ensure feature coverage** is accurately reflected
+3. **Verify no external files** were created or required
+
+## Quality Standards
+
+### Code Quality
+- **Machine-readable**: Simple, consistent patterns for fuzzing tools
+- **Self-documenting**: Clear variable names, obvious logic flow
+- **Specification compliant**: Accurate WebGL/WebGL2 API usage
+- **Cross-browser aware**: Handle extension availability appropriately
+- **Extension-safe**: Proper extension checking and fallback
+
+### Feature Coverage
+- **Advanced extensions**: Use rarely-tested WebGL extensions (float textures, multiple render targets, etc.)
+- **Edge cases**: Test boundary conditions and unusual combinations
+- **Performance characteristics**: Demonstrate real-world usage patterns
+- **Integration testing**: Combine multiple API components and extensions
+
+### Visual Validation
+- **Deterministic results**: Same output on repeated runs
+- **Feature demonstration**: Visual output clearly shows the tested capability
+- **Complexity appropriate**: Advanced enough to stress-test, simple enough to validate
+
+## Browser Compatibility
+- **Primary testing**: Chromium (most complete WebGL implementation)
+- **Extension detection**: Check for extension availability before using advanced features
+- **Fallback handling**: Graceful degradation when extensions unavailable
+
+## Common Pitfalls to Avoid
+- **Overly complex logic** - breaks fuzzing capability
+- **External dependencies** - violates self-containment requirement
+- **Non-deterministic output** - makes validation unreliable
+- **Console logging** - interferes with automated error detection
+- **User interaction** - prevents automated testing
+- **Comments in code** - reduces fuzzing effectiveness
+- **Missing extension checks** - causes crashes on unsupported platforms
+
+## Error Handling Strategy
+
+You must distinguish between different types of errors:
+
+| Error Type | Example | Action |
+|------------|---------|--------|
+| Logic/Syntax | Variable not defined | FIX IT. Rewrite code to work |
+| API Misuse | Invalid enum value | FIX IT. Use correct WebGL constants |
+| Missing Extension | Extension not supported | STOP. Add to UNSUPPORTED.md |
+| Context Loss | WebGL context lost | FIX IT. Add context loss handling |
+
+**Try-Catch Block Strategy:**
+
+For mutation-based fuzzing seeds optimized for radamsa, use try-catch blocks to exploit error path bugs in drivers. See **docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md** for the complete rationale and implementation strategy:
+
+- **Development Phase**: Use `catch(e) { console.log(e); }` for debugging
+- **Production Phase**: Use `catch(e) {}` (silent) for fuzzing
+- **Purpose**: Allow driver state corruption in error paths to accumulate and trigger crashes in subsequent operations
+- **Block Boundaries**: One try-catch per logical operation group (buffers, textures, shaders, FBOs, draw calls)
+
+This strategy maximizes the detection of driver memory corruption bugs (UAF, double-free, heap corruption) that occur when error paths leave driver state corrupted.
+
+## Success Metrics
+- **Clean test execution**: No warnings, errors, or console output
+- **Visual output**: Complex, deterministic demonstration of target feature
+- **Fuzzing readiness**: Code structure supports mutation testing
+- **Coverage contribution**: Addresses gaps identified in TODO.md
+- **Maintainability**: Clear, simple code following project conventions
+
+## Example Workflow Summary
+1. Identify under-tested feature/extension from TODO.md
+2. Check UNSUPPORTED.md for known limitations
+3. Study existing similar test cases
+4. Implement minimalist demo with proper extension checking
+5. Run validation tests with appropriate browsers
+6. Fix any warnings/errors through iteration
+7. Update documentation coverage
+8. Verify clean execution on target browsers
+
+## Advanced Targeting Instructions
+
+Focus on features that leverage the full power of WebGL pipeline:
+- Complex shader interactions between vertex/fragment shaders
+- Multiple texture units and sampler states
+- Framebuffer objects and render-to-texture
+- Blend modes, stencil operations, and depth testing
+- Vertex array objects and buffer management
+- Extension combinations that stress the implementation

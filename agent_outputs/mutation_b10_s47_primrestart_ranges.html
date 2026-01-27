@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const restartIndex = 65535;
+    const indexCount = 48;
+    const vertexCount = 16;
+    const rangeCount = 4;
+    const bufferSize = vertexCount * 12;
+    const indexBufferSize = indexCount * 2;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const indexTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const primitiveMode = gl.TRIANGLE_STRIP;
+    const indexType = gl.UNSIGNED_SHORT;
+    const bufferUsage = gl.STATIC_DRAW;
+
+    try {
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        const vertices = new Float32Array(vertexCount * 3);
+        for (let i = 0; i < vertexCount; i++) {
+            vertices[i * 3 + 0] = (i % 4) * 0.5 - 0.75;
+            vertices[i * 3 + 1] = Math.floor(i / 4) * 0.5 - 0.75;
+            vertices[i * 3 + 2] = 0.0;
+        }
+        gl.bufferData(bufferTarget, vertices, bufferUsage);
+        gl.bufferSubData(bufferTarget, 0, new Float32Array([0.0, 0.0, 0.0]));
+    } catch(e) {}
+
+    try {
+        const indexBuffer1 = gl.createBuffer();
+        const indexBuffer2 = gl.createBuffer();
+        const indexBuffer3 = gl.createBuffer();
+        gl.bindBuffer(indexTarget, indexBuffer1);
+        gl.bindBuffer(indexTarget, indexBuffer2);
+        gl.bindBuffer(indexTarget, indexBuffer1);
+        const indices = new Uint16Array([
+            0, 1, 4, 5, restartIndex,
+            1, 2, 5, 6, restartIndex,
+            2, 3, 6, 7, restartIndex,
+            4, 5, 8, 9, restartIndex,
+            5, 6, 9, 10, restartIndex,
+            6, 7, 10, 11, restartIndex,
+            8, 9, 12, 13, restartIndex,
+            9, 10, 13, 14, restartIndex,
+            10, 11, 14, 15, restartIndex
+        ]);
+        gl.bufferData(indexTarget, indices, bufferUsage);
+        gl.bufferSubData(indexTarget, 16, new Uint16Array([restartIndex, restartIndex]));
+    } catch(e) {}
+
+    try {
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(vertexShader, `#version 300 es
+            in vec3 position;
+            out vec4 vColor;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                float vertID = float(gl_VertexID);
+                vColor = vec4(vertID / 16.0, 1.0 - vertID / 16.0, 0.5, 1.0);
+            }
+        `);
+        gl.shaderSource(fragmentShader, `#version 300 es
+            precision highp float;
+            in vec4 vColor;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vColor;
+            }
+        `);
+        gl.compileShader(vertexShader);
+        gl.compileShader(fragmentShader);
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.bindAttribLocation(program, 0, 'position');
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const vao1 = gl.createVertexArray();
+        const vao2 = gl.createVertexArray();
+        gl.bindVertexArray(vao1);
+        gl.bindVertexArray(vao2);
+        gl.bindVertexArray(vao1);
+        gl.enableVertexAttribArray(0);
+        gl.disableVertexAttribArray(0);
+        gl.enableVertexAttribArray(0);
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    } catch(e) {}
+
+    try {
+        gl.enable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.disable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.enable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.disable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.enable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.2, 0.2, 0.2, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.clearColor(0.15, 0.15, 0.15, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+
+    try {
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.depthMask(true);
+    } catch(e) {}
+
+    try {
+        const indexBuffer = gl.createBuffer();
+        gl.bindBuffer(indexTarget, indexBuffer);
+        gl.drawElements(primitiveMode, indexCount, indexType, 0);
+        gl.drawElements(primitiveMode, 20, indexType, 0);
+        gl.drawElements(primitiveMode, indexCount, indexType, 0);
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.enable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.disable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.drawElements(primitiveMode, 10, indexType, 0);
+        gl.drawElements(primitiveMode, 15, indexType, 20);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
