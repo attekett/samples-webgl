@@ -316,6 +316,70 @@ def write_matrix_csv(
     print(f"Matrix written to: {output_path}")
 
 
+def write_gaps_markdown(
+    gaps: List[Dict],
+    feature_coverage: Dict[str, float],
+    seed_features: Dict[str, Set[str]],
+    total_seeds: int,
+    output_path: str
+):
+    """
+    Write detailed gap report to Markdown file.
+
+    Args:
+        gaps: List of gap dicts (priority sorted)
+        feature_coverage: Dict mapping feature to coverage %
+        seed_features: Dict mapping seed to features
+        total_seeds: Total number of seeds in corpus
+        output_path: Markdown file path
+    """
+    from datetime import datetime
+
+    with open(output_path, 'w') as f:
+        # Header
+        f.write("# Feature Combination Gap Analysis\n\n")
+        f.write(f"**Corpus**: {total_seeds} seeds\n")
+        f.write(f"**Analysis Date**: {datetime.now().strftime('%Y-%m-%d')}\n\n")
+        f.write("---\n\n")
+
+        # Executive Summary
+        f.write("## Executive Summary\n\n")
+
+        critical_gaps = [g for g in gaps if g['priority'] > 80]
+        high_gaps = [g for g in gaps if 40 < g['priority'] <= 80]
+        medium_gaps = [g for g in gaps if 20 < g['priority'] <= 40]
+
+        f.write(f"- **Critical gaps (priority >80)**: {len(critical_gaps)} combinations\n")
+        f.write(f"- **High gaps (priority 40-80)**: {len(high_gaps)} combinations\n")
+        f.write(f"- **Medium gaps (priority 20-40)**: {len(medium_gaps)} combinations\n")
+        f.write(f"- **Total gaps analyzed**: {len(gaps)} combinations\n\n")
+
+        f.write("---\n\n")
+
+        # Critical Gaps section (placeholder for now)
+        f.write("## Critical Gaps (Priority Score >80)\n\n")
+
+        if not critical_gaps:
+            f.write("✅ No critical gaps found! All important combinations are covered.\n\n")
+        else:
+            for i, gap in enumerate(critical_gaps, 1):
+                f.write(f"### {i}. {' + '.join(gap['combo'])} (Priority: {gap['priority']:.1f}) ⚠️\n\n")
+                f.write(f"**Current Status:**\n")
+                f.write(f"- Seeds with combination: {gap['count']}\n")
+
+                for feat_info in gap['features']:
+                    f.write(f"- {feat_info['name']} coverage: {feat_info['coverage']:.1f}%")
+                    if feat_info['gap'] > 0:
+                        f.write(f" (gap: {feat_info['gap']:.1f}%)")
+                    f.write("\n")
+
+                f.write("\n")
+                f.write("**Seed Specification:** [To be implemented]\n\n")
+                f.write("---\n\n")
+
+    print(f"Gap report written to: {output_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze feature combination coverage in WebGL corpus'
@@ -365,6 +429,9 @@ def main():
         write_matrix_csv(combination_matrix, all_features, args.output_matrix)
     else:
         print(f"Skipping matrix CSV (only supported for depth=2)")
+
+    write_gaps_markdown(gaps, feature_coverage, seed_features,
+                       len(seed_features), args.output_gaps)
 
 
 if __name__ == '__main__':
