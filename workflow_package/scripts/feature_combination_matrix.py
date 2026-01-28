@@ -316,6 +316,35 @@ def write_matrix_csv(
     print(f"Matrix written to: {output_path}")
 
 
+def find_reference_seeds(
+    combo: Tuple[str, ...],
+    seed_features: Dict[str, Set[str]]
+) -> List[Tuple[str, int, Set[str]]]:
+    """
+    Find seeds containing any feature in the combo (potential templates).
+
+    Args:
+        combo: Tuple of feature names to search for
+        seed_features: Dict mapping seed name to set of features
+
+    Returns:
+        List of (seed_name, match_count, features) tuples, sorted by match_count
+    """
+    reference_seeds = []
+
+    for seed_name, features in seed_features.items():
+        # Check if seed has any feature from the combo
+        match_count = sum(1 for f in combo if f in features)
+
+        if match_count > 0:
+            reference_seeds.append((seed_name, match_count, features))
+
+    # Sort by match count (seeds with more matching features first)
+    reference_seeds.sort(key=lambda x: x[1], reverse=True)
+
+    return reference_seeds
+
+
 def write_gaps_markdown(
     gaps: List[Dict],
     feature_coverage: Dict[str, float],
@@ -356,7 +385,7 @@ def write_gaps_markdown(
 
         f.write("---\n\n")
 
-        # Critical Gaps section (placeholder for now)
+        # Critical Gaps section
         f.write("## Critical Gaps (Priority Score >80)\n\n")
 
         if not critical_gaps:
@@ -374,7 +403,21 @@ def write_gaps_markdown(
                     f.write("\n")
 
                 f.write("\n")
-                f.write("**Seed Specification:** [To be implemented]\n\n")
+
+                # Find reference seeds
+                references = find_reference_seeds(gap['combo'], seed_features)
+
+                f.write("**Seed Specification:**\n")
+                f.write(f"- **Target**: Create 3-5 seeds\n")
+                f.write(f"- **Core pattern**: Combine {' + '.join(gap['combo'])}\n")
+                f.write(f"- **Complexity targets**: 12-17 try-catch blocks per seed\n")
+                f.write(f"- **Estimated lines**: 180-250 per seed\n\n")
+
+                f.write("**Reference Seeds (Templates):**\n")
+                for seed_name, match_count, _ in references[:3]:
+                    f.write(f"- `{seed_name}` - Has {match_count}/{len(gap['combo'])} features\n")
+                f.write("\n")
+
                 f.write("---\n\n")
 
     print(f"Gap report written to: {output_path}")
