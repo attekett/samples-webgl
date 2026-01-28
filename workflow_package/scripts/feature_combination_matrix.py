@@ -169,6 +169,30 @@ def parse_corpus(corpus_dir: str) -> Tuple[Dict[str, Set[str]], Dict[str, float]
     return seed_features, feature_coverage
 
 
+def build_combination_matrix(
+    seed_features: Dict[str, Set[str]],
+    depth: int = 2
+) -> Dict[Tuple[str, ...], int]:
+    """
+    Build N-way combination matrix from seed feature vectors.
+
+    Args:
+        seed_features: Dict mapping seed name to set of features
+        depth: Combination depth (2, 3, or 4)
+
+    Returns:
+        Dict mapping feature tuple to seed count
+    """
+    combo_matrix = {}
+
+    for seed_name, features in seed_features.items():
+        # Generate all N-way combinations from this seed's features
+        for combo in combinations(sorted(features), depth):
+            combo_matrix[combo] = combo_matrix.get(combo, 0) + 1
+
+    return combo_matrix
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze feature combination coverage in WebGL corpus'
@@ -198,6 +222,13 @@ def main():
     for feature in sorted(feature_coverage.keys()):
         count = sum(1 for f in seed_features.values() if feature in f)
         print(f"  {feature}: {feature_coverage[feature]:.1f}% ({count} seeds)")
+
+    print(f"\nBuilding {args.depth}-way combination matrix...")
+    combination_matrix = build_combination_matrix(seed_features, args.depth)
+
+    print(f"Total combinations found: {len(combination_matrix)}")
+    print(f"Combinations with 0 seeds: {sum(1 for c in combination_matrix.values() if c == 0)}")
+    print(f"Combinations with <{args.min_threshold} seeds: {sum(1 for c in combination_matrix.values() if c < args.min_threshold)}")
 
 
 if __name__ == '__main__':
