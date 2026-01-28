@@ -124,6 +124,51 @@ def extract_features(html_content: str) -> Set[str]:
     return features
 
 
+def parse_corpus(corpus_dir: str) -> Tuple[Dict[str, Set[str]], Dict[str, float]]:
+    """
+    Parse entire corpus and extract feature vectors.
+
+    Args:
+        corpus_dir: Path to corpus directory
+
+    Returns:
+        Tuple of (seed_features, feature_coverage)
+        - seed_features: Dict mapping filename to set of features
+        - feature_coverage: Dict mapping feature to coverage percentage
+    """
+    corpus_path = Path(corpus_dir)
+    seed_files = list(corpus_path.glob("mutation_b*.html"))
+
+    if not seed_files:
+        print(f"ERROR: No mutation_b*.html files found in {corpus_dir}")
+        sys.exit(1)
+
+    print(f"Found {len(seed_files)} seed files")
+
+    seed_features = {}
+    all_features = set()
+
+    for seed_file in seed_files:
+        with open(seed_file, 'r') as f:
+            content = f.read()
+            features = extract_features(content)
+            seed_features[seed_file.name] = features
+            all_features.update(features)
+
+    # Calculate single-feature coverage percentages
+    total_seeds = len(seed_files)
+    feature_coverage = {}
+
+    for feature in sorted(all_features):
+        count = sum(1 for features in seed_features.values() if feature in features)
+        coverage_pct = (count / total_seeds) * 100
+        feature_coverage[feature] = coverage_pct
+
+    print(f"Detected {len(all_features)} feature categories")
+
+    return seed_features, feature_coverage
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze feature combination coverage in WebGL corpus'
@@ -147,16 +192,12 @@ def main():
 
     print(f"Analyzing corpus: {args.corpus_dir}")
 
-    # Test on one seed file
-    test_files = list(Path(args.corpus_dir).glob("mutation_b*.html"))
-    if test_files:
-        with open(test_files[0], 'r') as f:
-            content = f.read()
-            features = extract_features(content)
-            print(f"Test file: {test_files[0].name}")
-            print(f"Features found: {features}")
+    seed_features, feature_coverage = parse_corpus(args.corpus_dir)
 
-    print(f"This is a placeholder - full implementation coming")
+    print("\nFeature Coverage Summary:")
+    for feature in sorted(feature_coverage.keys()):
+        count = sum(1 for f in seed_features.values() if feature in f)
+        print(f"  {feature}: {feature_coverage[feature]:.1f}% ({count} seeds)")
 
 
 if __name__ == '__main__':
