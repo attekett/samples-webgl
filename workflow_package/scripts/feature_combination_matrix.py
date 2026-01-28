@@ -277,6 +277,45 @@ def identify_gaps(
     return gaps
 
 
+def write_matrix_csv(
+    combination_matrix: Dict[Tuple[str, ...], int],
+    features: List[str],
+    output_path: str
+):
+    """
+    Write combination matrix to CSV file.
+
+    Args:
+        combination_matrix: Dict mapping combo to seed count
+        features: List of all features (sorted)
+        output_path: CSV file path
+    """
+    import csv
+
+    # For 2-way only (higher dimensions not suitable for matrix format)
+    with open(output_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+
+        # Header row
+        writer.writerow(['Feature'] + features)
+
+        # Data rows
+        for f1 in features:
+            row = [f1]
+            for f2 in features:
+                if f1 == f2:
+                    # Diagonal: single feature coverage (not a combination)
+                    row.append('-')
+                else:
+                    # Look up combination count (order-independent)
+                    combo = tuple(sorted([f1, f2]))
+                    count = combination_matrix.get(combo, 0)
+                    row.append(str(count))
+            writer.writerow(row)
+
+    print(f"Matrix written to: {output_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze feature combination coverage in WebGL corpus'
@@ -320,6 +359,12 @@ def main():
     print(f"\nTop 5 Priority Gaps:")
     for i, gap in enumerate(gaps[:5], 1):
         print(f"{i}. {' + '.join(gap['combo'])} (Priority: {gap['priority']:.1f}, Seeds: {gap['count']})")
+
+    if args.depth == 2:
+        all_features = sorted(feature_coverage.keys())
+        write_matrix_csv(combination_matrix, all_features, args.output_matrix)
+    else:
+        print(f"Skipping matrix CSV (only supported for depth=2)")
 
 
 if __name__ == '__main__':
