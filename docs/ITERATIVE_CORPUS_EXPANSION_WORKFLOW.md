@@ -217,6 +217,43 @@ echo "# Corpus Statistics - $(date +%Y-%m-%d)" > docs/corpus_stats_$(date +%Y%m%
 cat corpus_statistics.txt >> docs/corpus_stats_$(date +%Y%m%d).md
 ```
 
+### Step 1.4: Feature Combination Analysis (NEW)
+
+After running basic coverage analysis, analyze feature combination coverage:
+
+```bash
+python3 workflow_package/scripts/feature_combination_matrix.py \
+  --corpus-dir agent_outputs \
+  --depth 2 \
+  --min-threshold 5 \
+  --output-matrix /tmp/combo_matrix.csv \
+  --output-gaps /tmp/combo_gaps.md \
+  --output-plan /tmp/round_N_plan.md
+```
+
+**Outputs:**
+- `combo_matrix.csv`: 18×18 matrix showing seed counts per feature pair
+- `combo_gaps.md`: Priority-ranked gaps with seed specifications
+- `round_N_plan.md`: Auto-generated enhancement plan (optional)
+
+**Review the gaps report:**
+
+```bash
+cat /tmp/combo_gaps.md
+```
+
+Focus on:
+- Critical gaps (priority >80) - missing combinations of underrepresented features
+- High gaps (priority 40-80) - underrepresented combinations
+- Reference seeds for each gap (use as templates)
+
+**Use the auto-generated plan as a starting point for Round N+1:**
+
+```bash
+cp /tmp/round_N_plan.md docs/plans/2026-XX-XX-enhancement-round-N+1.md
+# Edit plan as needed with specific seed details
+```
+
 ---
 
 ## Phase 2: Identify Coverage Gaps
