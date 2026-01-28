@@ -345,6 +345,86 @@ def find_reference_seeds(
     return reference_seeds
 
 
+def generate_batch_plan(
+    gaps: List[Dict],
+    seed_features: Dict[str, Set[str]],
+    start_batch: int,
+    start_seed: int,
+    seeds_per_batch: int = 5,
+    output_path: str = None
+) -> str:
+    """
+    Auto-generate Round N enhancement plan from gaps.
+
+    Args:
+        gaps: List of gap dicts (priority sorted)
+        seed_features: Dict mapping seed to features
+        start_batch: Starting batch number
+        start_seed: Starting seed number
+        seeds_per_batch: Seeds per batch (default 5)
+        output_path: Optional file path to write plan
+
+    Returns:
+        Markdown string with enhancement plan
+    """
+    from datetime import datetime
+
+    # Focus on critical gaps only
+    critical_gaps = [g for g in gaps if g['priority'] > 80]
+
+    if not critical_gaps:
+        return "# No Critical Gaps\n\nAll feature combinations have adequate coverage.\n"
+
+    plan = []
+    plan.append(f"# Round N: Combination Gap Closure Enhancement Plan\n\n")
+    plan.append(f"**Generated**: {datetime.now().strftime('%Y-%m-%d')}\n")
+    plan.append(f"**Strategy**: Close critical combination gaps (priority >80)\n")
+    plan.append(f"**Batches**: {len(critical_gaps)} (seeds per batch varies)\n\n")
+    plan.append("---\n\n")
+
+    batch_num = start_batch
+    seed_num = start_seed
+
+    for gap in critical_gaps:
+        combo_name = '_'.join([f.lower().replace(' ', '_').replace('/', '_')
+                               for f in gap['combo']])
+
+        plan.append(f"## Batch {batch_num}: {' + '.join(gap['combo'])} ({seeds_per_batch} seeds, s{seed_num}-{seed_num + seeds_per_batch - 1})\n\n")
+
+        plan.append(f"**Priority**: {gap['priority']:.1f}\n")
+        plan.append(f"**Current seeds**: {gap['count']}\n\n")
+
+        # Feature status
+        plan.append("**Feature Status:**\n")
+        for feat_info in gap['features']:
+            plan.append(f"- {feat_info['name']}: {feat_info['coverage']:.1f}% coverage\n")
+        plan.append("\n")
+
+        # Seed specifications (simplified)
+        for i in range(seeds_per_batch):
+            plan.append(f"### s{seed_num}: {combo_name}_variant_{i+1}\n")
+            plan.append(f"- Combine {' + '.join(gap['combo'])}\n")
+            plan.append(f"- 12-15 try-catch blocks\n")
+            plan.append(f"- 180-240 lines\n\n")
+            seed_num += 1
+
+        plan.append("**Coverage Contribution:**\n")
+        for feat_info in gap['features']:
+            plan.append(f"- {feat_info['name']}: +{seeds_per_batch} seeds\n")
+        plan.append("\n---\n\n")
+
+        batch_num += 1
+
+    plan_text = ''.join(plan)
+
+    if output_path:
+        with open(output_path, 'w') as f:
+            f.write(plan_text)
+        print(f"Enhancement plan written to: {output_path}")
+
+    return plan_text
+
+
 def write_gaps_markdown(
     gaps: List[Dict],
     feature_coverage: Dict[str, float],
@@ -475,6 +555,20 @@ def main():
 
     write_gaps_markdown(gaps, feature_coverage, seed_features,
                        len(seed_features), args.output_gaps)
+
+    if args.output_plan:
+        # Determine next batch/seed numbers
+        max_seed_num = 0
+        for seed_name in seed_features.keys():
+            match = re.search(r's(\d+)', seed_name)
+            if match:
+                max_seed_num = max(max_seed_num, int(match.group(1)))
+
+        next_seed = max_seed_num + 1
+        next_batch = (max_seed_num // 5) + 1
+
+        generate_batch_plan(gaps, seed_features, next_batch, next_seed,
+                           seeds_per_batch=5, output_path=args.output_plan)
 
 
 if __name__ == '__main__':
