@@ -524,40 +524,32 @@ def main():
 
     args = parser.parse_args()
 
+    # Parse corpus
     print(f"Analyzing corpus: {args.corpus_dir}")
-
     seed_features, feature_coverage = parse_corpus(args.corpus_dir)
 
-    print("\nFeature Coverage Summary:")
-    for feature in sorted(feature_coverage.keys()):
-        count = sum(1 for f in seed_features.values() if feature in f)
-        print(f"  {feature}: {feature_coverage[feature]:.1f}% ({count} seeds)")
-
-    print(f"\nBuilding {args.depth}-way combination matrix...")
+    # Build combination matrix
+    print(f"Building {args.depth}-way combination matrix...")
     combination_matrix = build_combination_matrix(seed_features, args.depth)
+    print(f"  Found {len(combination_matrix)} unique combinations")
 
-    print(f"Total combinations found: {len(combination_matrix)}")
-    print(f"Combinations with 0 seeds: {sum(1 for c in combination_matrix.values() if c == 0)}")
-    print(f"Combinations with <{args.min_threshold} seeds: {sum(1 for c in combination_matrix.values() if c < args.min_threshold)}")
-
-    print("\nIdentifying gaps...")
+    # Identify gaps
+    print(f"Identifying gaps (threshold: {args.min_threshold} seeds)...")
     gaps = identify_gaps(combination_matrix, feature_coverage, args.min_threshold)
 
-    print(f"\nTop 5 Priority Gaps:")
-    for i, gap in enumerate(gaps[:5], 1):
-        print(f"{i}. {' + '.join(gap['combo'])} (Priority: {gap['priority']:.1f}, Seeds: {gap['count']})")
+    critical = sum(1 for g in gaps if g['priority'] > 80)
+    high = sum(1 for g in gaps if 40 < g['priority'] <= 80)
+    print(f"  Critical gaps: {critical}, High gaps: {high}, Total gaps: {len(gaps)}")
 
+    # Write outputs
     if args.depth == 2:
         all_features = sorted(feature_coverage.keys())
         write_matrix_csv(combination_matrix, all_features, args.output_matrix)
-    else:
-        print(f"Skipping matrix CSV (only supported for depth=2)")
 
     write_gaps_markdown(gaps, feature_coverage, seed_features,
                        len(seed_features), args.output_gaps)
 
     if args.output_plan:
-        # Determine next batch/seed numbers
         max_seed_num = 0
         for seed_name in seed_features.keys():
             match = re.search(r's(\d+)', seed_name)
@@ -569,6 +561,8 @@ def main():
 
         generate_batch_plan(gaps, seed_features, next_batch, next_seed,
                            seeds_per_batch=5, output_path=args.output_plan)
+
+    print("\n✅ Analysis complete!")
 
 
 if __name__ == '__main__':
