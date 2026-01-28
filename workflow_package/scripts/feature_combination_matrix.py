@@ -20,8 +20,8 @@ from itertools import combinations
 # Feature detection patterns (reused from detailed_coverage_analysis.py)
 FEATURE_PATTERNS = {
     '3D Textures': [
-        r'TEXTURE_3D', r'texImage3D', r'texStorage3D',
-        r'texSubImage3D', r'copyTexSubImage3D', r'compressedTexImage3D'
+        r'\bTEXTURE_3D\b', r'\btexImage3D\b', r'\btexStorage3D\b',
+        r'\btexSubImage3D\b', r'\bcopyTexSubImage3D\b', r'\bcompressedTexImage3D\b'
     ],
     'Blending': [
         r'BLEND\b', r'blendFunc', r'blendEquation',
@@ -46,9 +46,9 @@ FEATURE_PATTERNS = {
         r'drawArraysInstanced', r'drawElementsInstanced', r'vertexAttribDivisor'
     ],
     'Integer Textures': [
-        r'R32I', r'RGBA32I', r'R32UI', r'RGBA32UI',
-        r'R16I', r'RGBA16I', r'R16UI', r'RGBA16UI',
-        r'R8I', r'RGBA8I', r'R8UI', r'RGBA8UI'
+        r'\bR32I\b', r'\bRGBA32I\b', r'\bR32UI\b', r'\bRGBA32UI\b',
+        r'\bR16I\b', r'\bRGBA16I\b', r'\bR16UI\b', r'\bRGBA16UI\b',
+        r'\bR8I\b', r'\bRGBA8I\b', r'\bR8UI\b', r'\bRGBA8UI\b'
     ],
     'Multiple Render Targets': [
         r'drawBuffers', r'COLOR_ATTACHMENT[1-9]',
