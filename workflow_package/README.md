@@ -114,6 +114,35 @@ cat detailed_analysis.md
 # See scripts/DETAILED_ANALYSIS_GUIDE.md for full documentation
 ```
 
+#### Feature Combination Matrix (NEW) 🆕
+
+Analyzes feature combination coverage to identify missing/underrepresented feature pairs in the corpus.
+
+```bash
+python3 ./workflow_package/scripts/feature_combination_matrix.py \
+  --corpus-dir agent_outputs \
+  --depth 2 \
+  --min-threshold 5 \
+  --output-matrix /tmp/combo_matrix.csv \
+  --output-gaps /tmp/combo_gaps.md \
+  --output-plan /tmp/round_N_plan.md
+```
+
+**Parameters:**
+- `--corpus-dir`: Corpus directory (default: agent_outputs)
+- `--depth`: Combination depth 2/3/4 (default: 2)
+- `--min-threshold`: Min seeds for "covered" (default: 5)
+- `--output-matrix`: CSV matrix output path (required)
+- `--output-gaps`: Markdown gap report path (required)
+- `--output-plan`: Enhancement plan output (optional)
+- `--heatmap`: PNG heatmap output (optional, requires matplotlib)
+
+**Why this matters:**
+Mutation-based fuzzers operate within single seeds, not across seeds. This tool ensures all important feature combinations exist within individual seeds for maximum mutation effectiveness.
+
+**Workflow integration:**
+Run after detailed_coverage_analysis.py to guide Round N+1 planning. Use auto-generated plan as template for new seed batches.
+
 ### 2. Identify Coverage Gaps
 
 ```bash
