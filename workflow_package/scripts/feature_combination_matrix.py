@@ -193,6 +193,90 @@ def build_combination_matrix(
     return combo_matrix
 
 
+def calculate_priority(
+    combo: Tuple[str, ...],
+    feature_coverage: Dict[str, float],
+    seed_count: int,
+    threshold: float = 20.0
+) -> float:
+    """
+    Calculate priority score for a combination gap.
+
+    Formula: priority = sum(feature_gaps) * rarity_multiplier
+
+    Args:
+        combo: Tuple of feature names
+        feature_coverage: Dict mapping feature to coverage percentage
+        seed_count: Number of seeds with this combination
+        threshold: Coverage threshold percentage (default 20%)
+
+    Returns:
+        Priority score (0-200+)
+    """
+    # Calculate total gap across all features in combination
+    total_gap = 0.0
+    for feature in combo:
+        coverage = feature_coverage.get(feature, 0.0)
+        if coverage < threshold:
+            total_gap += (threshold - coverage)
+
+    # Rarity multiplier based on seed count
+    if seed_count == 0:
+        rarity = 100
+    elif seed_count == 1:
+        rarity = 50
+    elif seed_count == 2:
+        rarity = 25
+    elif seed_count <= 4:
+        rarity = 15
+    else:
+        rarity = 10
+
+    return total_gap * rarity
+
+
+def identify_gaps(
+    combination_matrix: Dict[Tuple[str, ...], int],
+    feature_coverage: Dict[str, float],
+    min_threshold: int
+) -> List[Dict]:
+    """
+    Identify and prioritize combination gaps.
+
+    Args:
+        combination_matrix: Dict mapping combo to seed count
+        feature_coverage: Dict mapping feature to coverage %
+        min_threshold: Minimum seeds for "covered" status
+
+    Returns:
+        List of gap dicts sorted by priority (descending)
+    """
+    gaps = []
+
+    for combo, count in combination_matrix.items():
+        if count < min_threshold:
+            priority = calculate_priority(combo, feature_coverage, count)
+
+            gaps.append({
+                'combo': combo,
+                'count': count,
+                'priority': priority,
+                'features': [
+                    {
+                        'name': f,
+                        'coverage': feature_coverage.get(f, 0.0),
+                        'gap': max(0, 20.0 - feature_coverage.get(f, 0.0))
+                    }
+                    for f in combo
+                ]
+            })
+
+    # Sort by priority descending
+    gaps.sort(key=lambda x: x['priority'], reverse=True)
+
+    return gaps
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Analyze feature combination coverage in WebGL corpus'
@@ -229,6 +313,13 @@ def main():
     print(f"Total combinations found: {len(combination_matrix)}")
     print(f"Combinations with 0 seeds: {sum(1 for c in combination_matrix.values() if c == 0)}")
     print(f"Combinations with <{args.min_threshold} seeds: {sum(1 for c in combination_matrix.values() if c < args.min_threshold)}")
+
+    print("\nIdentifying gaps...")
+    gaps = identify_gaps(combination_matrix, feature_coverage, args.min_threshold)
+
+    print(f"\nTop 5 Priority Gaps:")
+    for i, gap in enumerate(gaps[:5], 1):
+        print(f"{i}. {' + '.join(gap['combo'])} (Priority: {gap['priority']:.1f}, Seeds: {gap['count']})")
 
 
 if __name__ == '__main__':
