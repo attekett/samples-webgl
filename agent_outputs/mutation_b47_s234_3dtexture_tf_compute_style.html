@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const TEXTURE_SIZE = 64;
+const COMPUTE_ITERATIONS = 512;
+
+const vsSource = `#version 300 es
+in vec3 a_inputData;
+in float a_dataId;
+out vec4 v_computed3DCoord;
+out vec4 v_computedColor;
+out float v_dataIndex;
+
+uniform mat4 u_computeMatrix;
+uniform vec3 u_offsetVector;
+uniform float u_iterationPhase;
+
+void main() {
+    int coordIdx = gl_VertexID;
+    float x = float(coordIdx % ${TEXTURE_SIZE}) / float(${TEXTURE_SIZE});
+    float y = float((coordIdx / ${TEXTURE_SIZE}) % ${TEXTURE_SIZE}) / float(${TEXTURE_SIZE});
+    float z = float(coordIdx / (${TEXTURE_SIZE} * ${TEXTURE_SIZE})) / float(${TEXTURE_SIZE});
+
+    vec3 coord = vec3(x, y, z);
+    coord += a_inputData * 0.1;
+    coord += u_offsetVector * 0.05;
+
+    vec4 transformed = u_computeMatrix * vec4(coord, 1.0);
+    v_computed3DCoord = vec4(fract(transformed.xyz), transformed.w);
+
+    v_computedColor.r = sin(a_dataId * 0.1 + u_iterationPhase);
+    v_computedColor.g = cos(a_dataId * 0.2 + u_iterationPhase * 0.5);
+    v_computedColor.b = sin(a_dataId * 0.15 + u_iterationPhase * 0.3);
+    v_computedColor.a = 1.0;
+
+    v_dataIndex = a_dataId;
+
+    gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+}`;
+
+const fsSource = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+
+in vec4 v_computed3DCoord;
+in vec4 v_computedColor;
+in float v_dataIndex;
+out vec4 fragColor;
+
+uniform sampler3D u_texture3D;
+
+void main() {
+    vec4 texel = texture(u_texture3D, v_computed3DCoord.xyz);
+    fragColor = texel * 0.5 + v_computedColor * 0.5;
+}`;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    let vertexShader, fragmentShader, program;
+    try {
+        vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vsSource);
+        gl.compileShader(vertexShader);
+    } catch (e) { throw e; }
+
+    try {
+        fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fsSource);
+        gl.compileShader(fragmentShader);
+    } catch (e) { throw e; }
+
+    try {
+        program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.transformFeedbackVaryings(program, ['v_computed3DCoord', 'v_computedColor', 'v_dataIndex'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch (e) { throw e; }
+
+    const inputDataLoc = gl.getAttribLocation(program, 'a_inputData');
+    const dataIdLoc = gl.getAttribLocation(program, 'a_dataId');
+    const computeMatrixLoc = gl.getUniformLocation(program, 'u_computeMatrix');
+    const offsetVectorLoc = gl.getUniformLocation(program, 'u_offsetVector');
+    const iterationPhaseLoc = gl.getUniformLocation(program, 'u_iterationPhase');
+    const texture3DLoc = gl.getUniformLocation(program, 'u_texture3D');
+
+    const inputData = new Float32Array(COMPUTE_ITERATIONS * 3);
+    for (let i = 0; i < COMPUTE_ITERATIONS; i++) {
+        inputData[i * 3] = Math.sin(i * 0.1) * 0.5;
+        inputData[i * 3 + 1] = Math.cos(i * 0.2) * 0.5;
+        inputData[i * 3 + 2] = Math.sin(i * 0.15) * Math.cos(i * 0.25) * 0.5;
+    }
+
+    const dataIds = new Float32Array(COMPUTE_ITERATIONS);
+    for (let i = 0; i < COMPUTE_ITERATIONS; i++) {
+        dataIds[i] = i;
+    }
+
+    let inputDataBuffer, dataIdBuffer;
+    try {
+        inputDataBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, inputDataBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, inputData, gl.STATIC_DRAW);
+    } catch (e) { throw e; }
+
+    try {
+        dataIdBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, dataIdBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, dataIds, gl.STATIC_DRAW);
+    } catch (e) { throw e; }
+
+    const tfBuffers = [];
+    try {
+        for (let i = 0; i < 8; i++) {
+            const buf = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+            gl.bufferData(gl.ARRAY_BUFFER, COMPUTE_ITERATIONS * (4 + 4 + 1) * 4, gl.DYNAMIC_COPY);
+            tfBuffers.push(buf);
+        }
+    } catch (e) { throw e; }
+
+    let texture3D;
+    try {
+        texture3D = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, texture3D);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA32F, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, 0, gl.RGBA, gl.FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT);
+    } catch (e) { throw e; }
+
+    let vao;
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, inputDataBuffer);
+        gl.enableVertexAttribArray(inputDataLoc);
+        gl.vertexAttribPointer(inputDataLoc, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, dataIdBuffer);
+        gl.enableVertexAttribArray(dataIdLoc);
+        gl.vertexAttribPointer(dataIdLoc, 1, gl.FLOAT, false, 0, 0);
+    } catch (e) { throw e; }
+
+    const tf = gl.createTransformFeedback();
+
+    const computeMatrix = new Float32Array([
+        1.0, 0.1, 0.05, 0,
+        0.1, 1.0, 0.1, 0,
+        0.05, 0.1, 1.0, 0,
+        0, 0, 0, 1
+    ]);
+
+    gl.uniformMatrix4fv(computeMatrixLoc, false, computeMatrix);
+    gl.uniform1i(texture3DLoc, 0);
+
+    try {
+        gl.enable(gl.RASTERIZER_DISCARD);
+
+        for (let pass = 0; pass < 8; pass++) {
+            const bufferIdx = pass % tfBuffers.length;
+
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffers[bufferIdx]);
+
+            gl.uniform3f(offsetVectorLoc, Math.sin(pass * 0.5), Math.cos(pass * 0.7), Math.sin(pass * 0.3));
+            gl.uniform1f(iterationPhaseLoc, pass * 0.25);
+
+            gl.beginTransformFeedback(gl.POINTS);
+            gl.drawArrays(gl.POINTS, 0, COMPUTE_ITERATIONS);
+            gl.endTransformFeedback();
+
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        }
+
+        gl.disable(gl.RASTERIZER_DISCARD);
+    } catch (e) { throw e; }
+
+    try {
+        const uploadData = new Float32Array(TEXTURE_SIZE * TEXTURE_SIZE * TEXTURE_SIZE * 4);
+        for (let i = 0; i < uploadData.length; i += 4) {
+            const idx = i / 4;
+            uploadData[i] = Math.sin(idx * 0.01) * 0.5 + 0.5;
+            uploadData[i + 1] = Math.cos(idx * 0.02) * 0.5 + 0.5;
+            uploadData[i + 2] = Math.sin(idx * 0.015) * 0.5 + 0.5;
+            uploadData[i + 3] = 1.0;
+        }
+
+        gl.bindTexture(gl.TEXTURE_3D, texture3D);
+        gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, gl.RGBA, gl.FLOAT, uploadData);
+    } catch (e) { throw e; }
+
+    try {
+        gl.bindVertexArray(vao);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        for (let i = 0; i < 4; i++) {
+            const readBuf = tfBuffers[i];
+            gl.bindBuffer(gl.ARRAY_BUFFER, readBuf);
+
+            const offset = gl.getUniformLocation(program, 'u_offsetVector');
+            gl.uniform3f(offset, i * 0.1, i * 0.1, 0.0);
+        }
+    } catch (e) { throw e; }
+
+    try {
+        for (let range = 0; range < 4; range++) {
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+            const buf = tfBuffers[range];
+            const baseOffset = range * 1024;
+            const size = 2048;
+            gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 0, buf, baseOffset, size);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        }
+    } catch (e) { throw e; }
+
+    try {
+        gl.deleteTexture(texture3D);
+        gl.deleteBuffer(inputDataBuffer);
+        gl.deleteBuffer(dataIdBuffer);
+        tfBuffers.forEach(buf => gl.deleteBuffer(buf));
+        gl.deleteVertexArray(vao);
+        gl.deleteTransformFeedback(tf);
+        gl.deleteProgram(program);
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+    } catch (e) { throw e; }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
