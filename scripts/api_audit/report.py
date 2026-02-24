@@ -56,6 +56,18 @@ def generate_report(coverage: dict, surface: dict) -> GapReport:
     covered_constants = coverage.get('constants', {})
     all_constants = surface.get('constants', {})
 
+    # Count return value comparisons (=== / !==) toward role coverage
+    return_consts = coverage.get('return_constants', set())
+    if isinstance(return_consts, list):
+        return_consts = set(return_consts)
+    for rc_name in return_consts:
+        rc_info = all_constants.get(rc_name, {})
+        rc_roles = rc_info.get('roles', [])
+        if rc_name not in covered_constants:
+            covered_constants[rc_name] = {}
+        for role in rc_roles:
+            covered_constants[rc_name][role] = covered_constants[rc_name].get(role, 0) + 1
+
     for const_name, const_info in all_constants.items():
         roles = const_info.get('roles', [])
         const_coverage = covered_constants.get(const_name, {})

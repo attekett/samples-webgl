@@ -112,6 +112,13 @@ def _resolve_all_arg_constants(arg_node, context_vars: set, consts: dict) -> lis
             result.extend(_resolve_all_arg_constants(right, context_vars, consts))
         return result
 
+    if arg_node.type == 'array':
+        result = []
+        for child in arg_node.children:
+            if child.type not in ('[', ']', ','):
+                result.extend(_resolve_all_arg_constants(child, context_vars, consts))
+        return result
+
     return []
 
 
@@ -190,8 +197,8 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
     if not is_context_call and ext_name is None:
         return  # Unknown receiver, ignore
 
-    # Skip getContext and getExtension calls - these are context/extension detection
-    if method_name in ('getContext', 'getExtension'):
+    # Skip getContext calls - these are canvas method, not WebGL API
+    if method_name == 'getContext':
         return
 
     # Get argument nodes

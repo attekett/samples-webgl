@@ -47,12 +47,17 @@ def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None):
     }
 
     # Aggregate constant roles from call records
+    # Map param names to the constant's own role names from the surface
+    surface_constants = surface.get('constants', {})
     for method_name, call_records in calls.methods.items():
         for call in call_records:
-            for const_name, role in call.constant_roles.items():
+            for const_name, param_name in call.constant_roles.items():
                 if const_name not in result['constants']:
                     result['constants'][const_name] = {}
-                result['constants'][const_name][role] = result['constants'][const_name].get(role, 0) + 1
+                const_info = surface_constants.get(const_name, {})
+                roles = const_info.get('roles', [param_name])
+                for role in roles:
+                    result['constants'][const_name][role] = result['constants'][const_name].get(role, 0) + 1
 
     # Aggregate extension methods
     for ext_name, methods in calls.extension_methods.items():
