@@ -1,0 +1,17 @@
+{
+  "expected_methods": [
+    "bindBuffer",
+    "bufferData",
+    "clear",
+    "compileShader",
+    "createBuffer",
+    "createShader",
+    "drawArrays",
+    "enable",
+    "getError",
+    "shaderSource"
+  ],
+  "expected_extensions": [],
+  "expected_context": "webgl2",
+  "min_method_count": 5
+}

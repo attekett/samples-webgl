@@ -1,0 +1,9 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const ext = gl.getExtension('OES_vertex_array_object');
+ext.createVertexArrayOES();
+</script>
+</body></html>

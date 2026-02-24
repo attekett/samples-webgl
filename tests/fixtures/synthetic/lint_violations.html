@@ -1,0 +1,13 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const methodName = 'drawArrays';
+gl[methodName](gl.TRIANGLES, 0, 3);
+const { DEPTH_TEST } = gl;
+gl.enable(DEPTH_TEST);
+const s = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(s, 'void main(){}' + ' extra');
+</script>
+</body></html>

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+ 'WEBGL_color_buffer_float'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported - required for float color buffers");
+
+    // Verify we actually got WebGL2
+    const isWebGL2 = gl instanceof WebGL2RenderingContext;
+
+// Check extension availability, but be smart about WebGL 2.0 core features
+const isWebGL2 = gl instanceof WebGL2RenderingContext;
+const missingExtensions = [];
+const availableAsCore = [];
+
+REQUIRED_EXTENSIONS.forEach(ext => {
+    const extension = gl.getExtension(ext);
+    if (!extension) {
+        // Check if this extension's functionality is available as core WebGL 2.0 feature
+        let availableInCore = false;
+
+        switch(ext) {
+            case 'WEBGL_color_buffer_float':
+                // WebGL2 has EXT_color_buffer_float which provides RGBA32F render targets
+                availableInCore = isWebGL2 && gl.getExtension('EXT_color_buffer_float');
+                break;
+            default:
+                availableInCore = false;
+        }
+
+        if (availableInCore) {
+            availableAsCore.push(ext);
+        } else {
+            missingExtensions.push(ext);
+        }
+    }
+});
+
+if (missingExtensions.length > 0) {
+    // Check if this is Playwright Firefox (limited extensions) vs native Firefox
+    const isPlaywrightFirefox = typeof window.playwright !== 'undefined' ||
+                               navigator.userAgent.includes('Headless') ||
+                               !window.chrome; // Playwright Firefox doesn't have window.chrome
+
+    if (isPlaywrightFirefox) {
+        throw new Error(`PLAYWRIGHT_FIREFOX_LIMITATION: Extensions ${missingExtensions.join(', ')} not available in Playwright Firefox. Test requires native Firefox browser.`);
+    } else {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+}
+
+if (availableAsCore.length > 0) {
+    console.log(`Note: Extensions ${availableAsCore.join(', ')} available as core WebGL 2.0 features`);
+}
+
+// Enable required extensions
+REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // Configuration for fuzzing
+ const textureSize = 256;
+ const colorBufferInternalFormat = gl.RGBA32F; // Use proper internal format for float textures
+ const colorBufferFormat = gl.RGBA;
+ const colorBufferType = gl.FLOAT;
+ const stateChangeCount = 25;
+ const textureCount = 4;
+ const fboCount = 2;
+
+ // State poisoning: Enable/disable capabilities in complex patterns
+ const capabilities = [
+  gl.BLEND, gl.CULL_FACE, gl.DEPTH_TEST, gl.DITHER, gl.POLYGON_OFFSET_FILL,
+  gl.SAMPLE_ALPHA_TO_COVERAGE, gl.SAMPLE_COVERAGE, gl.SCISSOR_TEST, gl.STENCIL_TEST
+ ];
+
+ for (let i = 0; i < stateChangeCount; i++) {
+  capabilities.forEach(cap => {
+   if (i % 2 === 0) gl.enable(cap);
+   else gl.disable(cap);
+  });
+ }
+
+ // Create floating-point color buffers (would work if extension supported)
+ const colorBuffers = [];
+ for (let i = 0; i < textureCount; i++) {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, colorBufferInternalFormat, textureSize, textureSize, 0, colorBufferFormat, colorBufferType, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  colorBuffers.push(texture);
+ }
+
+ // Create framebuffers with floating-point color attachments
+ const framebuffers = [];
+ for (let i = 0; i < fboCount; i++) {
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+  // Attach floating-point color buffer
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorBuffers[i], 0);
+
+  // Check framebuffer completeness (would validate float buffer support)
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  if (status !== gl.FRAMEBUFFER_COMPLETE) {
+   throw new Error(`Framebuffer incomplete: ${status}`);
+  }
+
+  framebuffers.push(fbo);
+ }
+
+ // Shader for rendering to floating-point buffers
+ const vertexShaderSource = `#version 300 es
+  in vec2 a_position;
+  out vec2 v_texCoord;
+  void main() {
+   gl_Position = vec4(a_position, 0.0, 1.0);
+   v_texCoord = a_position * 0.5 + 0.5;
+  }
+ `;
+
+ const fragmentShaderSource = `#version 300 es
+precision highp float;
+in vec2 v_texCoord;
+out vec4 fragColor;
+uniform float u_time;
+void main() {
+  vec4 hdrColor = vec4(
+    sin(v_texCoord.x * 10.0 + u_time) * 2.0 + 1.0,
+    cos(v_texCoord.y * 10.0 + u_time) * 2.0 + 1.0,
+    sin((v_texCoord.x + v_texCoord.y) * 5.0 + u_time) * 2.0 + 1.0,
+    1.0
+  );
+  fragColor = hdrColor;
+}`;
+ // Create shaders
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+  throw new Error(`Vertex shader compile error: ${gl.getShaderInfoLog(vertexShader)}`);
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+  throw new Error(`Fragment shader compile error: ${gl.getShaderInfoLog(fragmentShader)}`);
+ }
+
+ // Create program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+  throw new Error(`Program link error: ${gl.getProgramInfoLog(program)}`);
+ }
+ gl.useProgram(program);
+
+ // Get attribute and uniform locations
+ const positionAttribute = gl.getAttribLocation(program, 'a_position');
+ const timeUniform = gl.getUniformLocation(program, 'u_time');
+
+ // Create vertex buffer for full-screen quad
+ const vertices = new Float32Array([
+  -1.0, -1.0,
+   1.0, -1.0,
+  -1.0,  1.0,
+   1.0,  1.0
+ ]);
+
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+ // More state poisoning: redundant buffer binding
+ for (let i = 0; i < 5; i++) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ }
+
+ gl.enableVertexAttribArray(positionAttribute);
+ gl.vertexAttribPointer(positionAttribute, 2, gl.FLOAT, false, 0, 0);
+
+ // Render to floating-point framebuffers
+ for (let i = 0; i < fboCount; i++) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffers[i]);
+  gl.viewport(0, 0, textureSize, textureSize);
+
+  // Update time uniform for animation
+  gl.uniform1f(timeUniform, i * 0.5);
+
+  // State changes between renders
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.blendEquation(gl.FUNC_ADD);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // More state poisoning after each render
+  for (let j = 0; j < 5; j++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+  }
+ }
+
+ // Render to screen with tone mapping
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.viewport(0, 0, 256, 256);
+
+ // Clear with dark background
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+
+ // Simple tone mapping shader for screen display
+ const screenFragmentShaderSource = `
+  precision highp float;
+  varying vec2 v_texCoord;
+  uniform sampler2D u_hdrTexture;
+  void main() {
+   vec4 hdrColor = texture2D(u_hdrTexture, v_texCoord);
+   // Simple Reinhard tone mapping
+   vec3 ldrColor = hdrColor.rgb / (hdrColor.rgb + vec3(1.0));
+   gl_FragColor = vec4(ldrColor, 1.0);
+  }
+ `;
+
+ const screenFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(screenFragmentShader, screenFragmentShaderSource);
+ gl.compileShader(screenFragmentShader);
+
+ const screenProgram = gl.createProgram();
+ gl.attachShader(screenProgram, vertexShader);
+ gl.attachShader(screenProgram, screenFragmentShader);
+ gl.linkProgram(screenProgram);
+ gl.useProgram(screenProgram);
+
+ const screenTexUniform = gl.getUniformLocation(screenProgram, 'u_hdrTexture');
+
+ // Bind HDR texture and render
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, colorBuffers[0]);
+ gl.uniform1i(screenTexUniform, 0);
+
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // Final state poisoning
+ for (let i = 0; i < 10; i++) {
+  gl.enable(gl.BLEND);
+  gl.disable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ZERO);
+  gl.blendEquation(gl.FUNC_SUBTRACT);
+ }
+
+ // Error checking
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+  throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+    // If the error string contains "PLAYWRIGHT_FIREFOX_LIMITATION", the Python runner
+    // knows to log it as an environmental limitation, not a test failure.
+    // Otherwise, it counts as a test failure/crash.
+    console.log(err.message); // Log the detailed error message for test runner detection
+    console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

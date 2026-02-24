@@ -1,0 +1,171 @@
+{
+  "meta": {
+    "sources": [{"name": "test", "url": "test", "sha256": "test"}],
+    "schema_version": "3.0",
+    "extracted_at": "2026-01-01T00:00:00Z"
+  },
+  "constants": {
+    "TRIANGLES": {"value": "0x0004", "kind": "enum", "roles": ["draw_mode"], "webgl_version": 1},
+    "TRIANGLE_STRIP": {"value": "0x0005", "kind": "enum", "roles": ["draw_mode"], "webgl_version": 1},
+    "RGBA": {"value": "0x1908", "kind": "enum", "roles": ["format", "internalformat"], "webgl_version": 1},
+    "FLOAT": {"value": "0x1406", "kind": "enum", "roles": ["pixel_type", "data_type"], "webgl_version": 1},
+    "UNSIGNED_BYTE": {"value": "0x1401", "kind": "enum", "roles": ["pixel_type", "index_type"], "webgl_version": 1},
+    "DEPTH_TEST": {"value": "0x0B71", "kind": "enum", "roles": ["capability"], "webgl_version": 1},
+    "FRAMEBUFFER_COMPLETE": {"value": "0x8CD5", "kind": "enum", "roles": ["framebuffer_status"], "webgl_version": 1},
+    "FRAMEBUFFER": {"value": "0x8D40", "kind": "enum", "roles": ["framebuffer_target"], "webgl_version": 1},
+    "ARRAY_BUFFER": {"value": "0x8892", "kind": "enum", "roles": ["buffer_target"], "webgl_version": 1},
+    "STATIC_DRAW": {"value": "0x88E4", "kind": "enum", "roles": ["buffer_usage"], "webgl_version": 1},
+    "COLOR_BUFFER_BIT": {"value": "0x00004000", "kind": "bitmask", "roles": ["buffer_bit"], "webgl_version": 1},
+    "DEPTH_BUFFER_BIT": {"value": "0x00000100", "kind": "bitmask", "roles": ["buffer_bit"], "webgl_version": 1},
+    "VERTEX_SHADER": {"value": "0x8B31", "kind": "enum", "roles": ["shader_type"], "webgl_version": 1},
+    "FRAGMENT_SHADER": {"value": "0x8B30", "kind": "enum", "roles": ["shader_type"], "webgl_version": 1},
+    "NO_ERROR": {"value": "0", "kind": "enum", "roles": ["error_code"], "webgl_version": 1},
+    "TEXTURE_2D": {"value": "0x0DE1", "kind": "enum", "roles": ["texture_target"], "webgl_version": 1}
+  },
+  "methods": {
+    "drawArrays": {
+      "webgl_version": 1,
+      "overloads": [{
+        "arity": 3,
+        "params": [
+          {"name": "mode", "type": "GLenum"},
+          {"name": "first", "type": "GLint"},
+          {"name": "count", "type": "GLsizei"}
+        ]
+      }]
+    },
+    "bufferData": {
+      "webgl_version": 1,
+      "ambiguous_arity": true,
+      "overloads": [
+        {
+          "arity": 3,
+          "params": [
+            {"name": "target", "type": "GLenum"},
+            {"name": "size", "type": "GLsizeiptr"},
+            {"name": "usage", "type": "GLenum"}
+          ]
+        },
+        {
+          "arity": 3,
+          "params": [
+            {"name": "target", "type": "GLenum"},
+            {"name": "srcData", "type": "AllowSharedBufferSource?"},
+            {"name": "usage", "type": "GLenum"}
+          ]
+        }
+      ]
+    },
+    "texImage2D": {
+      "webgl_version": 1,
+      "overloads": [
+        {
+          "arity": 6,
+          "params": [
+            {"name": "target", "type": "GLenum"},
+            {"name": "level", "type": "GLint"},
+            {"name": "internalformat", "type": "GLint"},
+            {"name": "format", "type": "GLenum"},
+            {"name": "type", "type": "GLenum"},
+            {"name": "source", "type": "TexImageSource"}
+          ]
+        },
+        {
+          "arity": 9,
+          "params": [
+            {"name": "target", "type": "GLenum"},
+            {"name": "level", "type": "GLint"},
+            {"name": "internalformat", "type": "GLint"},
+            {"name": "width", "type": "GLsizei"},
+            {"name": "height", "type": "GLsizei"},
+            {"name": "border", "type": "GLint"},
+            {"name": "format", "type": "GLenum"},
+            {"name": "type", "type": "GLenum"},
+            {"name": "pixels", "type": "ArrayBufferView?"}
+          ]
+        }
+      ]
+    },
+    "shaderSource": {
+      "webgl_version": 1,
+      "overloads": [{
+        "arity": 2,
+        "params": [
+          {"name": "shader", "type": "WebGLShader"},
+          {"name": "source", "type": "DOMString"}
+        ]
+      }]
+    },
+    "enable": {
+      "webgl_version": 1,
+      "overloads": [{
+        "arity": 1,
+        "params": [{"name": "cap", "type": "GLenum"}]
+      }]
+    },
+    "clear": {
+      "webgl_version": 1,
+      "overloads": [{
+        "arity": 1,
+        "params": [{"name": "mask", "type": "GLbitfield"}]
+      }]
+    },
+    "getError": {
+      "webgl_version": 1,
+      "overloads": [{"arity": 0, "params": []}]
+    },
+    "checkFramebufferStatus": {
+      "webgl_version": 1,
+      "overloads": [{
+        "arity": 1,
+        "params": [{"name": "target", "type": "GLenum"}]
+      }]
+    },
+    "createShader": {
+      "webgl_version": 1,
+      "overloads": [{
+        "arity": 1,
+        "params": [{"name": "type", "type": "GLenum"}]
+      }]
+    },
+    "compileShader": {
+      "webgl_version": 1,
+      "overloads": [{
+        "arity": 1,
+        "params": [{"name": "shader", "type": "WebGLShader"}]
+      }]
+    },
+    "createBuffer": {
+      "webgl_version": 1,
+      "overloads": [{"arity": 0, "params": []}]
+    },
+    "bindBuffer": {
+      "webgl_version": 1,
+      "overloads": [{
+        "arity": 2,
+        "params": [
+          {"name": "target", "type": "GLenum"},
+          {"name": "buffer", "type": "WebGLBuffer?"}
+        ]
+      }]
+    }
+  },
+  "extensions": {
+    "OES_vertex_array_object": {
+      "methods": {
+        "createVertexArrayOES": {"overloads": [{"arity": 0, "params": []}]},
+        "bindVertexArrayOES": {"overloads": [{"arity": 1, "params": [{"name": "arrayObject", "type": "WebGLVertexArrayObjectOES?"}]}]}
+      },
+      "constants": {
+        "VERTEX_ARRAY_BINDING_OES": {"value": "0x85B5", "kind": "enum", "roles": ["get_parameter"]}
+      }
+    },
+    "OES_standard_derivatives": {"methods": {}, "constants": {}},
+    "EXT_color_buffer_float": {"methods": {}, "constants": {}}
+  },
+  "glsl_builtins": {
+    "texture_sampling": ["texelFetch"],
+    "pack_unpack": ["packHalf2x16", "unpackSnorm2x16"],
+    "fragment_processing": ["dFdx"]
+  }
+}
