@@ -1,0 +1,21 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+function createShader(gl, type, source) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, source);
+    gl.compileShader(s);
+    return s;
+}
+const fs = `#version 300 es
+precision highp float;
+uniform highp sampler2D tex;
+out vec4 color;
+void main() {
+    color = texelFetch(tex, ivec2(0), 0);
+}`;
+createShader(gl, gl.FRAGMENT_SHADER, fs);
+</script>
+</body></html>

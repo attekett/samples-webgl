@@ -29,3 +29,9 @@ Thumbs.db
 *.tmp
 *.bak
 .worktrees/
+
+# Audit tool cache
+.cache/api_audit/
+
+# Allow test fixture JSON files
+!tests/fixtures/**/*.json

@@ -1,0 +1,8 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+gl.drawArrays(gl.TRIANGLES, 0, 3);
+</script>
+</body></html>

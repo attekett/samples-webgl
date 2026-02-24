@@ -1,0 +1,18 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const fs = `#version 300 es
+precision highp float;
+uniform highp sampler2D tex;
+out vec4 color;
+void main() {
+    color = texelFetch(tex, ivec2(0), 0);
+    uint packed = packHalf2x16(color.xy);
+    float dx = dFdx(color.x);
+}`;
+const s = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(s, fs);
+</script>
+</body></html>

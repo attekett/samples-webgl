@@ -1,0 +1,11 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const vs = `#version 300 es
+void main() { gl_Position = vec4(0); }`;
+const s = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(s, vs);
+</script>
+</body></html>

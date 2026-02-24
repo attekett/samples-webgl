@@ -1,0 +1,11 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+if (status === gl.FRAMEBUFFER_COMPLETE) {}
+const err = gl.getError();
+if (err !== gl.NO_ERROR) {}
+</script>
+</body></html>

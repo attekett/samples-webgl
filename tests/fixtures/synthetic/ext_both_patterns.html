@@ -1,0 +1,11 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+const vao = gl.getExtension('OES_vertex_array_object');
+vao.createVertexArrayOES();
+</script>
+</body></html>

@@ -1,0 +1,10 @@
+<!DOCTYPE html><html><body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+const RGBA = gl.RGBA;
+const FMT = RGBA;
+gl.texImage2D(gl.TEXTURE_2D, 0, FMT, FMT, gl.UNSIGNED_BYTE, canvas);
+</script>
+</body></html>
