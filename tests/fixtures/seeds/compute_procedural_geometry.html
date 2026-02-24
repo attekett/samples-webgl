@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) throw new Error("WebGL2 not supported");
+
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ const GEOMETRY_EXPANSION = 8;
+ const VERTEX_COUNT = 1024;
+ const AMPLIFICATION_FACTOR = 4;
+ const STATE_CHANGE_COUNT = 25;
+
+ // Enable required capabilities with state poisoning
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+ }
+
+ // Create vertex shader for procedural geometry generation
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, `#version 300 es
+   layout(location = 0) in vec3 aPosition;
+   layout(location = 1) in vec3 aNormal;
+   layout(location = 2) in vec2 aTexCoord;
+
+   out vec3 vPosition;
+   out vec3 vNormal;
+   out vec2 vTexCoord;
+   out float vVertexId;
+
+   uniform float uTime;
+   uniform float uExpansionFactor;
+   uniform int uGeometryExpansion;
+
+   void main() {
+     // Procedural geometry generation based on vertex ID
+     int vertexId = gl_VertexID;
+     int expansionIndex = vertexId % uGeometryExpansion;
+
+     // Generate procedural positions for geometry amplification
+     vec3 basePos = aPosition;
+     vec3 proceduralOffset = vec3(0.0);
+
+     // Create tessellation-like effects through vertex ID modulation
+     if (expansionIndex == 0) {
+       proceduralOffset = vec3(0.0, 0.0, 0.0);
+     } else if (expansionIndex == 1) {
+       proceduralOffset = vec3(uExpansionFactor * 0.1, 0.0, 0.0);
+     } else if (expansionIndex == 2) {
+       proceduralOffset = vec3(0.0, uExpansionFactor * 0.1, 0.0);
+     } else if (expansionIndex == 3) {
+       proceduralOffset = vec3(0.0, 0.0, uExpansionFactor * 0.1);
+     } else if (expansionIndex == 4) {
+       proceduralOffset = vec3(uExpansionFactor * 0.05, uExpansionFactor * 0.05, 0.0);
+     } else if (expansionIndex == 5) {
+       proceduralOffset = vec3(uExpansionFactor * 0.05, 0.0, uExpansionFactor * 0.05);
+     } else if (expansionIndex == 6) {
+       proceduralOffset = vec3(0.0, uExpansionFactor * 0.05, uExpansionFactor * 0.05);
+     } else {
+       proceduralOffset = vec3(uExpansionFactor * 0.03, uExpansionFactor * 0.03, uExpansionFactor * 0.03);
+     }
+
+     // Add time-based animation for visual complexity
+     float timeOffset = sin(uTime + float(vertexId) * 0.1) * 0.05;
+     vec3 animatedPos = basePos + proceduralOffset + vec3(timeOffset);
+
+     vPosition = animatedPos;
+     vNormal = aNormal;
+     vTexCoord = aTexCoord;
+     vVertexId = float(vertexId);
+
+     gl_Position = vec4(animatedPos, 1.0);
+   }
+ `);
+ gl.compileShader(vertexShader);
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error("Vertex shader compilation failed: " + gl.getShaderInfoLog(vertexShader));
+ }
+
+ // Create fragment shader
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, `#version 300 es
+   precision highp float;
+
+   in vec3 vPosition;
+   in vec3 vNormal;
+   in vec2 vTexCoord;
+   in float vVertexId;
+
+   out vec4 fragColor;
+
+   uniform float uTime;
+
+   void main() {
+     // Complex fragment shader with mathematical operations
+     float vertexFactor = mod(vVertexId, 8.0) / 8.0;
+     float timeFactor = sin(uTime * 2.0 + vVertexId * 0.1) * 0.5 + 0.5;
+
+     // Generate colors based on procedural geometry and animation
+     vec3 color = vec3(
+       vertexFactor * timeFactor,
+       (1.0 - vertexFactor) * timeFactor,
+       sin(vPosition.x * 10.0 + uTime) * 0.5 + 0.5
+     );
+
+     // Add normal-based lighting simulation
+     float lighting = dot(normalize(vNormal), normalize(vec3(1.0, 1.0, 1.0))) * 0.5 + 0.5;
+
+     fragColor = vec4(color * lighting, 1.0);
+   }
+ `);
+ gl.compileShader(fragmentShader);
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error("Fragment shader compilation failed: " + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ // Create program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+
+ // Set up transform feedback varyings for geometry capture
+ const varyings = ['vPosition', 'vNormal', 'vTexCoord', 'vVertexId'];
+ gl.transformFeedbackVaryings(program, varyings, gl.SEPARATE_ATTRIBS);
+
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error("Program linking failed: " + gl.getProgramInfoLog(program));
+ }
+
+ // Create transform feedback object
+ const transformFeedback = gl.createTransformFeedback();
+ gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+
+ // Generate procedural input geometry
+ const inputVertices = [];
+ const inputNormals = [];
+ const inputTexCoords = [];
+
+ // Create base geometry (cube vertices)
+ const cubeVertices = [
+   -0.5, -0.5, -0.5,
+   0.5, -0.5, -0.5,
+   0.5, 0.5, -0.5,
+   -0.5, 0.5, -0.5,
+   -0.5, -0.5, 0.5,
+   0.5, -0.5, 0.5,
+   0.5, 0.5, 0.5,
+   -0.5, 0.5, 0.5
+ ];
+
+ const cubeNormals = [
+   0.0, 0.0, -1.0,
+   0.0, 0.0, -1.0,
+   0.0, 0.0, -1.0,
+   0.0, 0.0, -1.0,
+   0.0, 0.0, 1.0,
+   0.0, 0.0, 1.0,
+   0.0, 0.0, 1.0,
+   0.0, 0.0, 1.0
+ ];
+
+ const cubeTexCoords = [
+   0.0, 0.0,
+   1.0, 0.0,
+   1.0, 1.0,
+   0.0, 1.0,
+   0.0, 0.0,
+   1.0, 0.0,
+   1.0, 1.0,
+   0.0, 1.0
+ ];
+
+ // Expand base geometry for procedural amplification
+ for (let i = 0; i < VERTEX_COUNT; i++) {
+   const baseIndex = i % cubeVertices.length / 3;
+   inputVertices.push(cubeVertices[baseIndex * 3], cubeVertices[baseIndex * 3 + 1], cubeVertices[baseIndex * 3 + 2]);
+   inputNormals.push(cubeNormals[baseIndex * 3], cubeNormals[baseIndex * 3 + 1], cubeNormals[baseIndex * 3 + 2]);
+   inputTexCoords.push(cubeTexCoords[baseIndex * 2], cubeTexCoords[baseIndex * 2 + 1]);
+ }
+
+ // Create input buffers
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inputVertices), gl.STATIC_DRAW);
+
+ const normalBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inputNormals), gl.STATIC_DRAW);
+
+ const texCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inputTexCoords), gl.STATIC_DRAW);
+
+ // Create output buffers for transform feedback
+ const outputVertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, outputVertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * GEOMETRY_EXPANSION * 3 * 4, gl.STATIC_DRAW);
+ gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, outputVertexBuffer);
+
+ const outputNormalBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, outputNormalBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * GEOMETRY_EXPANSION * 3 * 4, gl.STATIC_DRAW);
+ gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, outputNormalBuffer);
+
+ const outputTexCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, outputTexCoordBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * GEOMETRY_EXPANSION * 2 * 4, gl.STATIC_DRAW);
+ gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, outputTexCoordBuffer);
+
+ const outputVertexIdBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, outputVertexIdBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * GEOMETRY_EXPANSION * 4, gl.STATIC_DRAW);
+ gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 3, outputVertexIdBuffer);
+
+ // Set up vertex attributes
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+ gl.enableVertexAttribArray(0);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+ gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+ gl.enableVertexAttribArray(1);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0);
+ gl.enableVertexAttribArray(2);
+
+ // Use program and set uniforms
+ gl.useProgram(program);
+ gl.uniform1f(gl.getUniformLocation(program, 'uTime'), performance.now() * 0.001);
+ gl.uniform1f(gl.getUniformLocation(program, 'uExpansionFactor'), AMPLIFICATION_FACTOR * 0.01);
+ gl.uniform1i(gl.getUniformLocation(program, 'uGeometryExpansion'), GEOMETRY_EXPANSION);
+
+ // Execute transform feedback
+ gl.enable(gl.RASTERIZER_DISCARD);
+ gl.beginTransformFeedback(gl.POINTS);
+ gl.drawArrays(gl.POINTS, 0, VERTEX_COUNT);
+ gl.endTransformFeedback();
+ gl.disable(gl.RASTERIZER_DISCARD);
+
+ // Additional state poisoning
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, outputVertexBuffer);
+   gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, null);
+   gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+   gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+ }
+
+ // Render the captured geometry
+ gl.bindBuffer(gl.ARRAY_BUFFER, outputVertexBuffer);
+ gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+ gl.enableVertexAttribArray(0);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, outputNormalBuffer);
+ gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+ gl.enableVertexAttribArray(1);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, outputTexCoordBuffer);
+ gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 0, 0);
+ gl.enableVertexAttribArray(2);
+
+ // Final state changes before rendering
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   gl.enable(gl.DEPTH_TEST);
+   gl.depthFunc(gl.LESS);
+   gl.depthFunc(gl.GREATER);
+   gl.enable(gl.BLEND);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendFunc(gl.ONE, gl.ZERO);
+ }
+
+ gl.viewport(0, 0, 256, 256);
+ gl.clearColor(0.1, 0.1, 0.2, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+ gl.drawArrays(gl.POINTS, 0, VERTEX_COUNT * GEOMETRY_EXPANSION);
+
+ // Final error check
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

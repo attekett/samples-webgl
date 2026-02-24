@@ -1,0 +1,19 @@
+{
+  "expected_methods": [
+    "bindBuffer",
+    "bufferData",
+    "checkFramebufferStatus",
+    "clear",
+    "compileShader",
+    "createBuffer",
+    "createShader",
+    "drawArrays",
+    "enable",
+    "getError",
+    "shaderSource",
+    "texImage2D"
+  ],
+  "expected_extensions": ["WEBGL_color_buffer_float"],
+  "expected_context": "webgl2",
+  "min_method_count": 8
+}

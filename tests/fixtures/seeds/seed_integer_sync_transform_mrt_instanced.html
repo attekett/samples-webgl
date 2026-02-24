@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 required");
+
+    // FUZZING VARIABLES: Mix inline literals with parameters
+    const DATA_SIZE = 512;
+    const INSTANCE_COUNT = 16;
+
+    // State poisoning: Aggressive capability toggling
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.disable(gl.BLEND);
+    gl.enable(gl.CULL_FACE);
+    gl.disable(gl.CULL_FACE);
+
+    // 1. CREATE INTEGER BUFFERS FOR TRANSFORM FEEDBACK
+    const intData = new Int32Array(DATA_SIZE * 4);
+    for (let i = 0; i < intData.length; i++) {
+        intData[i] = (i % 8) - 4;
+    }
+
+    const tfBuffers = [];
+    for (let i = 0; i < 2; i++) {
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        // Make buffer bigger to handle multiple passes
+        gl.bufferData(gl.ARRAY_BUFFER, intData.byteLength * 4, gl.STREAM_COPY);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, intData);
+        tfBuffers.push(buf);
+    }
+
+    // 2. CREATE SYNC OBJECTS
+    const syncs = [];
+    for (let i = 0; i < 3; i++) {
+        syncs.push(gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0));
+    }
+
+    // 3. CREATE TRANSFORM FEEDBACK OBJECT
+    const transformFeedback = gl.createTransformFeedback();
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+
+    // 4. SHADERS
+
+    // Transform Feedback Shader
+    const tfVS = `#version 300 es
+    precision highp int;
+
+    layout(location = 0) in ivec4 aData;
+
+    uniform int uPass;
+    uniform ivec4 uOffsets;
+
+    flat out ivec4 vProcessedData;
+
+    void main() {
+        ivec4 data = aData;
+        data.x = (data.x * uPass + uOffsets.x) % 128;
+        data.y = data.y ^ uOffsets.y;
+        data.z = abs(data.z + uOffsets.z);
+        data.w = data.w & uOffsets.w;
+        vProcessedData = data;
+    }`;
+
+    const tfFS = `#version 300 es
+    void main() { }`;
+
+    // Instanced Rendering Shader
+    const renderVS = `#version 300 es
+    layout(location = 0) in ivec4 aIntData;
+    layout(location = 1) in ivec4 aInstanceData;
+
+    uniform int uInstanceId;
+
+    out vec4 vColor;
+
+    void main() {
+        vec2 pos = vec2(float(gl_InstanceID % 8) / 4.0 - 1.0,
+                       float(gl_InstanceID / 8) / 4.0 - 1.0);
+        gl_Position = vec4(pos, 0.0, 1.0);
+
+        float r = float(aIntData.x + uInstanceId) / 64.0;
+        float g = float(aIntData.y + uInstanceId * 2) / 64.0;
+        float b = float(aIntData.z + uInstanceId * 3) / 64.0;
+        vColor = vec4(clamp(r, 0.0, 1.0), clamp(g, 0.0, 1.0), clamp(b, 0.0, 1.0), 1.0);
+    }`;
+
+    const renderFS = `#version 300 es
+    precision highp float;
+    in vec4 vColor;
+    out vec4 fragColor;
+    void main() {
+        fragColor = vColor;
+    }`;
+
+    // 5. COMPILE AND LINK PROGRAMS
+    function createShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            throw new Error('Shader compile failed: ' + gl.getShaderInfoLog(shader));
+        }
+        return shader;
+    }
+
+    const tfProgram = gl.createProgram();
+    gl.attachShader(tfProgram, createShader(gl.VERTEX_SHADER, tfVS));
+    gl.attachShader(tfProgram, createShader(gl.FRAGMENT_SHADER, tfFS));
+    gl.transformFeedbackVaryings(tfProgram, ['vProcessedData'], gl.INTERLEAVED_ATTRIBS);
+    gl.linkProgram(tfProgram);
+    if (!gl.getProgramParameter(tfProgram, gl.LINK_STATUS)) {
+        throw new Error('TF program link failed: ' + gl.getProgramInfoLog(tfProgram));
+    }
+
+    const renderProgram = gl.createProgram();
+    gl.attachShader(renderProgram, createShader(gl.VERTEX_SHADER, renderVS));
+    gl.attachShader(renderProgram, createShader(gl.FRAGMENT_SHADER, renderFS));
+    gl.linkProgram(renderProgram);
+    if (!gl.getProgramParameter(renderProgram, gl.LINK_STATUS)) {
+        throw new Error('Render program link failed: ' + gl.getProgramInfoLog(renderProgram));
+    }
+
+    // 6. SETUP VAOs
+    const tfVao = gl.createVertexArray();
+    gl.bindVertexArray(tfVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, tfBuffers[0]);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribIPointer(0, 4, gl.INT, 0, 0);
+
+    const renderVao = gl.createVertexArray();
+    gl.bindVertexArray(renderVao);
+    // Create a separate buffer for rendering (copy from tfBuffers[1])
+    const renderBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, renderBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, intData, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribIPointer(0, 4, gl.INT, 0, 0);
+
+    const instanceData = new Int32Array(INSTANCE_COUNT * 4);
+    for (let i = 0; i < INSTANCE_COUNT; i++) {
+        instanceData[i * 4] = i;
+        instanceData[i * 4 + 1] = i * 2;
+        instanceData[i * 4 + 2] = i * 3;
+        instanceData[i * 4 + 3] = i * 4;
+    }
+
+    const instanceBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribIPointer(1, 4, gl.INT, 0, 0);
+    gl.vertexAttribDivisor(1, 1);
+
+    // 7. MULTI-PASS PROCESSING
+
+    // PASS 1: Transform Feedback
+    gl.useProgram(tfProgram);
+    gl.bindVertexArray(tfVao);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffers[1]);
+
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.beginTransformFeedback(gl.POINTS);
+
+    gl.uniform1i(gl.getUniformLocation(tfProgram, 'uPass'), 1);
+    gl.uniform4i(gl.getUniformLocation(tfProgram, 'uOffsets'), 1, 2, 3, 4);
+    gl.drawArrays(gl.POINTS, 0, DATA_SIZE);
+
+    gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
+
+    // Sync
+    gl.flush();
+    const sync1 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+    // PASS 2: Instanced Rendering
+    gl.clearColor(0.1, 0.2, 0.3, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(renderProgram);
+    gl.bindVertexArray(renderVao);
+
+    gl.clientWaitSync(sync1, gl.SYNC_FLUSH_COMMANDS_BIT, 1000000000);
+
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'uInstanceId'), 5);
+    gl.drawArraysInstanced(gl.POINTS, 0, 1, INSTANCE_COUNT);
+
+    // Final sync
+    gl.flush();
+    const sync2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.clientWaitSync(sync2, gl.SYNC_FLUSH_COMMANDS_BIT, 1000000000);
+
+    // State poisoning
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.FRONT);
+    gl.disable(gl.CULL_FACE);
+
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) throw new Error("WebGL Error: " + error);
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
