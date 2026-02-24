@@ -70,6 +70,17 @@ class TestExtractGlslBuiltins:
         builtins = extract_glsl_builtins(root, ctx, consts, surface)
         assert 'texelFetch' in builtins
 
+    def test_shader_inside_async_main(self, parse_html, surface):
+        """shaderSource inside async function main() → builtins detected."""
+        root = parse_html('glsl_inside_main.html')
+        from api_audit.const_propagation import resolve_constants
+        from api_audit.context import detect_context
+        consts = resolve_constants(root)
+        ctx = detect_context(root, consts)
+        builtins = extract_glsl_builtins(root, ctx, consts, surface)
+        assert 'texelFetch' in builtins
+        assert 'dFdx' in builtins
+
     def test_no_shader_no_crash(self, parse_html, surface):
         """File with no shaderSource calls → empty set."""
         root = parse_html('ext_bare_enable.html')

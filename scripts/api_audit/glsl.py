@@ -105,12 +105,16 @@ def _get_function_name(func_node) -> Optional[str]:
     return None
 
 
-def _collect_direct_shader_sources(root_node, context_vars: set, consts: dict) -> list[str]:
+def _collect_direct_shader_sources(root_node, context_vars: set, consts: dict,
+                                    helper_functions: dict | None = None) -> list[str]:
     """Collect shader sources from direct gl.shaderSource(shader, source) calls.
 
-    Only collects from calls that are NOT inside a helper function body.
+    Only skips calls inside known helper function bodies (they are handled
+    separately by helper tracing). Calls inside non-helper functions like
+    main() are collected normally.
     """
     sources = []
+    helper_names = set(helper_functions or {})
 
     for call in _walk(root_node, 'call_expression'):
         callee = call.child_by_field_name('function')
@@ -126,17 +130,19 @@ def _collect_direct_shader_sources(root_node, context_vars: set, consts: dict) -
         if _node_text(prop) != 'shaderSource':
             continue
 
-        # Check if this call is inside a function_declaration (helper function)
-        # If so, skip it - it will be handled by helper tracing
-        parent = call.parent
-        inside_func_decl = False
-        while parent is not None:
-            if parent.type == 'function_declaration':
-                inside_func_decl = True
-                break
-            parent = parent.parent
-        if inside_func_decl:
-            continue
+        # Skip only if inside a known helper function (not any function)
+        if helper_names:
+            parent = call.parent
+            inside_helper = False
+            while parent is not None:
+                if parent.type == 'function_declaration':
+                    fname = _get_function_name(parent)
+                    if fname in helper_names:
+                        inside_helper = True
+                    break
+                parent = parent.parent
+            if inside_helper:
+                continue
 
         # Get the second argument (index 1) - the shader source
         args_node = call.child_by_field_name('arguments')
@@ -266,7 +272,9 @@ def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict) -> set[st
     context_vars = ctx.context_vars
 
     # Collect shader sources from direct shaderSource calls
-    shader_sources = _collect_direct_shader_sources(root_node, context_vars, consts)
+    shader_sources = _collect_direct_shader_sources(
+        root_node, context_vars, consts, ctx.helper_functions
+    )
 
     # Collect shader sources from helper function call sites
     shader_sources.extend(_collect_helper_shader_sources(root_node, ctx, consts))

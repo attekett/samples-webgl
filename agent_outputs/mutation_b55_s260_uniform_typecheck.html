@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const vertexCount = 6;
+    const bufferSize = vertexCount * 12;
+    const uniformCount = 4;
+    const matrixSize = uniformCount * uniformCount;
+    const instanceCount = vertexCount * 2;
+    const componentCount = 3;
+    const stride = componentCount * 4;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.DYNAMIC_DRAW;
+    const textureTarget = gl.TEXTURE_2D;
+    const primitiveMode = gl.TRIANGLES;
+    const hintTarget = gl.FRAGMENT_SHADER_DERIVATIVE_HINT;
+    const hintMode = gl.NICEST;
+
+    var program = null;
+    var vertexShader = null;
+    var fragmentShader = null;
+    var buffer1 = null;
+    var buffer2 = null;
+    var texture1 = null;
+    var texture2 = null;
+
+    try {
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        const vertices = new Float32Array([
+            -1.0, -1.0, 0.0,
+             1.0, -1.0, 0.0,
+            -1.0,  1.0, 0.0,
+            -1.0,  1.0, 0.0,
+             1.0, -1.0, 0.0,
+             1.0,  1.0, 0.0
+        ]);
+        gl.bufferData(bufferTarget, vertices, bufferUsage);
+        gl.bufferSubData(bufferTarget, 0, new Float32Array([0.0, 0.0, 0.0]));
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bufferData(bufferTarget, new Float32Array(64), gl.STATIC_DRAW);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.isBuffer(buffer1);
+        gl.isBuffer(buffer2);
+        gl.isBuffer(null);
+    } catch(e) {}
+
+    try {
+        texture1 = gl.createTexture();
+        texture2 = gl.createTexture();
+        gl.bindTexture(textureTarget, texture1);
+        gl.bindTexture(textureTarget, texture2);
+        gl.bindTexture(textureTarget, texture1);
+        gl.texImage2D(textureTarget, 0, gl.RGBA, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(textureTarget, texture2);
+        gl.texImage2D(textureTarget, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.bindTexture(textureTarget, texture1);
+        gl.isTexture(texture1);
+        gl.isTexture(texture2);
+        gl.isTexture(null);
+    } catch(e) {}
+
+    try {
+        vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.isShader(vertexShader);
+        gl.isShader(fragmentShader);
+        gl.isShader(null);
+        gl.shaderSource(vertexShader, `#version 300 es
+            precision highp float;
+            in vec3 aPosition;
+            uniform float uScale;
+            uniform vec2 uOffset;
+            uniform vec3 uColor;
+            uniform vec4 uMultiplier;
+            uniform mat2 uRotation2;
+            uniform mat3 uTransform3;
+            out vec3 vColor;
+            out vec2 vUV;
+            void main() {
+                vec2 pos = aPosition.xy * uScale + uOffset;
+                vec2 rotated = uRotation2 * pos;
+                vec3 transformed = uTransform3 * vec3(rotated, 1.0);
+                float s = round(uScale * 2.0);
+                float t = trunc(uMultiplier.x * 3.0);
+                mat3 m3 = uTransform3;
+                float det = determinant(m3);
+                mat3 inv = transpose(m3);
+                vColor = uColor * (s + t + det) * 0.1 + inv[0];
+                vUV = aPosition.xy * 0.5 + 0.5;
+                gl_Position = vec4(transformed.xy, 0.0, 1.0);
+            }
+        `);
+        gl.shaderSource(fragmentShader, `#version 300 es
+            precision highp float;
+            precision highp sampler2D;
+            in vec3 vColor;
+            in vec2 vUV;
+            uniform float uAlpha;
+            uniform vec2 uTexScale;
+            uniform vec3 uTint;
+            uniform vec4 uFinal;
+            uniform mat2 uUVTransform;
+            uniform mat3 uColorMatrix;
+            uniform sampler2D uSampler;
+            out vec4 fragColor;
+            void main() {
+                vec2 uv = uUVTransform * vUV * uTexScale;
+                vec4 texColor = texture(uSampler, uv);
+                ivec2 sz = textureSize(uSampler, 0);
+                vec4 fetched = texelFetch(uSampler, ivec2(0, 0), 0);
+                vec3 color = uColorMatrix * (vColor + uTint);
+                float r = round(color.r);
+                float tr = trunc(color.g);
+                mat3 cm = uColorMatrix;
+                mat3 cmT = transpose(cm);
+                float d = determinant(cm);
+                vec3 final3 = cmT[0] + cmT[1];
+                fragColor = vec4(color * uFinal.rgb + final3 * 0.01, uAlpha) * uFinal.a;
+                fragColor += texColor * 0.01 + fetched * 0.01;
+                fragColor.r += r * 0.001 + tr * 0.001 + d * 0.001;
+                fragColor.g += float(sz.x) * 0.0001;
+            }
+        `);
+        gl.compileShader(vertexShader);
+        gl.compileShader(fragmentShader);
+    } catch(e) {}
+
+    try {
+        program = gl.createProgram();
+        gl.isProgram(program);
+        gl.isProgram(null);
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.bindAttribLocation(program, 0, 'aPosition');
+        gl.linkProgram(program);
+        gl.validateProgram(program);
+        gl.validateProgram(program);
+        gl.validateProgram(program);
+        gl.useProgram(program);
+        gl.getActiveAttrib(program, 0);
+        gl.getActiveUniform(program, 0);
+        gl.getActiveUniform(program, 1);
+        gl.getActiveUniform(program, 2);
+    } catch(e) {}
+
+    try {
+        var vao1 = gl.createVertexArray();
+        var vao2 = gl.createVertexArray();
+        gl.bindVertexArray(vao1);
+        gl.bindVertexArray(vao2);
+        gl.bindVertexArray(vao1);
+        gl.enableVertexAttribArray(0);
+        gl.disableVertexAttribArray(0);
+        gl.enableVertexAttribArray(0);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.vertexAttribPointer(0, componentCount, gl.FLOAT, false, stride, 0);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+    } catch(e) {}
+
+    try {
+        var locScale = gl.getUniformLocation(program, 'uScale');
+        var locOffset = gl.getUniformLocation(program, 'uOffset');
+        var locColor = gl.getUniformLocation(program, 'uColor');
+        var locMultiplier = gl.getUniformLocation(program, 'uMultiplier');
+        var locRotation2 = gl.getUniformLocation(program, 'uRotation2');
+        var locTransform3 = gl.getUniformLocation(program, 'uTransform3');
+        var locAlpha = gl.getUniformLocation(program, 'uAlpha');
+        var locTexScale = gl.getUniformLocation(program, 'uTexScale');
+        var locTint = gl.getUniformLocation(program, 'uTint');
+        var locFinal = gl.getUniformLocation(program, 'uFinal');
+        var locUVTransform = gl.getUniformLocation(program, 'uUVTransform');
+        var locColorMatrix = gl.getUniformLocation(program, 'uColorMatrix');
+
+        gl.uniform1fv(locScale, new Float32Array([0.8]));
+        gl.uniform1fv(locScale, [0.9]);
+        gl.uniform1fv(locScale, new Float32Array([1.0]));
+
+        gl.uniform2fv(locOffset, new Float32Array([0.0, 0.0]));
+        gl.uniform2fv(locOffset, [0.1, -0.1]);
+        gl.uniform2fv(locOffset, new Float32Array([0.0, 0.0]));
+
+        gl.uniform3fv(locColor, new Float32Array([1.0, 0.5, 0.2]));
+        gl.uniform3fv(locColor, [0.8, 0.4, 0.6]);
+        gl.uniform3fv(locColor, new Float32Array([1.0, 0.7, 0.3]));
+
+        gl.uniform4fv(locMultiplier, new Float32Array([1.0, 1.0, 1.0, 1.0]));
+        gl.uniform4fv(locMultiplier, [0.5, 0.8, 0.3, 1.0]);
+        gl.uniform4fv(locMultiplier, new Float32Array([1.0, 0.9, 0.8, 1.0]));
+
+        gl.uniform1fv(locAlpha, new Float32Array([1.0]));
+        gl.uniform2fv(locTexScale, new Float32Array([1.0, 1.0]));
+        gl.uniform3fv(locTint, new Float32Array([0.1, 0.2, 0.3]));
+        gl.uniform4fv(locFinal, new Float32Array([1.0, 1.0, 1.0, 1.0]));
+
+        gl.uniformMatrix2fv(locRotation2, false, new Float32Array([
+            1.0, 0.0,
+            0.0, 1.0
+        ]));
+        gl.uniformMatrix2fv(locRotation2, false, [
+            0.9, 0.1,
+            -0.1, 0.9
+        ]);
+        gl.uniformMatrix2fv(locRotation2, false, new Float32Array([
+            1.0, 0.0,
+            0.0, 1.0
+        ]));
+
+        gl.uniformMatrix3fv(locTransform3, false, new Float32Array([
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0
+        ]));
+        gl.uniformMatrix3fv(locTransform3, false, [
+            0.8, 0.1, 0.0,
+            -0.1, 0.8, 0.0,
+            0.05, -0.05, 1.0
+        ]);
+        gl.uniformMatrix3fv(locTransform3, false, new Float32Array([
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0
+        ]));
+
+        gl.uniformMatrix2fv(locUVTransform, false, new Float32Array([
+            1.0, 0.0,
+            0.0, 1.0
+        ]));
+        gl.uniformMatrix3fv(locColorMatrix, false, new Float32Array([
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0
+        ]));
+    } catch(e) {}
+
+    try {
+        gl.hint(hintTarget, hintMode);
+        gl.hint(hintTarget, gl.FASTEST);
+        gl.hint(hintTarget, gl.DONT_CARE);
+        gl.hint(gl.FRAGMENT_SHADER_DERIVATIVE_HINT, gl.NICEST);
+        gl.lineWidth(1.0);
+        gl.lineWidth(2.0);
+        gl.lineWidth(1.0);
+        gl.lineWidth(0.5);
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.1, 0.05, 0.15, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.drawArrays(primitiveMode, 0, vertexCount);
+        gl.drawArrays(primitiveMode, 0, 3);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    } catch(e) {}
+
+    try {
+        gl.uniform1fv(locScale, new Float32Array([0.5]));
+        gl.uniform2fv(locOffset, new Float32Array([0.2, 0.2]));
+        gl.uniform3fv(locColor, new Float32Array([0.2, 0.8, 0.4]));
+        gl.uniform4fv(locFinal, new Float32Array([0.8, 0.9, 1.0, 0.7]));
+        gl.uniformMatrix2fv(locRotation2, false, new Float32Array([0.7, 0.3, -0.3, 0.7]));
+        gl.uniformMatrix3fv(locTransform3, false, new Float32Array([0.5, 0.0, 0.0, 0.0, 0.5, 0.0, 0.3, 0.3, 1.0]));
+        gl.viewport(0, 0, 256, 256);
+        gl.drawArrays(primitiveMode, 0, vertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) {}
+
+    try {
+        gl.isBuffer(buffer1);
+        gl.isTexture(texture1);
+        gl.isProgram(program);
+        gl.isShader(vertexShader);
+        gl.isShader(fragmentShader);
+        gl.deleteBuffer(buffer1);
+        gl.isBuffer(buffer1);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.deleteTexture(texture1);
+        gl.isTexture(texture1);
+        gl.bindTexture(textureTarget, texture1);
+        gl.deleteBuffer(buffer2);
+        gl.deleteTexture(texture2);
+        gl.deleteShader(vertexShader);
+        gl.isShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        gl.deleteProgram(program);
+        gl.isProgram(program);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
