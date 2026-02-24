@@ -30,8 +30,18 @@ Thumbs.db
 *.bak
 .worktrees/
 
+# Node
+node_modules/
+
 # Audit tool cache
 .cache/api_audit/
 
 # Allow test fixture JSON files
 !tests/fixtures/**/*.json
+
+# Allow API surface JSON
+!docs/webgl_api_surface.json
+
+# Allow package manifests
+!package.json
+!package-lock.json
