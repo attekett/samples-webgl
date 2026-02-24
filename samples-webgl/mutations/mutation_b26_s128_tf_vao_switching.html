@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const vaoCount = 8;
+const tfBuffers = 4;
+const switchCycles = 32;
+const vertexCount = 6;
+const bufferSize = 4096;
+const attribCount = 3;
+
+const vaoBinding = 34229;
+const tfBinding = 36389;
+const tfBufferTarget = 35982;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            in vec3 normal;
+            in vec2 texCoord;
+            out vec3 vPosition;
+            out vec3 vNormal;
+            out vec2 vTexCoord;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                vPosition = position;
+                vNormal = normal;
+                vTexCoord = texCoord;
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            in vec3 vPosition;
+            in vec3 vNormal;
+            in vec2 vTexCoord;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(vPosition * 0.5 + 0.5, 1.0);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.transformFeedbackVaryings(program, ['vPosition', 'vNormal', 'vTexCoord'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) { console.log(e); }
+
+    try {
+        const vao1 = gl.createVertexArray();
+        const vao2 = gl.createVertexArray();
+        const vao3 = gl.createVertexArray();
+        const vao4 = gl.createVertexArray();
+        gl.bindVertexArray(vao1);
+        gl.bindVertexArray(vao2);
+        gl.bindVertexArray(vao1);
+        gl.bindVertexArray(vao3);
+        gl.bindVertexArray(vao4);
+        gl.bindVertexArray(vao1);
+    } catch(e) { console.log(e); }
+
+    try {
+        const tfBuf1 = gl.createBuffer();
+        const tfBuf2 = gl.createBuffer();
+        const tfBuf3 = gl.createBuffer();
+        const tfBuf4 = gl.createBuffer();
+        gl.bindBuffer(tfBufferTarget, tfBuf1);
+        gl.bufferData(tfBufferTarget, bufferSize, gl.DYNAMIC_COPY);
+        gl.bindBuffer(tfBufferTarget, tfBuf2);
+        gl.bufferData(tfBufferTarget, 8192, gl.STREAM_COPY);
+        gl.bindBuffer(tfBufferTarget, tfBuf3);
+        gl.bufferData(tfBufferTarget, bufferSize, gl.STATIC_READ);
+        gl.bindBuffer(tfBufferTarget, tfBuf4);
+        gl.bufferData(tfBufferTarget, 16384, gl.DYNAMIC_READ);
+    } catch(e) { console.log(e); }
+
+    try {
+        const posBuffer = gl.createBuffer();
+        const normalBuffer = gl.createBuffer();
+        const texCoordBuffer = gl.createBuffer();
+
+        gl.bindVertexArray(vao1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        const positions = new Float32Array([
+            -0.8, -0.8, 0.0,  0.8, -0.8, 0.0,  0.0,  0.8, 0.0,
+            -0.6, -0.6, 0.0,  0.6, -0.6, 0.0,  0.0,  0.6, 0.0
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        const posLoc = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+        const normals = new Float32Array(18);
+        for (let i = 0; i < normals.length; i += 3) {
+            normals[i] = 0; normals[i+1] = 0; normals[i+2] = 1;
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, normals, gl.STATIC_DRAW);
+        const normLoc = gl.getAttribLocation(program, 'normal');
+        gl.enableVertexAttribArray(normLoc);
+        gl.vertexAttribPointer(normLoc, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        const texCoords = new Float32Array([
+            0, 0,  1, 0,  0.5, 1,
+            0, 0,  1, 0,  0.5, 1
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+        const tcLoc = gl.getAttribLocation(program, 'texCoord');
+        gl.enableVertexAttribArray(tcLoc);
+        gl.vertexAttribPointer(tcLoc, 2, gl.FLOAT, false, 0, 0);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < switchCycles; i++) {
+            const vao = i % 4 === 0 ? vao1 : i % 4 === 1 ? vao2 : i % 4 === 2 ? vao3 : vao4;
+            const tfBuf = i % 4 === 0 ? tfBuf1 : i % 4 === 1 ? tfBuf2 : i % 4 === 2 ? tfBuf3 : tfBuf4;
+
+            gl.bindVertexArray(vao);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf);
+
+            gl.enable(gl.RASTERIZER_DISCARD);
+            gl.beginTransformFeedback(gl.TRIANGLES);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.endTransformFeedback();
+            gl.disable(gl.RASTERIZER_DISCARD);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindVertexArray(vao1);
+        gl.bindVertexArray(vao2);
+        gl.bindVertexArray(vao1);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.bindVertexArray(vao3);
+        gl.drawArrays(gl.TRIANGLES, 0, 18);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindBuffer(tfBufferTarget, tfBuf1);
+        gl.deleteBuffer(tfBuf1);
+        gl.bindBuffer(tfBufferTarget, tfBuf1);
+        gl.bindVertexArray(vao1);
+        gl.deleteVertexArray(vao1);
+        gl.bindVertexArray(vao1);
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

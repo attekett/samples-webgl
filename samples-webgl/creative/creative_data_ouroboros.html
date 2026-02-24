@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION
+        const REQUIRED_EXTENSIONS = [];
+
+        async function main() {
+            console.log("Starting Main...");
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 not supported");
+
+            // Fuzzing Variables
+            const TEXTURE_SIZE = 64;
+            const TOTAL_PIXELS = TEXTURE_SIZE * TEXTURE_SIZE;
+            const STATE_CHANGE_COUNT = 25;
+
+            // Helper: Create Shader
+            function createShader(gl, type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    const log = gl.getShaderInfoLog(shader);
+                    console.error("Shader Compile Error:", log);
+                    throw new Error("Shader Compile Error: " + log);
+                }
+                return shader;
+            }
+
+            function createProgram(gl, vsSrc, fsSrc) {
+                const program = gl.createProgram();
+                gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vsSrc));
+                gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsSrc));
+                gl.linkProgram(program);
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    const log = gl.getProgramInfoLog(program);
+                    console.error("Program Link Error:", log);
+                    throw new Error("Program Link Error: " + log);
+                }
+                return program;
+            }
+
+            // --- Shaders ---
+
+            // 1. Texture Renderer (Process Step)
+            // Reads texture, outputs slightly modified color
+            const processVS = `#version 300 es
+    layout(location=0) in vec2 a_pos;
+    out vec2 v_uv;
+    void main() {
+        v_uv = a_pos * 0.5 + 0.5;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+    }
+    `;
+            const processFS = `#version 300 es
+    precision highp float;
+    in vec2 v_uv;
+    uniform sampler2D u_tex;
+    out vec4 outColor;
+    void main() {
+        vec4 color = texture(u_tex, v_uv);
+        // Mutate color slightly: Rotate channels?
+        // Let's just keep it simple: Pass through for integrity check first
+        // Or maybe invert?
+        outColor = color; 
+    }
+    `;
+
+            // 2. Verification Renderer (Render VBO as points)
+            const verifyVS = `#version 300 es
+    layout(location=0) in vec4 a_color; // Data treating as color
+    layout(location=1) in float a_index; // Index to position it
+    
+    uniform float u_total;
+    out vec4 v_color;
+
+    void main() {
+        // Lay out points in a grid
+        float width = sqrt(u_total);
+        float x = mod(a_index, width);
+        float y = floor(a_index / width);
+        
+        // Map 0..width to -1..1
+        vec2 pos = (vec2(x,y) / width) * 2.0 - 1.0;
+        // Offset to center pixels
+        pos += (1.0/width); 
+        
+        gl_PointSize = 4.0; // Big points
+        gl_Position = vec4(pos, 0.0, 1.0);
+        v_color = a_color / 255.0; // Convert byte to float
+    }
+    `;
+
+            const verifyFS = `#version 300 es
+    precision highp float;
+    in vec4 v_color;
+    out vec4 outColor;
+    void main() {
+        outColor = v_color;
+    }
+    `;
+
+            console.log("Compiling Shaders...");
+            const processProg = createProgram(gl, processVS, processFS);
+            const verifyProg = createProgram(gl, verifyVS, verifyFS);
+            console.log("Shaders Compiled.");
+
+            // --- Resources ---
+
+            // 1. Initial Data (CPU)
+            const dataSize = TOTAL_PIXELS * 4; // RGBA bytes
+            const initialData = new Uint8Array(dataSize);
+            for (let i = 0; i < dataSize; i += 4) {
+                initialData[i] = 255;   // R
+                initialData[i + 1] = 0;   // G
+                initialData[i + 2] = 0;   // B
+                initialData[i + 3] = 255; // A
+                // Gradient pattern
+                if ((i / 4) % 2 === 0) initialData[i + 1] = 255; // Every other pixel yellow
+            }
+
+            // 2. Buffers
+            // VBO: Holds the data "at rest"
+            const vbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+            gl.bufferData(gl.ARRAY_BUFFER, initialData, gl.DYNAMIC_COPY);
+
+            // PBO Unpack: Used to upload VBO->Texture
+            const pboUnpack = gl.createBuffer();
+            gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, pboUnpack);
+            gl.bufferData(gl.PIXEL_UNPACK_BUFFER, dataSize, gl.STREAM_COPY);
+
+            // PBO Pack: Used to read Framebuffer->VBO
+            const pboPack = gl.createBuffer();
+            gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pboPack);
+            gl.bufferData(gl.PIXEL_PACK_BUFFER, dataSize, gl.STREAM_READ);
+
+            // Index Buffer for Verification (0..N)
+            const indices = new Float32Array(TOTAL_PIXELS);
+            for (let i = 0; i < TOTAL_PIXELS; i++) indices[i] = i;
+            const indexVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, indexVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+            // 3. Texture & FBO
+            const texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, TEXTURE_SIZE, TEXTURE_SIZE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+            const fbo = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+
+            // Quad VAO (Screen Fill)
+            const quadVerts = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+            const quadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+
+            const quadVAO = gl.createVertexArray();
+            gl.bindVertexArray(quadVAO);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            // Verify VAO
+            const verifyVAO = gl.createVertexArray();
+            gl.bindVertexArray(verifyVAO);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+            gl.enableVertexAttribArray(0); // Color data (as bytes)
+            gl.vertexAttribPointer(0, 4, gl.UNSIGNED_BYTE, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, indexVBO);
+            gl.enableVertexAttribArray(1); // Index
+            gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
+
+            // --- Main Loop: The Ouroboros Cycle ---
+
+            const TOTAL_CYCLES = 5;
+
+            console.log("Starting Cycles...");
+            for (let cycle = 0; cycle < TOTAL_CYCLES; cycle++) {
+
+                // 1. VBO -> PBO Unpack
+                gl.bindBuffer(gl.COPY_READ_BUFFER, vbo);
+                gl.bindBuffer(gl.COPY_WRITE_BUFFER, pboUnpack);
+                gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, dataSize);
+
+                // 2. PBO Unpack -> Texture
+                gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, pboUnpack);
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                // texSubImage2D is better for PBO
+                gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEXTURE_SIZE, TEXTURE_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, 0); // Offset 0 in PBO
+                gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null); // Unbind
+
+                // 3. Process (Render Texture -> FBO)
+                // Note: We are rendering TO the same texture we just uploaded to?
+                // No, usually we render to a different texture or backbuffer.
+                // Let's render to SCREEN first just to see, then ReadPixels.
+                // Or render to FBO. Wait, we bound 'texture' to 'fbo'. 
+                // We need 2 Textures if we want to "Process" (Read Tex A -> Write Tex B).
+                // For Ouroboros minimal, let's just assume the data IS in the texture now. 
+                // We can just ReadPixels from the FBO (which wraps the texture).
+                // This validates upload integrity.
+                // Let's mutate it: Clear to a color? No that destroys data.
+
+                // Let's do: VBO -> Tex A -> Draw to FBO (Tex B) -> Read Tex B -> VBO.
+                // We need a second texture "Tex B".
+                // Actually, let's keep it simple: VBO -> Tex -> ReadPixels(from Tex FBO) -> PBO -> VBO.
+                // This validates VBO->Tex and FBO->PBO paths.
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+                // Verify FBO complete?
+                if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("FBO Incomplete");
+
+                // 4. FBO -> PBO Pack
+                gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pboPack);
+                gl.readPixels(0, 0, TEXTURE_SIZE, TEXTURE_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, 0); // Offset 0
+                gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+
+                // 5. PBO Pack -> VBO
+                gl.bindBuffer(gl.COPY_READ_BUFFER, pboPack);
+                gl.bindBuffer(gl.COPY_WRITE_BUFFER, vbo);
+                gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, dataSize);
+
+                // 6. Verify Draw (to Screen)
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                gl.viewport(0, 0, 512, 512);
+                gl.clearColor(0.2, 0.2, 0.2, 1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                gl.useProgram(verifyProg);
+                gl.uniform1f(gl.getUniformLocation(verifyProg, "u_total"), TOTAL_PIXELS);
+                gl.bindVertexArray(verifyVAO);
+
+                // We are drawing points using the VBO data as *Color*.
+                // If data is correct, we see pixels.
+                gl.drawArrays(gl.POINTS, 0, TOTAL_PIXELS);
+            }
+
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                console.error("WebGL Error Code:", error);
+                throw new Error("WebGL Error: " + error);
+            }
+            console.log("Success");
+        }
+
+        main().catch(e => {
+            console.error("Exception:", e.message);
+            console.error(e.stack);
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+  'EXT_color_buffer_float'
+];
+
+async function main() {
+  const canvas = document.getElementById('webgl-canvas');
+  const gl = canvas.getContext('webgl2');
+  if (!gl) throw new Error("WebGL2 not supported");
+
+  // WebGL2 extension detection (simplified)
+  const missingExtensions = [];
+  const availableAsCore = [];
+
+  REQUIRED_EXTENSIONS.forEach(ext => {
+    const extension = gl.getExtension(ext);
+    if (!extension) {
+      missingExtensions.push(ext);
+    }
+  });
+
+  if (missingExtensions.length > 0) {
+    const isPlaywrightFirefox = typeof window.playwright !== 'undefined' ||
+                               navigator.userAgent.includes('Headless') ||
+                               !window.chrome;
+
+    if (isPlaywrightFirefox) {
+      throw new Error(`PLAYWRIGHT_FIREFOX_LIMITATION: Extensions ${missingExtensions.join(', ')} not available in Playwright Firefox.`);
+    } else {
+      throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+  }
+
+  // Fuzzing parameters
+  const collapseThreshold = 0.3;
+  const evolutionSteps = 10;
+  const observationMode = 1; // 0=manual, 1=automatic
+
+  // Create ping-pong textures for wave function evolution
+  const waveFunctionTexture1 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, waveFunctionTexture1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 32, 32, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  const waveFunctionTexture2 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, waveFunctionTexture2);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 32, 32, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  // Initialize wave function with random complex amplitudes
+  const waveData = new Float32Array(32 * 32 * 4);
+  for (let i = 0; i < waveData.length; i += 4) {
+    // Real and imaginary parts
+    waveData[i] = (Math.random() - 0.5) * 2.0;     // real
+    waveData[i + 1] = (Math.random() - 0.5) * 2.0; // imaginary
+    // Probability and phase
+    const mag = Math.sqrt(waveData[i] * waveData[i] + waveData[i + 1] * waveData[i + 1]);
+    waveData[i + 2] = mag; // probability amplitude
+    waveData[i + 3] = Math.atan2(waveData[i + 1], waveData[i]); // phase
+  }
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 32, 32, gl.RGBA, gl.FLOAT, waveData);
+  gl.bindTexture(gl.TEXTURE_2D, waveFunctionTexture1);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 32, 32, gl.RGBA, gl.FLOAT, waveData);
+
+  // Create FBOs for ping-pong rendering
+  const fbo1 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, waveFunctionTexture1, 0);
+
+  const fbo2 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, waveFunctionTexture2, 0);
+
+  // Shaders
+  const evolutionVS = `#version 300 es
+  precision highp float;
+
+  out vec2 vTexCoord;
+
+  void main() {
+    vec2 pos = vec2(float(gl_VertexID % 2), float(gl_VertexID / 2)) * 4.0 - 1.0;
+    gl_Position = vec4(pos, 0.0, 1.0);
+    vTexCoord = pos * 0.5 + 0.5;
+  }
+  `;
+
+  const evolutionFS = `#version 300 es
+  precision highp float;
+
+  uniform sampler2D uWaveFunction;
+  uniform float uTime;
+  uniform float uCollapseThreshold;
+  uniform int uObservationMode;
+
+  in vec2 vTexCoord;
+
+  layout(location = 0) out vec4 oWaveFunction;
+
+  // Simplified complex operations
+  vec2 c_add(vec2 a, vec2 b) {
+    return a + b;
+  }
+
+  vec2 c_mul(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+  }
+
+  float c_abs(vec2 z) {
+    return length(z);
+  }
+
+  void main() {
+    ivec2 coord = ivec2(gl_FragCoord.xy);
+
+    // Read current wave function
+    vec4 wave = texelFetch(uWaveFunction, coord, 0);
+    vec2 amplitude = wave.xy;
+    float probability = wave.z;
+    float phase = wave.w;
+
+    // Simple time evolution (phase rotation)
+    float evolutionRate = 0.1;
+    vec2 evolvedAmplitude = c_mul(amplitude, vec2(cos(uTime * evolutionRate), sin(uTime * evolutionRate)));
+
+    // Add some diffusion-like behavior by averaging with neighbors
+    vec2 neighborSum = vec2(0.0);
+    float neighborCount = 0.0;
+    for (int dx = -1; dx <= 1; dx++) {
+      for (int dy = -1; dy <= 1; dy++) {
+        if (dx == 0 && dy == 0) continue;
+        ivec2 offset = ivec2(dx, dy);
+        ivec2 ncoord = coord + offset;
+        if (ncoord.x >= 0 && ncoord.x < 32 && ncoord.y >= 0 && ncoord.y < 32) {
+          vec4 neighbor = texelFetch(uWaveFunction, ncoord, 0);
+          neighborSum = c_add(neighborSum, neighbor.xy);
+          neighborCount += 1.0;
+        }
+      }
+    }
+
+    if (neighborCount > 0.0) {
+      vec2 avgNeighbor = vec2(neighborSum.x / neighborCount, neighborSum.y / neighborCount);
+      evolvedAmplitude = c_add(evolvedAmplitude, c_mul(avgNeighbor, vec2(0.1, 0.0)));
+    }
+
+    // Measurement/collapse logic
+    float collapseProbability = 0.0;
+    if (uObservationMode == 1) {
+      // Automatic observation based on probability threshold
+      collapseProbability = c_abs(evolvedAmplitude);
+    } else {
+      // Manual observation trigger
+      collapseProbability = sin(uTime * 2.0) * 0.5 + 0.5;
+    }
+
+    vec2 finalAmplitude = evolvedAmplitude;
+    if (collapseProbability > uCollapseThreshold) {
+      // Collapse to definite state (random phase)
+      float randomPhase = sin(float(coord.x) * 7.0 + float(coord.y) * 13.0 + uTime) * 6.28;
+      finalAmplitude = vec2(cos(randomPhase), sin(randomPhase));
+    }
+
+    // Update probability and phase
+    float newProbability = c_abs(finalAmplitude);
+    float newPhase = atan(finalAmplitude.y, finalAmplitude.x);
+
+    oWaveFunction = vec4(finalAmplitude, newProbability, newPhase);
+  }
+  `;
+
+  const visualizationVS = `#version 300 es
+  precision highp float;
+
+  out vec2 vTexCoord;
+
+  void main() {
+    vec2 pos = vec2(float(gl_VertexID % 2), float(gl_VertexID / 2)) * 4.0 - 1.0;
+    gl_Position = vec4(pos, 0.0, 1.0);
+    vTexCoord = pos * 0.5 + 0.5;
+  }
+  `;
+
+  const visualizationFS = `#version 300 es
+  precision highp float;
+
+  uniform sampler2D uWaveFunction;
+
+  in vec2 vTexCoord;
+
+  out vec4 oColor;
+
+  void main() {
+    // Sample the wave function texture
+    vec4 wave = texture(uWaveFunction, vTexCoord);
+
+    // Extract components
+    vec2 amplitude = wave.xy;
+    float probability = wave.z;
+    float phase = wave.w;
+
+    // Create visualization
+    // Phase determines hue (0-2π mapped to 0-1)
+    float hue = (phase + 3.14159) / (2.0 * 3.14159);
+
+    // Probability determines brightness (0-1)
+    float brightness = probability;
+
+    // Uncertainty affects saturation (higher probability = more saturated)
+    float saturation = probability;
+
+    // Simple HSV to RGB conversion
+    float c = brightness * saturation;
+    float x = c * (1.0 - abs(mod(hue * 6.0, 2.0) - 1.0));
+    float m = brightness - c;
+
+    vec3 rgb;
+    if (hue < 1.0/6.0) rgb = vec3(c, x, 0.0);
+    else if (hue < 2.0/6.0) rgb = vec3(x, c, 0.0);
+    else if (hue < 3.0/6.0) rgb = vec3(0.0, c, x);
+    else if (hue < 4.0/6.0) rgb = vec3(0.0, x, c);
+    else if (hue < 5.0/6.0) rgb = vec3(x, 0.0, c);
+    else rgb = vec3(c, 0.0, x);
+
+    oColor = vec4(rgb + m, 1.0);
+  }
+  `;
+
+  // Create programs
+  const evolutionProgram = createProgram(gl, evolutionVS, evolutionFS);
+  const visualizationProgram = createProgram(gl, visualizationVS, visualizationFS);
+
+  if (!evolutionProgram || !visualizationProgram) {
+    throw new Error("Shader compilation failed");
+  }
+
+  // Get uniform locations
+  const evolutionUniforms = {
+    uWaveFunction: gl.getUniformLocation(evolutionProgram, 'uWaveFunction'),
+    uTime: gl.getUniformLocation(evolutionProgram, 'uTime'),
+    uCollapseThreshold: gl.getUniformLocation(evolutionProgram, 'uCollapseThreshold'),
+    uObservationMode: gl.getUniformLocation(evolutionProgram, 'uObservationMode')
+  };
+
+  const visualizationUniforms = {
+    uWaveFunction: gl.getUniformLocation(visualizationProgram, 'uWaveFunction')
+  };
+
+  // Animation loop with ping-pong
+  let time = 0;
+  let currentReadTexture = waveFunctionTexture1;
+  let currentWriteTexture = waveFunctionTexture2;
+  let currentWriteFBO = fbo2;
+
+  function render() {
+    time += 0.016;
+
+    // Evolution pass - ping-pong between textures
+    gl.bindFramebuffer(gl.FRAMEBUFFER, currentWriteFBO);
+    gl.viewport(0, 0, 32, 32);
+
+    gl.useProgram(evolutionProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, currentReadTexture);
+    gl.uniform1i(evolutionUniforms.uWaveFunction, 0);
+    gl.uniform1f(evolutionUniforms.uTime, time);
+    gl.uniform1f(evolutionUniforms.uCollapseThreshold, collapseThreshold);
+    gl.uniform1i(evolutionUniforms.uObservationMode, observationMode);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Visualization pass
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, 256, 256);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(visualizationProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, currentWriteTexture);
+    gl.uniform1i(visualizationUniforms.uWaveFunction, 0);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Swap for next frame
+    if (currentReadTexture === waveFunctionTexture1) {
+      currentReadTexture = waveFunctionTexture2;
+      currentWriteTexture = waveFunctionTexture1;
+      currentWriteFBO = fbo1;
+    } else {
+      currentReadTexture = waveFunctionTexture1;
+      currentWriteTexture = waveFunctionTexture2;
+      currentWriteFBO = fbo2;
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  render();
+
+  const error = gl.getError();
+  if (error !== gl.NO_ERROR) {
+    throw new Error(`WebGL Error: ${error}`);
+  }
+}
+
+function createProgram(gl, vsSource, fsSource) {
+  const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vertexShader, vsSource);
+  gl.compileShader(vertexShader);
+
+  const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fragmentShader, fsSource);
+  gl.compileShader(fragmentShader);
+
+  const program = gl.createProgram();
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    console.error('Vertex shader info log:', gl.getShaderInfoLog(vertexShader));
+    console.error('Fragment shader info log:', gl.getShaderInfoLog(fragmentShader));
+    console.error('Program info log:', gl.getProgramInfoLog(program));
+    return null;
+  }
+
+  return program;
+}
+
+main().catch(err => {
+  throw err;
+});
+</script>
+</body>
+</html>

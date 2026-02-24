@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+   throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+   throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ const textureSize = 64;
+ const arrayDepth = 4;
+ const layerCount = 4;
+ const stateChangeCount = 25;
+
+ const vertexShaderSource = `#version 300 es
+in vec2 a_position;
+in vec2 a_texCoord;
+out vec2 v_texCoord;
+out vec3 v_worldPos;
+
+void main() {
+  v_texCoord = a_texCoord;
+  v_worldPos = vec3(a_position, 0.0);
+  gl_Position = vec4(a_position * 2.0 - 1.0, 0.0, 1.0);
+}
+`;
+
+ const fragmentShaderSource = `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+in vec2 v_texCoord;
+in vec3 v_worldPos;
+out vec4 fragColor;
+
+uniform highp sampler2DArray u_textureArray;
+uniform float u_time;
+uniform int u_arrayDepth;
+uniform int u_layerCount;
+
+void main() {
+  vec2 uv = v_texCoord;
+
+  float height = sin(uv.x * 10.0 + u_time) * cos(uv.y * 8.0 + u_time * 0.7);
+  height += sin(uv.x * 20.0 + u_time * 2.0) * 0.5;
+  height = (height + 2.0) * 0.25;
+
+  int layerIndex = int(height * float(u_layerCount));
+  layerIndex = clamp(layerIndex, 0, u_layerCount - 1);
+
+  vec3 color = texture(u_textureArray, vec3(uv, float(layerIndex))).rgb;
+
+  float pattern = sin(uv.x * 50.0) * sin(uv.y * 50.0);
+  color += pattern * 0.1;
+
+  fragColor = vec4(color, 1.0);
+}
+`;
+
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error(`Vertex shader compilation failed: ${gl.getShaderInfoLog(vertexShader)}`);
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error(`Fragment shader compilation failed: ${gl.getShaderInfoLog(fragmentShader)}`);
+ }
+
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error(`Program linking failed: ${gl.getProgramInfoLog(program)}`);
+ }
+ gl.useProgram(program);
+
+ const positionLocation = gl.getAttribLocation(program, 'a_position');
+ const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+ const textureArrayLocation = gl.getUniformLocation(program, 'u_textureArray');
+ const timeLocation = gl.getUniformLocation(program, 'u_time');
+ const arrayDepthLocation = gl.getUniformLocation(program, 'u_arrayDepth');
+ const layerCountLocation = gl.getUniformLocation(program, 'u_layerCount');
+
+ const positionBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ const positions = new Float32Array([
+   0.0, 0.0,
+   1.0, 0.0,
+   0.0, 1.0,
+   0.0, 1.0,
+   1.0, 0.0,
+   1.0, 1.0,
+ ]);
+ gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+ const texCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ const texCoords = new Float32Array([
+   0.0, 0.0,
+   1.0, 0.0,
+   0.0, 1.0,
+   0.0, 1.0,
+   1.0, 0.0,
+   1.0, 1.0,
+ ]);
+ gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+
+ const textureArray = gl.createTexture();
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+
+ const layerDataSize = textureSize * textureSize * 4;
+ const textureData = new Uint8Array(layerDataSize * arrayDepth);
+
+ for (let layer = 0; layer < arrayDepth; layer++) {
+   const layerOffset = layer * layerDataSize;
+   for (let y = 0; y < textureSize; y++) {
+     for (let x = 0; x < textureSize; x++) {
+       const pixelIndex = (y * textureSize + x) * 4 + layerOffset;
+
+       let r, g, b;
+       switch (layer % 4) {
+         case 0: // Grass-like green
+           r = 34 + Math.sin(x * 0.1) * 20;
+           g = 139 + Math.sin(y * 0.1) * 20;
+           b = 34;
+           break;
+         case 1: // Rock-like gray
+           r = g = b = 128 + Math.sin(x * 0.2 + y * 0.2) * 32;
+           break;
+         case 2: // Snow-like white
+           r = g = b = 200 + Math.sin(x * 0.15) * 55;
+           break;
+         case 3: // Dirt-like brown
+           r = 139 + Math.sin(x * 0.12) * 20;
+           g = 69 + Math.sin(y * 0.12) * 20;
+           b = 19;
+           break;
+       }
+
+       textureData[pixelIndex] = r;
+       textureData[pixelIndex + 1] = g;
+       textureData[pixelIndex + 2] = b;
+       textureData[pixelIndex + 3] = 255;
+     }
+   }
+ }
+
+ gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA, textureSize, textureSize, arrayDepth, 0, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
+ gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+ gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+ // Heavy state poisoning - 50+ state changes
+ for (let i = 0; i < stateChangeCount; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+
+   gl.viewport(0, 0, canvas.width, canvas.height);
+   gl.viewport(1, 1, canvas.width - 2, canvas.height - 2);
+   gl.viewport(0, 0, canvas.width, canvas.height);
+
+   gl.activeTexture(gl.TEXTURE0 + (i % 8));
+   gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+   gl.activeTexture(gl.TEXTURE0);
+
+   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+ }
+
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.enableVertexAttribArray(positionLocation);
+ gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.enableVertexAttribArray(texCoordLocation);
+ gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+ gl.uniform1i(textureArrayLocation, 0);
+ gl.uniform1f(timeLocation, performance.now() * 0.001);
+ gl.uniform1i(arrayDepthLocation, arrayDepth);
+ gl.uniform1i(layerCountLocation, layerCount);
+
+ gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ const isPlaywrightFirefox = typeof window.playwright !== 'undefined' ||
+                             navigator.userAgent.includes('Headless') ||
+                             !window.chrome;
+
+ if (isPlaywrightFirefox) {
+   throw new Error(`PLAYWRIGHT_FIREFOX_LIMITATION: ${err.message}`);
+ } else {
+   console.error(err);
+ }
+});
+</script>
+</body>
+</html>

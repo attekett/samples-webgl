@@ -64,8 +64,16 @@ This file documents WebGL extensions that are not supported in the current test 
 - **Used in**: integrated_extension_orgasm_extreme.html
 - **Alternative**: Remove LOD bias calculations
 
+## WebGL2 Extensions
+
+### EXT_disjoint_timer_query_webgl2
+- **Status**: Not supported in Firefox
+- **Description**: GPU timer queries for performance measurement
+- **Used in**: mutation_b24_s117_query_time_elapsed.html (originally)
+- **Alternative**: Use standard query types (ANY_SAMPLES_PASSED, TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN)
+
 ## WebGL2 Features
-All WebGL2 features tested so far are supported in the test environment.
+All core WebGL2 features tested so far are supported in the test environment.
 
 ## Environment Analysis
 

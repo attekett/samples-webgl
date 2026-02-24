@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        /**
+         * WEBGL-CREATIVE-016: The Shader Poltergeist Churn
+         * ------------------------------------------------
+         * Focus: Massive State Throughput & Churn
+         * 
+         * This test stresses the command buffer and state validation by performing
+         * hundreds of state changes (uniforms, viewports, scissor, bindings) per frame.
+         */
+
+        const UNIFORM_CHURN_COUNT = 500;
+        const VIEWPORT_CHURN_COUNT = 20;
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 required for State Churn");
+
+            const vsSource = `#version 300 es
+                in vec2 a_pos;
+                uniform float u_offsets[64];
+                uniform int u_index;
+                void main() {
+                    float off = u_offsets[u_index % 64];
+                    gl_Position = vec4(a_pos + vec2(off, 0.0), 0.0, 1.0);
+                }`;
+
+            const fsSource = `#version 300 es
+                precision highp float;
+                uniform vec4 u_colors[64];
+                uniform int u_colorIndex;
+                out vec4 outColor;
+                void main() {
+                    outColor = u_colors[u_colorIndex % 64];
+                }`;
+
+            function createProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc); gl.compileShader(vs);
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc); gl.compileShader(fs);
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                return prog;
+            }
+
+            const program = createProgram(vsSource, fsSource);
+
+            const vbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-0.1, -0.1, 0.1, -0.1, 0, 0.1]), gl.STATIC_DRAW);
+
+            const vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            // Locations
+            const offsetLoc = gl.getUniformLocation(program, "u_offsets");
+            const indexLoc = gl.getUniformLocation(program, "u_index");
+            const colorLoc = gl.getUniformLocation(program, "u_colors");
+            const colorIndexLoc = gl.getUniformLocation(program, "u_colorIndex");
+
+            const offsets = new Float32Array(64);
+            const colors = new Float32Array(256); // 64 * 4
+            for (let i = 0; i < 64; i++) {
+                offsets[i] = (Math.random() - 0.5) * 2.0;
+                colors.set([Math.random(), Math.random(), Math.random(), 1.0], i * 4);
+            }
+
+            gl.useProgram(program);
+            gl.uniform1fv(offsetLoc, offsets);
+            gl.uniform4fv(colorLoc, colors);
+
+            gl.clearColor(0.1, 0.1, 0.1, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            // Churn!
+            for (let i = 0; i < VIEWPORT_CHURN_COUNT; i++) {
+                const x = Math.floor(Math.random() * 256);
+                const y = Math.floor(Math.random() * 256);
+                const w = Math.floor(Math.random() * 256) + 1;
+                const h = Math.floor(Math.random() * 256) + 1;
+
+                gl.viewport(x, y, w, h);
+                gl.scissor(x, y, w, h);
+                gl.enable(gl.SCISSOR_TEST);
+
+                // Uniform Churn within Viewport
+                for (let j = 0; j < (UNIFORM_CHURN_COUNT / VIEWPORT_CHURN_COUNT); j++) {
+                    gl.uniform1i(indexLoc, Math.floor(Math.random() * 64));
+                    gl.uniform1i(colorIndexLoc, Math.floor(Math.random() * 64));
+                    gl.drawArrays(gl.TRIANGLES, 0, 3);
+                }
+            }
+
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

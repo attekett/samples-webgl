@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported - required for derivatives test");
+
+    // Enable derivatives (core in WebGL2 but needs to be enabled)
+    gl.getExtension('OES_standard_derivatives');
+
+    // ==========================================
+    // COMPLEX IMPLEMENTATION STARTS HERE
+    // ==========================================
+
+    // FUZZING VARIABLES: Mix inline literals with parameterized variables
+    const vertexDensity = 32;
+    const stateChangeCount = 25;
+
+    // VERTEX SHADER: Simple quad for derivative testing
+    const vertexShaderSource = `#version 300 es
+        in vec2 a_position;
+        in vec2 a_texCoord;
+        out vec2 v_texCoord;
+
+        void main() {
+            v_texCoord = a_texCoord;
+            gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+    `;
+
+    // FRAGMENT SHADER: Demonstrate derivative functions with edge detection
+    const fragmentShaderSource = `#version 300 es
+        precision mediump float;
+        in vec2 v_texCoord;
+        out vec4 fragColor;
+
+        void main() {
+            vec2 uv = v_texCoord * 8.0;
+            float checker = mod(floor(uv.x) + floor(uv.y), 2.0);
+            float dx = dFdx(checker);
+            float dy = dFdy(checker);
+            float edge = length(vec2(dx, dy));
+            float width = fwidth(checker);
+            float edgeMask = smoothstep(0.1 - width, 0.1 + width, edge);
+            vec3 color = mix(vec3(0.2, 0.4, 0.8), vec3(1.0, 0.3, 0.1), edgeMask);
+            fragColor = vec4(color, 1.0);
+        }
+    `;
+
+    // CREATE SHADERS
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, vertexShaderSource);
+    gl.compileShader(vertexShader);
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, fragmentShaderSource);
+    gl.compileShader(fragmentShader);
+
+    // CREATE PROGRAM
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    // SETUP GEOMETRY: Simple quad
+    const positions = [-1, -1, 1, -1, -1, 1, 1, 1];
+    const texCoords = [0, 0, 1, 0, 0, 1, 1, 1];
+
+    // CREATE BUFFERS
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+    const texCoordBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
+
+    // SETUP ATTRIBUTES
+    const positionLocation = gl.getAttribLocation(program, 'a_position');
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+    const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.enableVertexAttribArray(texCoordLocation);
+    gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+    // STATE POISONING: 50+ state changes for fragile state machine
+    for (let i = 0; i < stateChangeCount; i++) {
+        // Capability enable/disable churn
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.CULL_FACE);
+        gl.disable(gl.CULL_FACE);
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.disable(gl.SCISSOR_TEST);
+
+        // Blend state changes
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendEquation(gl.FUNC_SUBTRACT);
+
+        // Viewport changes
+        gl.viewport(0, 0, 256, 256);
+        gl.viewport(10, 10, 236, 236);
+        gl.viewport(0, 0, 256, 256);
+
+        // Buffer binding churn
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    }
+
+    // RENDER
+    gl.clearColor(0.1, 0.1, 0.1, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // Final state setup
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.DEPTH_TEST);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // ==========================================
+    // COMPLEX IMPLEMENTATION ENDS HERE
+    // ==========================================
+
+    // 3. ERROR CHECKING
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+        throw new Error(`WebGL Error: ${error}`);
+    }
+}
+
+main().catch(err => {
+    // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+    // knows to log it to UNSUPPORTED.md and skip.
+    // Otherwise, it counts as a test failure/crash.
+    console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

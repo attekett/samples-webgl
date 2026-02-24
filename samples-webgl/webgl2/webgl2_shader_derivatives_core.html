@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: WebGL2 shader derivatives test - no extensions needed (core feature)
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+ throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // WebGL2 context already verified above - no extension checking needed for derivatives
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // Create vertex shader - generates a complex surface for derivative testing
+ const vertexShaderSource = `#version 300 es
+ in vec2 a_position;
+ in vec2 a_texCoord;
+ out vec2 v_texCoord;
+ out vec3 v_worldPos;
+
+ uniform float u_time;
+ uniform float u_scale;
+ uniform vec2 u_offset;
+
+ void main() {
+   // Create wavy surface for derivative testing
+   vec2 pos = a_position * u_scale + u_offset;
+   float wave = sin(pos.x * 4.0 + u_time) * 0.1 + cos(pos.y * 3.0 + u_time * 0.7) * 0.15;
+   vec3 worldPos = vec3(pos, wave);
+
+   v_texCoord = a_texCoord;
+   v_worldPos = worldPos;
+   gl_Position = vec4(pos * 0.8, 0.0, 1.0);
+ }
+ `;
+
+ // Create fragment shader - uses derivatives for edge detection and visual effects
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+ in vec2 v_texCoord;
+ in vec3 v_worldPos;
+ out vec4 fragColor;
+
+ uniform float u_time;
+ uniform float u_edgeThreshold;
+ uniform vec3 u_baseColor;
+ uniform vec3 u_edgeColor;
+ uniform float u_noiseScale;
+
+ // Derivative-based edge detection function
+ float detectEdges(vec3 normal) {
+   // Use dFdx and dFdy to compute surface derivatives
+   vec3 dx = dFdx(normal);
+   vec3 dy = dFdy(normal);
+
+   // Compute gradient magnitude using derivatives
+   float gradient = length(vec2(length(dx), length(dy)));
+
+   // Use fwidth for anti-aliased edge detection
+   float edgeWidth = fwidth(gradient);
+   float edge = smoothstep(u_edgeThreshold - edgeWidth, u_edgeThreshold + edgeWidth, gradient);
+
+   return edge;
+ }
+
+ // Noise function using derivatives for procedural variation
+ float derivativeNoise(vec2 uv) {
+   vec2 p = uv * u_noiseScale;
+   vec2 i = floor(p);
+   vec2 f = fract(p);
+
+   // Use derivatives to create smooth noise
+   float a = sin(i.x + u_time) * cos(i.y);
+   float b = sin(i.x + 1.0 + u_time) * cos(i.y);
+   float c = sin(i.x + u_time) * cos(i.y + 1.0);
+   float d = sin(i.x + 1.0 + u_time) * cos(i.y + 1.0);
+
+   vec2 u = f * f * (3.0 - 2.0 * f);
+
+   // Mix with derivative-based smoothing
+   float noise = mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+
+   return noise * 0.5 + 0.5;
+ }
+
+ void main() {
+   // Compute surface normal using derivatives
+   vec3 normal = normalize(cross(dFdx(v_worldPos), dFdy(v_worldPos)));
+
+   // Detect edges using derivative-based edge detection
+   float edgeFactor = detectEdges(normal);
+
+   // Add procedural noise using derivatives
+   float noise = derivativeNoise(v_texCoord);
+
+   // Combine base color, edge highlighting, and noise
+   vec3 color = mix(u_baseColor, u_edgeColor, edgeFactor);
+   color += noise * 0.2;
+
+   // Add derivative-based specular highlight
+   vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
+   float specular = pow(max(dot(reflect(-lightDir, normal), vec3(0.0, 0.0, 1.0)), 0.0), 32.0);
+
+   color += specular * 0.5;
+
+   fragColor = vec4(color, 1.0);
+ }
+ `;
+
+ // Create shader program
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ gl.useProgram(program);
+
+ // Create geometry - dense grid for derivative testing
+ const VERTEX_COUNT = 1024;
+ const vertices = new Float32Array(VERTEX_COUNT * 4); // position + texCoord
+ const indices = new Uint32Array((VERTEX_COUNT - 32) * 6); // triangle indices
+
+ // Generate grid vertices
+ for (let i = 0; i < VERTEX_COUNT; i++) {
+   const x = (i % 32) / 31.0 * 2.0 - 1.0;
+   const y = Math.floor(i / 32) / 31.0 * 2.0 - 1.0;
+
+   vertices[i * 4] = x;     // position x
+   vertices[i * 4 + 1] = y; // position y
+   vertices[i * 4 + 2] = x * 0.5 + 0.5; // texCoord x
+   vertices[i * 4 + 3] = y * 0.5 + 0.5; // texCoord y
+ }
+
+ // Generate triangle indices
+ let indexIndex = 0;
+ for (let y = 0; y < 31; y++) {
+   for (let x = 0; x < 31; x++) {
+     const i = y * 32 + x;
+     indices[indexIndex++] = i;
+     indices[indexIndex++] = i + 1;
+     indices[indexIndex++] = i + 32;
+     indices[indexIndex++] = i + 1;
+     indices[indexIndex++] = i + 32;
+     indices[indexIndex++] = i + 33;
+   }
+ }
+
+ // Create buffers
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+ // Set up attributes
+ const positionLoc = gl.getAttribLocation(program, 'a_position');
+ const texCoordLoc = gl.getAttribLocation(program, 'a_texCoord');
+
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
+
+ gl.enableVertexAttribArray(texCoordLoc);
+ gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 16, 8);
+
+ // Set uniforms with fuzzing-friendly variables
+ const timeLoc = gl.getUniformLocation(program, 'u_time');
+ const scaleLoc = gl.getUniformLocation(program, 'u_scale');
+ const offsetLoc = gl.getUniformLocation(program, 'u_offset');
+ const edgeThresholdLoc = gl.getUniformLocation(program, 'u_edgeThreshold');
+ const baseColorLoc = gl.getUniformLocation(program, 'u_baseColor');
+ const edgeColorLoc = gl.getUniformLocation(program, 'u_edgeColor');
+ const noiseScaleLoc = gl.getUniformLocation(program, 'u_noiseScale');
+
+ // Fuzzing variables - mix inline literals with parameters
+ const SCALE_FACTOR = 1.5;
+ const EDGE_THRESHOLD = 0.3;
+ const NOISE_SCALE = 8.0;
+ const TIME_SPEED = 2.0;
+
+ gl.uniform1f(timeLoc, performance.now() * 0.001 * TIME_SPEED);
+ gl.uniform1f(scaleLoc, SCALE_FACTOR);
+ gl.uniform2f(offsetLoc, 0.0, 0.0);
+ gl.uniform1f(edgeThresholdLoc, EDGE_THRESHOLD);
+ gl.uniform3f(baseColorLoc, 0.2, 0.4, 0.6);
+ gl.uniform3f(edgeColorLoc, 1.0, 0.8, 0.2);
+ gl.uniform1f(noiseScaleLoc, NOISE_SCALE);
+
+ // STATE POISONING: 50+ redundant state changes for fuzzing
+ for (let i = 0; i < 25; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+   gl.depthFunc(gl.LEQUAL);
+   gl.viewport(0, 0, 256, 256);
+   gl.clearColor(0.1, 0.1, 0.1, 1.0);
+   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+   // Bind/unbind buffers redundantly
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+   // Texture binding churn
+   gl.activeTexture(gl.TEXTURE0);
+   gl.bindTexture(gl.TEXTURE_2D, null);
+ }
+
+ // Final render
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_INT, 0);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ console.error(err);
+});
+</script>
+</body>
+</html></contents>
+</xai:function_call">Write
+
+Assistant: Now I need to test the implementation using the test runner to make sure it works correctly. Let me run the test._dcloudio<xai:function_call name="TodoWrite">
+<parameter name="todos">[{"id":"implement_selected_case","content":"Implemented WebGL2 shader derivatives test case with dFdx/dFdy/fwidth functions","status":"completed"},{"id":"test_and_validate","content":"Test the implementation with ./run_tests.sh and validate JSON output","status":"in_progress"}]

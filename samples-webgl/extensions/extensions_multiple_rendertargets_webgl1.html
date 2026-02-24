@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: Define required extensions here
+const REQUIRED_EXTENSIONS = [
+ 'WEBGL_draw_buffers'
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+ if (!gl) throw new Error("WebGL not supported");
+
+ // 1. EXTENSION GATING
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ // Signal to the Test Runner that this is an environment limit, not a code bug
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS
+ const drawBuffersExt = gl.getExtension('WEBGL_draw_buffers');
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // Fuzzing variables for MRT configuration
+ const mrtTargets = 4; // Number of render targets to use
+ const drawBuffers = [drawBuffersExt.COLOR_ATTACHMENT0_WEBGL, drawBuffersExt.COLOR_ATTACHMENT1_WEBGL, drawBuffersExt.COLOR_ATTACHMENT2_WEBGL, drawBuffersExt.COLOR_ATTACHMENT3_WEBGL];
+ const blendMode = gl.FUNC_ADD; // Blend equation for MRT
+ const attachmentCount = 4; // Attachments to configure
+
+ // Create vertex shader for MRT geometry
+ const vertexShaderSource = `
+   attribute vec2 a_position;
+   attribute vec3 a_color;
+   varying vec3 v_color;
+   void main() {
+     gl_Position = vec4(a_position, 0.0, 1.0);
+     v_color = a_color;
+   }
+ `;
+
+ // Create fragment shader for MRT outputs (deferred rendering style)
+ const fragmentShaderSource = `
+   precision mediump float;
+   varying vec3 v_color;
+
+   // MRT outputs for deferred rendering
+   layout(location = 0) out vec4 fragColor0; // Albedo
+   layout(location = 1) out vec4 fragColor1; // Normal
+   layout(location = 2) out vec4 fragColor2; // Position
+   layout(location = 3) out vec4 fragColor3; // Material properties
+
+   void main() {
+     // Simulate deferred rendering data
+     fragColor0 = vec4(v_color, 1.0); // Albedo with vertex color
+     fragColor1 = vec4(normalize(vec3(gl_FragCoord.xy / 256.0, 0.5)), 1.0); // Normal from screen space
+     fragColor2 = vec4(gl_FragCoord.xyz / 256.0, 1.0); // Position
+     fragColor3 = vec4(0.5, 0.8, 0.2, 1.0); // Material properties (roughness, metallic, etc.)
+   }
+ `;
+
+ // Create shaders and program
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ gl.useProgram(program);
+
+ // Create geometry (simple quad for MRT testing)
+ const positions = new Float32Array([
+   -1.0, -1.0,
+    1.0, -1.0,
+   -1.0,  1.0,
+    1.0,  1.0
+ ]);
+
+ const colors = new Float32Array([
+   1.0, 0.0, 0.0, // Red
+   0.0, 1.0, 0.0, // Green
+   0.0, 0.0, 1.0, // Blue
+   1.0, 1.0, 0.0  // Yellow
+ ]);
+
+ // Create buffers
+ const positionBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+ const colorBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+
+ // Set up attributes
+ const positionLocation = gl.getAttribLocation(program, 'a_position');
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.enableVertexAttribArray(positionLocation);
+ gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+ const colorLocation = gl.getAttribLocation(program, 'a_color');
+ gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+ gl.enableVertexAttribArray(colorLocation);
+ gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
+
+ // Create framebuffer and MRT textures
+ const framebuffer = gl.createFramebuffer();
+ gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+ // Create multiple color attachments (MRT)
+ const colorTextures = [];
+ for (let i = 0; i < attachmentCount; i++) {
+   const texture = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, texture);
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, drawBuffersExt.COLOR_ATTACHMENT0_WEBGL + i, gl.TEXTURE_2D, texture, 0);
+   colorTextures.push(texture);
+ }
+
+ // Configure draw buffers (MRT)
+ drawBuffersExt.drawBuffersWEBGL(drawBuffers.slice(0, mrtTargets));
+
+ // Check framebuffer completeness
+ if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+   throw new Error('Framebuffer not complete');
+ }
+
+ // HEAVY STATE POISONING - 50+ state changes for fuzzing fragility
+ const stateChanges = 25;
+ for (let i = 0; i < stateChanges; i++) {
+   // Redundant capability toggling
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.SCISSOR_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+
+   // Blend state changes
+   gl.blendEquation(blendMode);
+   gl.blendEquation(gl.FUNC_SUBTRACT);
+   gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendFunc(gl.ONE, gl.ONE);
+   gl.blendFunc(gl.DST_COLOR, gl.SRC_COLOR);
+
+   // Viewport changes
+   gl.viewport(0, 0, 256, 256);
+   gl.viewport(10, 10, 236, 236);
+   gl.viewport(0, 0, 128, 128);
+
+   // Scissor changes
+   gl.scissor(0, 0, 256, 256);
+   gl.scissor(50, 50, 156, 156);
+
+   // Buffer binding churn
+   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+   // Texture binding chaos
+   for (let j = 0; j < colorTextures.length; j++) {
+     gl.activeTexture(gl.TEXTURE0 + j);
+     gl.bindTexture(gl.TEXTURE_2D, colorTextures[j]);
+   }
+   gl.activeTexture(gl.TEXTURE0);
+ }
+
+ // Redundant MRT state changes (fragile state machine)
+ drawBuffersExt.drawBuffersWEBGL([drawBuffersExt.NONE]);
+ drawBuffersExt.drawBuffersWEBGL(drawBuffers.slice(0, 1));
+ drawBuffersExt.drawBuffersWEBGL(drawBuffers.slice(0, 2));
+ drawBuffersExt.drawBuffersWEBGL(drawBuffers.slice(0, mrtTargets));
+
+ // Render to MRT framebuffer
+ gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+ gl.clearColor(0.0, 0.0, 0.0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+ // Draw to all render targets
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // Unbind framebuffer and render MRT results to screen
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+
+ // Simple shader to display MRT results (composite the attachments)
+ const displayVertexShaderSource = `
+   attribute vec2 a_position;
+   attribute vec2 a_texCoord;
+   varying vec2 v_texCoord;
+   void main() {
+     gl_Position = vec4(a_position, 0.0, 1.0);
+     v_texCoord = a_texCoord;
+   }
+ `;
+
+ const displayFragmentShaderSource = `
+   precision mediump float;
+   varying vec2 v_texCoord;
+   uniform sampler2D u_texture0;
+   uniform sampler2D u_texture1;
+   uniform sampler2D u_texture2;
+   uniform sampler2D u_texture3;
+
+   void main() {
+     vec4 albedo = texture2D(u_texture0, v_texCoord);
+     vec4 normal = texture2D(u_texture1, v_texCoord);
+     vec4 position = texture2D(u_texture2, v_texCoord);
+     vec4 material = texture2D(u_texture3, v_texCoord);
+
+     // Composite MRT results for visual demonstration
+     gl_FragColor = (albedo + normal + position + material) * 0.25;
+   }
+ `;
+
+ const displayVertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(displayVertexShader, displayVertexShaderSource);
+ gl.compileShader(displayVertexShader);
+
+ const displayFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(displayFragmentShader, displayFragmentShaderSource);
+ gl.compileShader(displayFragmentShader);
+
+ const displayProgram = gl.createProgram();
+ gl.attachShader(displayProgram, displayVertexShader);
+ gl.attachShader(displayProgram, displayFragmentShader);
+ gl.linkProgram(displayProgram);
+ gl.useProgram(displayProgram);
+
+ // Full-screen quad for display
+ const quadPositions = new Float32Array([
+   -1.0, -1.0,
+    1.0, -1.0,
+   -1.0,  1.0,
+    1.0,  1.0
+ ]);
+
+ const quadTexCoords = new Float32Array([
+   0.0, 0.0,
+   1.0, 0.0,
+   0.0, 1.0,
+   1.0, 1.0
+ ]);
+
+ const quadPositionBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, quadPositionBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, quadPositions, gl.STATIC_DRAW);
+
+ const quadTexCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, quadTexCoordBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, quadTexCoords, gl.STATIC_DRAW);
+
+ const displayPositionLocation = gl.getAttribLocation(displayProgram, 'a_position');
+ gl.bindBuffer(gl.ARRAY_BUFFER, quadPositionBuffer);
+ gl.enableVertexAttribArray(displayPositionLocation);
+ gl.vertexAttribPointer(displayPositionLocation, 2, gl.FLOAT, false, 0, 0);
+
+ const displayTexCoordLocation = gl.getAttribLocation(displayProgram, 'a_texCoord');
+ gl.bindBuffer(gl.ARRAY_BUFFER, quadTexCoordBuffer);
+ gl.enableVertexAttribArray(displayTexCoordLocation);
+ gl.vertexAttribPointer(displayTexCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+ // Bind MRT textures to texture units
+ for (let i = 0; i < mrtTargets; i++) {
+   gl.activeTexture(gl.TEXTURE0 + i);
+   gl.bindTexture(gl.TEXTURE_2D, colorTextures[i]);
+   gl.uniform1i(gl.getUniformLocation(displayProgram, `u_texture${i}`), i);
+ }
+
+ // Final display render
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+ throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 required");
+
+    // ==========================================
+    // QUANTUM FIELD SIMULATOR - High-Biomass WebGL2 Seed
+    // Combines: TF + UBO + MRT + TextureArrays + Queries + Samplers + VAOs
+    // ==========================================
+
+    const PARTICLE_COUNT = 256;
+    const FIELD_RESOLUTION = 32;
+    const MRT_TARGETS = 2;
+    const TEXTURE_LAYERS = 4;
+    const QUERY_COUNT = 2;
+
+    // FUZZING CONSTANTS: Mix literals and variables for mutation testing
+    const TF_BUFFER_MODE = gl.SEPARATE_ATTRIBS;
+    const BLEND_MODE_SRC = gl.SRC_ALPHA;
+    const BLEND_MODE_DST = gl.ONE;
+    const DEPTH_TEST_FUNC = gl.LEQUAL;
+    const CULL_MODE = gl.BACK;
+    const TEX_MIN_FILTER = gl.LINEAR_MIPMAP_LINEAR;
+    const TEX_MAG_FILTER = gl.LINEAR;
+    const TEX_WRAP_MODE = gl.CLAMP_TO_EDGE;
+
+    // 1. CREATE MULTIPLE UNIFORM BUFFER OBJECTS (UBOs)
+    const globalUBO = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, globalUBO);
+    const globalParams = new Float32Array([0.1, 0.05, 2.0, 0.8, 1.5, 0.3, 0.7, 0.9]);
+    gl.bufferData(gl.UNIFORM_BUFFER, globalParams, gl.DYNAMIC_DRAW);
+
+    const transformUBO = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, transformUBO);
+    const transformMatrices = new Float32Array(16 * 3); // projection, view, model
+    for (let i = 0; i < 16 * 3; i++) transformMatrices[i] = (i % 16 === Math.floor(i / 16)) ? 1.0 : 0.0;
+    gl.bufferData(gl.UNIFORM_BUFFER, transformMatrices, gl.DYNAMIC_DRAW);
+
+    // 2. CREATE ADDITIONAL TEXTURES FOR FIELD DATA
+    const fieldDataTexture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, fieldDataTexture);
+    const fieldData = new Uint8Array(FIELD_RESOLUTION * FIELD_RESOLUTION * 4);
+    for (let i = 0; i < fieldData.length; i++) fieldData[i] = Math.floor((Math.sin(i * 0.01) * 0.5 + 0.5) * 255);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, FIELD_RESOLUTION, FIELD_RESOLUTION, 0, gl.RGBA, gl.UNSIGNED_BYTE, fieldData);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+    // 3. CREATE TEXTURE ARRAYS FOR LAYERED DATA
+    const fieldTextureArray = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, fieldTextureArray);
+    const textureData = new Uint8Array(FIELD_RESOLUTION * FIELD_RESOLUTION * TEXTURE_LAYERS * 4);
+    for (let i = 0; i < textureData.length; i++) textureData[i] = Math.floor(Math.random() * 256);
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, FIELD_RESOLUTION, FIELD_RESOLUTION, TEXTURE_LAYERS, 0, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, TEX_MIN_FILTER);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, TEX_MAG_FILTER);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, TEX_WRAP_MODE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, TEX_WRAP_MODE);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+
+    // 4. CREATE SAMPLER OBJECTS FOR TEXTURE SAMPLING CONTROL
+    const fieldSampler = gl.createSampler();
+    gl.samplerParameteri(fieldSampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    gl.samplerParameteri(fieldSampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.samplerParameteri(fieldSampler, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.samplerParameteri(fieldSampler, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.samplerParameteri(fieldSampler, gl.TEXTURE_WRAP_R, gl.REPEAT);
+
+    const particleSampler = gl.createSampler();
+    gl.samplerParameteri(particleSampler, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.samplerParameteri(particleSampler, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.samplerParameteri(particleSampler, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+
+    // 5. CREATE MULTIPLE RENDER TARGETS (MRT) FRAMEBUFFER
+    const mrtFramebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFramebuffer);
+    const mrtTextures = [];
+    for (let i = 0; i < MRT_TARGETS; i++) {
+        const tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0 + i + 1);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, tex, 0);
+        mrtTextures.push(tex);
+    }
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+
+    // 6. CREATE QUERY OBJECTS FOR OCCLUSION AND PERFORMANCE TRACKING
+    const queries = [];
+    for (let i = 0; i < QUERY_COUNT; i++) {
+        const query = gl.createQuery();
+        queries.push(query);
+    }
+
+    // 7. CREATE TRANSFORM FEEDBACK BUFFERS
+    const tfBuffers = [];
+    const tfVaryings = ['outPosition', 'outVelocity'];
+    for (let i = 0; i < 2; i++) {
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, PARTICLE_COUNT * 16, gl.DYNAMIC_COPY);
+        tfBuffers.push(buffer);
+    }
+
+    const tf = gl.createTransformFeedback();
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffers[0]);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, tfBuffers[1]);
+
+    // 8. CREATE ADDITIONAL BUFFERS FOR COMPLEXITY
+    const extraBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, extraBuffer);
+    const extraData = new Float32Array(PARTICLE_COUNT * 4);
+    for (let i = 0; i < extraData.length; i++) extraData[i] = Math.random();
+    gl.bufferData(gl.ARRAY_BUFFER, extraData, gl.STATIC_DRAW);
+
+    // 9. CREATE INPUT BUFFER FOR PARTICLES
+    const inputBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, inputBuffer);
+    const inputData = new Float32Array(PARTICLE_COUNT * 4);
+    for (let i = 0; i < inputData.length; i++) inputData[i] = (Math.random() - 0.5) * 2.0;
+    gl.bufferData(gl.ARRAY_BUFFER, inputData, gl.STATIC_DRAW);
+
+    // 10. CREATE VERTEX ARRAY OBJECTS (VAOs) FOR STATE MANAGEMENT
+    const particleVAO = gl.createVertexArray();
+    gl.bindVertexArray(particleVAO);
+    gl.bindBuffer(gl.ARRAY_BUFFER, inputBuffer);
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
+
+    const fieldVAO = gl.createVertexArray();
+    gl.bindVertexArray(fieldVAO);
+    const quadVertices = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+    const quadBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
+
+    // 10. CREATE SHADERS WITH COMPLEX INTERACTIONS
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, `#version 300 es
+layout(location=0) in vec4 position;
+uniform ubo1 { vec4 globalParams; };
+uniform ubo2 { mat4 projection; mat4 view; mat4 model; };
+out vec4 vPosition;
+out vec4 vColor;
+
+void main() {
+    vPosition = projection * view * model * position;
+    vColor = vec4(globalParams.xyz * position.w, 1.0);
+    gl_Position = vPosition;
+    gl_PointSize = 2.0;
+}`);
+    gl.compileShader(vertexShader);
+    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+        throw new Error('Vertex shader compilation failed: ' + gl.getShaderInfoLog(vertexShader));
+    }
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+precision highp sampler2D;
+in vec4 vColor;
+uniform sampler2DArray fieldTexture;
+uniform sampler2D mrtTexture0;
+uniform sampler2D mrtTexture1;
+layout(location=0) out vec4 fragColor;
+layout(location=1) out vec4 fieldColor;
+layout(location=2) out vec4 particleColor;
+
+void main() {
+    vec4 fieldSample = texture(fieldTexture, vec3(gl_FragCoord.xy / 256.0, 0.0));
+    vec4 mrt0 = texture(mrtTexture0, gl_FragCoord.xy / 256.0);
+    vec4 mrt1 = texture(mrtTexture1, gl_FragCoord.xy / 256.0);
+    fragColor = vColor * fieldSample * (mrt0 + mrt1);
+    fieldColor = vec4(fieldSample.rgb, 1.0);
+    particleColor = vColor;
+}`);
+    gl.compileShader(fragmentShader);
+    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+        throw new Error('Fragment shader compilation failed: ' + gl.getShaderInfoLog(fragmentShader));
+    }
+
+    const tfVertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(tfVertexShader, `#version 300 es
+precision highp float;
+layout(location=0) in vec4 position;
+uniform sampler2D fieldDataTex;
+out vec4 outPosition;
+out vec4 outVelocity;
+
+void main() {
+    int idx = gl_VertexID;
+    vec4 pos = position;
+    vec4 vel = vec4(sin(float(idx) * 0.1), cos(float(idx) * 0.1), 0.0, 1.0);
+    vec2 texCoord = vec2(fract(float(idx) * 0.01), fract(float(idx) * 0.007));
+    vec4 fieldForce = texture(fieldDataTex, texCoord);
+    outPosition = pos + vel * 0.01;
+    outVelocity = vel + fieldForce * 0.001;
+}`);
+    gl.compileShader(tfVertexShader);
+    if (!gl.getShaderParameter(tfVertexShader, gl.COMPILE_STATUS)) {
+        throw new Error('TF vertex shader compilation failed: ' + gl.getShaderInfoLog(tfVertexShader));
+    }
+
+    // 11. CREATE PROGRAMS WITH TRANSFORM FEEDBACK
+    const renderProgram = gl.createProgram();
+    gl.attachShader(renderProgram, vertexShader);
+    gl.attachShader(renderProgram, fragmentShader);
+    gl.transformFeedbackVaryings(renderProgram, [], gl.SEPARATE_ATTRIBS);
+    gl.linkProgram(renderProgram);
+
+    const tfFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(tfFragmentShader, `#version 300 es
+precision highp float;
+void main() { discard; }`);
+    gl.compileShader(tfFragmentShader);
+
+    const tfProgram = gl.createProgram();
+    gl.attachShader(tfProgram, tfVertexShader);
+    gl.attachShader(tfProgram, tfFragmentShader);
+    gl.transformFeedbackVaryings(tfProgram, tfVaryings, TF_BUFFER_MODE);
+    gl.linkProgram(tfProgram);
+
+    // 12. SETUP STATE WITH AGGRESSIVE BINDING CHANGES
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(DEPTH_TEST_FUNC);
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(CULL_MODE);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(BLEND_MODE_SRC, BLEND_MODE_DST);
+
+    // Bind UBOs to binding points
+    gl.uniformBlockBinding(renderProgram, gl.getUniformBlockIndex(renderProgram, 'ubo1'), 0);
+    gl.uniformBlockBinding(renderProgram, gl.getUniformBlockIndex(renderProgram, 'ubo2'), 1);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, globalUBO);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, transformUBO);
+
+    // Bind additional textures
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, fieldDataTexture);
+
+    // Bind samplers
+    gl.bindSampler(0, fieldSampler);
+    gl.bindSampler(1, particleSampler);
+
+    // 13. BEGIN QUERY OPERATIONS
+    gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[0]);
+
+    // 14. SIMPLE RENDER SEQUENCE
+    // Transform Feedback simulation
+    gl.useProgram(tfProgram);
+    gl.uniform1i(gl.getUniformLocation(tfProgram, 'fieldDataTex'), 2);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, fieldDataTexture);
+    gl.bindVertexArray(particleVAO);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+    gl.beginTransformFeedback(gl.POINTS);
+    gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+    gl.endTransformFeedback();
+
+    // MRT rendering to framebuffer
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFramebuffer);
+    gl.viewport(0, 0, 256, 256);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(renderProgram);
+    gl.bindVertexArray(particleVAO);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, fieldTextureArray);
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'fieldTexture'), 0);
+    gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+
+    // Final composite to screen
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, 256, 256);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.bindVertexArray(fieldVAO);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, fieldTextureArray);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, mrtTextures[0]);
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'fieldTexture'), 0);
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'mrtTexture0'), 3);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // 15. END QUERIES AND CONDITIONAL RENDERING
+    gl.endQuery(gl.ANY_SAMPLES_PASSED);
+
+    // Use query results for conditional rendering
+    const queryResult = new Uint32Array(1);
+    gl.getQueryParameter(queries[0], gl.QUERY_RESULT, queryResult);
+    if (queryResult[0] > 0) {
+        gl.beginConditionalRender(queries[0], gl.QUERY_BY_REGION_WAIT);
+        gl.drawArrays(gl.POINTS, 0, 10);
+        gl.endConditionalRender();
+    }
+
+    // 17. CLEANUP WITH RESOURCE REBINDING
+    gl.deleteProgram(renderProgram);
+    gl.deleteProgram(tfProgram);
+    gl.deleteVertexArray(particleVAO);
+    gl.deleteVertexArray(fieldVAO);
+    gl.deleteTransformFeedback(tf);
+    gl.deleteBuffer(globalUBO);
+    gl.deleteBuffer(transformUBO);
+    gl.deleteTexture(fieldDataTexture);
+    gl.deleteTexture(fieldTextureArray);
+    gl.deleteSampler(fieldSampler);
+    gl.deleteSampler(particleSampler);
+    gl.deleteFramebuffer(mrtFramebuffer);
+    mrtTextures.forEach(tex => gl.deleteTexture(tex));
+    queries.forEach(q => gl.deleteQuery(q));
+    tfBuffers.forEach(buf => gl.deleteBuffer(buf));
+    gl.deleteBuffer(extraBuffer);
+    gl.deleteBuffer(inputBuffer);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    gl.deleteShader(tfVertexShader);
+    gl.deleteShader(tfFragmentShader);
+
+    // FINAL ERROR CHECK
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) throw new Error("WebGL Error: " + error);
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

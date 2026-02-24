@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const intTexCount = 8;
+const samplerCount = 8;
+const queryCount = 8;
+const sampleCycles = 64;
+const texSize = 256;
+const pixelCount = texSize * texSize;
+const bufferSize = pixelCount * 4;
+const clearValue = 12345;
+
+const textureTarget = 35678;
+const intFormat = 36220;
+const textureUnit = 33984;
+const queryTarget = 35887;
+const samplerBinding = 35097;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const intTex1 = gl.createTexture();
+        const intTex2 = gl.createTexture();
+        const intTex3 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, intTex1);
+        gl.bindTexture(gl.TEXTURE_2D, intTex2);
+        gl.bindTexture(gl.TEXTURE_2D, intTex1);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32I, texSize, texSize);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32UI, 128, 128);
+        gl.bindTexture(gl.TEXTURE_2D, intTex3);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32I, 256, 256);
+    } catch(e) { console.log(e); }
+
+    try {
+        const sampler1 = gl.createSampler();
+        const sampler2 = gl.createSampler();
+        const sampler3 = gl.createSampler();
+        gl.bindSampler(0, sampler1);
+        gl.bindSampler(1, sampler2);
+        gl.bindSampler(0, sampler1);
+        gl.samplerParameteri(sampler1, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.samplerParameteri(sampler2, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.samplerParameteri(sampler1, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.bindSampler(2, sampler3);
+        gl.samplerParameteri(sampler3, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    } catch(e) { console.log(e); }
+
+    try {
+        const query1 = gl.createQuery();
+        const query2 = gl.createQuery();
+        const query3 = gl.createQuery();
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED, query1);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, query2);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED, query3);
+    } catch(e) { console.log(e); }
+
+    try {
+        const fbo1 = gl.createFramebuffer();
+        const fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, intTex1, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, intTex2, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.clearBufferiv(gl.COLOR, 0, new Int32Array([clearValue, clearValue, clearValue, clearValue]));
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array([9999, 8888, 7777, 6666]));
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.clearBufferiv(gl.COLOR, 0, new Int32Array([111, 222, 333, 444]));
+    } catch(e) { console.log(e); }
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            out vec3 vPos;
+            void main() {
+                vPos = position;
+                gl_Position = vec4(position, 1.0);
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            precision highp isampler2D;
+            in vec3 vPos;
+            uniform isampler2D intSampler1;
+            uniform isampler2D intSampler2;
+            out vec4 fragColor;
+            void main() {
+                ivec4 val1 = texture(intSampler1, vPos.xy * 0.5 + 0.5);
+                ivec4 val2 = texture(intSampler2, vPos.xy * 0.3 + 0.5);
+                fragColor = vec4(float(val1.x) / 65535.0, float(val2.y) / 65535.0, 0.5, 1.0);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) { console.log(e); }
+
+    try {
+        const intLoc1 = gl.getUniformLocation(program, 'intSampler1');
+        const intLoc2 = gl.getUniformLocation(program, 'intSampler2');
+        gl.uniform1i(intLoc1, 0);
+        gl.uniform1i(intLoc2, 1);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, intTex1);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, intTex2);
+        gl.bindSampler(0, sampler1);
+        gl.bindSampler(1, sampler2);
+    } catch(e) { console.log(e); }
+
+    try {
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        const vertices = new Float32Array([
+            -1, -1, 0, 1, -1, 0, -1, 1, 0,
+            -1, 1, 0, 1, -1, 0, 1, 1, 0
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+        const posLoc = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 12, 0);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED, query1);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.1, 0.1, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < 32; i++) {
+            const available = gl.getQueryParameter(query1, gl.QUERY_RESULT_AVAILABLE);
+            if (available) {
+                const result = gl.getQueryParameter(query1, gl.QUERY_RESULT);
+                break;
+            }
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindSampler(0, sampler1);
+        gl.deleteSampler(sampler1);
+        gl.bindSampler(0, sampler1);
+        gl.bindTexture(gl.TEXTURE_2D, intTex1);
+        gl.deleteTexture(intTex1);
+        gl.bindTexture(gl.TEXTURE_2D, intTex1);
+        gl.deleteQuery(query1);
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

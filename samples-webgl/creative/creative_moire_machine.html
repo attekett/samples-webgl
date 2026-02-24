@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION
+        const REQUIRED_EXTENSIONS = [];
+
+        async function main() {
+            console.log("Starting Main...");
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 not supported");
+
+            // Helper: Create Shader
+            function createShader(gl, type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    const log = gl.getShaderInfoLog(shader);
+                    console.error("Shader Compile Error:", log);
+                    throw new Error("Shader Compile Error: " + log);
+                }
+                return shader;
+            }
+
+            function createProgram(gl, vsSrc, fsSrc) {
+                const program = gl.createProgram();
+                gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vsSrc));
+                gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsSrc));
+                gl.linkProgram(program);
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    const log = gl.getProgramInfoLog(program);
+                    console.error("Program Link Error:", log);
+                    throw new Error("Program Link Error: " + log);
+                }
+                return program;
+            }
+
+            // --- Shaders ---
+            const vs = `#version 300 es
+    layout(location=0) in vec2 a_pos;
+    out vec2 v_uv;
+    void main() {
+        v_uv = a_pos * 0.5 + 0.5;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+    }
+    `;
+
+            const fs = `#version 300 es
+    precision highp float;
+    
+    in vec2 v_uv;
+    uniform sampler2D u_tex;
+    uniform float u_time;
+    uniform float u_scale;
+
+    out vec4 outColor;
+    void main() {
+        // Calculate "Chaos" derivatives
+        // We want to force specific LOD levels by manipulating gradients
+        
+        vec2 p = v_uv * u_scale;
+        
+        // Sine wave distortion
+        float distortion = sin(p.x * 10.0 + u_time) * sin(p.y * 10.0 - u_time);
+        
+        // Explicit derivatives
+        // Normal derivatives for standard mapping would be dFdx(v_uv), dFdy(v_uv).
+        // scale derivatives
+        vec2 dx = vec2(0.01 * (1.0 + distortion * 50.0), 0.0);
+        vec2 dy = vec2(0.0, 0.01 * (1.0 - distortion * 50.0));
+
+        // Use textureGrad
+        vec4 color = textureGrad(u_tex, v_uv * 2.0, dx, dy);
+        outColor = color;
+    }
+    `;
+
+            console.log("Compiling Shaders...");
+            const prog = createProgram(gl, vs, fs);
+            console.log("Shaders Compiled.");
+
+            // --- Resources ---
+
+            // Create Texture with distinct colored Mipmaps
+            const tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+
+            const size = 256;
+            const levels = Math.log2(size) + 1;
+            gl.texStorage2D(gl.TEXTURE_2D, levels, gl.RGBA8, size, size);
+
+            // Colors: Red, Green, Blue, Yellow, Cyan, Magenta, White, Black, Grey
+            const colors = [
+                [255, 0, 0, 255],     // Level 0: Red
+                [0, 255, 0, 255],     // Level 1: Green
+                [0, 0, 255, 255],     // Level 2: Blue
+                [255, 255, 0, 255],   // Level 3: Yellow
+                [0, 255, 255, 255],   // Level 4: Cyan
+                [255, 0, 255, 255],   // Level 5: Magenta
+                [255, 255, 255, 255], // Level 6: White
+                [128, 128, 128, 255], // Level 7: Grey
+                [0, 0, 0, 255]        // Level 8: Black
+            ];
+
+            for (let i = 0; i < levels; i++) {
+                const mipSize = size / Math.pow(2, i);
+                const color = colors[i % colors.length];
+                const data = new Uint8Array(mipSize * mipSize * 4);
+                for (let j = 0; j < data.length; j += 4) {
+                    data[j] = color[0];
+                    data[j + 1] = color[1];
+                    data[j + 2] = color[2];
+                    data[j + 3] = color[3];
+                }
+                gl.texSubImage2D(gl.TEXTURE_2D, i, 0, 0, mipSize, mipSize, gl.RGBA, gl.UNSIGNED_BYTE, data);
+            }
+
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+
+            // Quad
+            const quadVerts = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+            const vbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+            gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+
+            const vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+
+            // --- Main Loop ---
+
+            gl.useProgram(prog);
+            gl.uniform1i(gl.getUniformLocation(prog, "u_tex"), 0);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+
+            const TOTAL_FRAMES = 10;
+            console.log("Starting Loop...");
+
+            for (let f = 0; f < TOTAL_FRAMES; f++) {
+                gl.uniform1f(gl.getUniformLocation(prog, "u_time"), f * 0.2);
+                gl.uniform1f(gl.getUniformLocation(prog, "u_scale"), 1.0 + Math.sin(f * 0.5) * 0.5);
+
+                gl.clearColor(0, 0, 0, 1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            }
+
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                console.error("WebGL Error Code:", error);
+                throw new Error("WebGL Error: " + error);
+            }
+            console.log("Success");
+        }
+
+        main().catch(e => {
+            console.error("Exception:", e.message);
+            console.error(e.stack);
+        });
+    </script>
+</body>
+
+</html>

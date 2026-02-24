@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const fenceCount = 16;
+const deleteCreateCycles = 64;
+const waitCycles = 32;
+const drawsPerFence = 4;
+const bufferSize = 4096;
+
+const syncCondition = 0x9113;
+const syncFlags = 0;
+const drawMode = 0x0004;
+const bufferUsage = 0x88E4;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const vs = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs, `#version 300 es
+        in vec3 pos;
+        void main() {
+            gl_Position = vec4(pos, 1.0);
+        }
+    `);
+    gl.compileShader(vs);
+
+    const fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs, `#version 300 es
+        precision highp float;
+        out vec4 fragColor;
+        void main() {
+            fragColor = vec4(0.2, 0.6, 0.8, 1.0);
+        }
+    `);
+    gl.compileShader(fs);
+
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+
+    try {
+        const buf1 = gl.createBuffer();
+        const buf2 = gl.createBuffer();
+        const buf3 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf3);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf1);
+        gl.bufferData(gl.ARRAY_BUFFER, bufferSize, bufferUsage);
+        gl.bufferData(gl.ARRAY_BUFFER, 8192, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array([-0.5, 0.5, 0.0, 0.5, 0.5, 0.0, 0.0, -0.5, 0.0]));
+    } catch(e) { console.log(e); }
+
+    try {
+        const posLoc = gl.getAttribLocation(prog, 'pos');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 12, 0);
+        gl.disableVertexAttribArray(posLoc);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+    } catch(e) { console.log(e); }
+
+    const fences = [];
+
+    try {
+        for (let i = 0; i < fenceCount; i++) {
+            const fence1 = gl.fenceSync(syncCondition, syncFlags);
+            const fence2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            fences.push(fence1);
+            fences.push(fence2);
+        }
+        for (let i = 0; i < 8; i++) {
+            fences.push(gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0));
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, 3);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.flush();
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let cycle = 0; cycle < deleteCreateCycles; cycle++) {
+            const idx = cycle % fences.length;
+            if (fences[idx]) {
+                gl.deleteSync(fences[idx]);
+            }
+            fences[idx] = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            if (cycle % 2 === 0) {
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+            }
+            if (cycle % 4 === 0) {
+                gl.flush();
+            }
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < waitCycles; i++) {
+            const idx = i % fences.length;
+            if (fences[idx]) {
+                gl.clientWaitSync(fences[idx], 0, 1000000);
+                gl.clientWaitSync(fences[idx], gl.SYNC_FLUSH_COMMANDS_BIT, 0);
+            }
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < drawsPerFence; i++) {
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            const sync1 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            const sync2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            fences.push(sync1);
+            fences.push(sync2);
+        }
+        gl.flush();
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < 16; i++) {
+            const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            gl.deleteSync(sync);
+            const sync2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            gl.deleteSync(sync2);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < fences.length; i += 2) {
+            if (fences[i]) {
+                gl.deleteSync(fences[i]);
+            }
+        }
+        for (let i = 0; i < 12; i++) {
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            fences[i] = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < fences.length; i++) {
+            if (fences[i]) {
+                gl.clientWaitSync(fences[i], gl.SYNC_FLUSH_COMMANDS_BIT, 100);
+                gl.deleteSync(fences[i]);
+            }
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.flush();
+        gl.finish();
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

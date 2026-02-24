@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) throw new Error("WebGL not supported");
+
+    // Check if WebGL2 is available (32-bit indices are core in WebGL2)
+    const isWebGL2 = gl instanceof WebGL2RenderingContext;
+
+    // If WebGL1, require the extension
+    if (!isWebGL2) {
+        const ext = gl.getExtension('OES_element_index_uint');
+        if (!ext) {
+            throw new Error("UNSUPPORTED_EXTENSIONS: OES_element_index_uint");
+        }
+    }
+
+    // FUZZING VARIABLES: Mix inline literals with parameterized variables
+    const vertexCount = 70000; // More than 65535 to require 32-bit indices
+    const indexCount = 100000; // Large index buffer
+    const stateChangeCount = 25;
+
+    // VERTEX SHADER: Position and color for large geometry
+    const vertexShaderSource = `
+        attribute vec2 a_position;
+        attribute vec3 a_color;
+        varying vec3 v_color;
+
+        void main() {
+            v_color = a_color;
+            gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+    `;
+
+    // FRAGMENT SHADER: Simple color passthrough
+    const fragmentShaderSource = `
+        precision mediump float;
+        varying vec3 v_color;
+
+        void main() {
+            gl_FragColor = vec4(v_color, 1.0);
+        }
+    `;
+
+    // CREATE SHADERS
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, vertexShaderSource);
+    gl.compileShader(vertexShader);
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, fragmentShaderSource);
+    gl.compileShader(fragmentShader);
+
+    // CREATE PROGRAM
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    // SETUP GEOMETRY: Large vertex buffer with 32-bit indices
+    const positions = [];
+    const colors = [];
+    const indices = [];
+
+    // Generate vertices in a spiral pattern
+    for (let i = 0; i < vertexCount; i++) {
+        const angle = (i / vertexCount) * Math.PI * 4;
+        const radius = (i / vertexCount) * 0.8;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+
+        positions.push(x, y);
+        colors.push(Math.sin(i * 0.01), Math.cos(i * 0.01), Math.sin(i * 0.02 + Math.PI));
+    }
+
+    // Generate indices - triangles connecting spiral points
+    for (let i = 0; i < Math.min(indexCount, vertexCount - 2); i += 3) {
+        if (i + 2 < vertexCount) {
+            indices.push(i, i + 1, i + 2);
+        }
+    }
+
+    // CREATE BUFFERS - Use Uint32Array for indices when available
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+    const colorBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    if (isWebGL2) {
+        // WebGL2: Use native Uint32Array
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
+    } else {
+        // WebGL1 with extension: Use Uint32Array (extension allows this)
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(indices), gl.STATIC_DRAW);
+    }
+
+    // SETUP ATTRIBUTES
+    const positionLocation = gl.getAttribLocation(program, 'a_position');
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+    const colorLocation = gl.getAttribLocation(program, 'a_color');
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.enableVertexAttribArray(colorLocation);
+    gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 0, 0);
+
+    // STATE POISONING: 50+ state changes for fragile state machine
+    for (let i = 0; i < stateChangeCount; i++) {
+        // Capability enable/disable churn
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.CULL_FACE);
+        gl.disable(gl.CULL_FACE);
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.disable(gl.SCISSOR_TEST);
+
+        // Blend state changes
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendEquation(gl.FUNC_SUBTRACT);
+
+        // Viewport changes
+        gl.viewport(0, 0, 256, 256);
+        gl.viewport(10, 10, 236, 236);
+        gl.viewport(0, 0, 256, 256);
+
+        // Buffer binding churn
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+    }
+
+    // RENDER: Draw with 32-bit indices
+    gl.clearColor(0.1, 0.1, 0.1, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // Final state setup
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.DEPTH_TEST);
+
+    // Draw using 32-bit indices
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.drawElements(gl.TRIANGLES, indices.length, isWebGL2 ? gl.UNSIGNED_INT : gl.UNSIGNED_INT, 0);
+
+    // 3. ERROR CHECKING
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+        throw new Error(`WebGL Error: ${error}`);
+    }
+}
+
+main().catch(err => {
+    console.error(err);
+});
+</script>
+</body>
+</html>

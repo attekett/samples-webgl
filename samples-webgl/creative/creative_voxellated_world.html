@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION: Define required features
+        // WebGL2 Core: TEXTURE_3D, framebufferTextureLayer
+        const REQUIRED_EXTENSIONS = [];
+
+        // FUZZING PARAMETERS
+        const VOXEL_GRID_SIZE = 64;
+        const RAYMARCH_STEPS = 128;
+        const SLICING_AXIS = 2; // 0=X, 1=Y, 2=Z
+        const STATE_CHANGE_COUNT = 50;
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 required for 3D Textures");
+
+            // 1. EXTENSION GATING
+            const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+            if (missingExtensions.length > 0) {
+                throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+            }
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION STARTS HERE
+            // ==========================================
+
+            // 1. Setup 3D Texture (The Voxel Grid)
+            const voxelTexture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_3D, voxelTexture);
+            // R8 is enough for binary visibility, but let's use R8UI for integer logic or generic RGBA8 for simple color
+            gl.texStorage3D(gl.TEXTURE_3D, 1, gl.RGBA8, VOXEL_GRID_SIZE, VOXEL_GRID_SIZE, VOXEL_GRID_SIZE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+            // 2. Setup Voxelization FBO
+            const voxelFBO = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, voxelFBO);
+            // We will attach layers dynamically in the slicing loop
+
+            // 3. Setup Shaders
+
+            // --- Slicing Shader (Renders mesh slices into 3D tex layers) ---
+            const sliceVsSource = `#version 300 es
+    in vec4 position;
+    uniform mat4 u_model;
+    // We don't need projection matrix because we output directly to clip space slice
+    void main() {
+        gl_Position = u_model * position; 
+        // We'll orthographically project later via matrix or just keeping it in -1..1 range
+    }`;
+
+            const sliceFsSource = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    void main() {
+        outColor = vec4(1.0, 0.5, 0.2, 1.0); // Orange voxels
+    }`;
+
+            // --- Raymarch Shader (Visualizes the 3D texture) ---
+            const rayVsSource = `#version 300 es
+    in vec2 position; // Quad coordinates
+    out vec2 v_uv;
+    void main() {
+        v_uv = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+    }`;
+
+            const rayFsSource = `#version 300 es
+    precision highp float;
+    precision highp sampler3D;
+    
+    out vec4 outColor;
+    in vec2 v_uv;
+    
+    uniform sampler3D u_voxels;
+    uniform float u_time;
+    
+    const int MAX_STEPS = ${RAYMARCH_STEPS};
+    
+    // Simple ray-box intersection
+    vec2 intersectBox(vec3 ro, vec3 rd, vec3 boxSize) {
+        vec3 m = 1.0/rd;
+        vec3 n = m*ro;
+        vec3 k = abs(m)*boxSize;
+        vec3 t1 = -n - k;
+        vec3 t2 = -n + k;
+        float tN = max(max(t1.x, t1.y), t1.z);
+        float tF = min(min(t2.x, t2.y), t2.z);
+        if(tN > tF || tF < 0.0) return vec2(-1.0);
+        return vec2(tN, tF);
+    }
+
+    void main() {
+        // Camera setup (orbiting)
+        float angle = u_time * 0.5;
+        vec3 ro = vec3(cos(angle)*3.0, 1.5, sin(angle)*3.0);
+        vec3 ta = vec3(0.0);
+        vec3 ww = normalize(ta - ro);
+        vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
+        vec3 vv = normalize(cross(uu, ww));
+        vec3 rd = normalize(vec3(v_uv * 2.0 - 1.0, 1.0).x * uu + vec3(v_uv * 2.0 - 1.0, 1.0).y * vv + 1.5 * ww);
+        
+        // Raymarch Box
+        vec2 t = intersectBox(ro, rd, vec3(1.0));
+        
+        if (t.x < 0.0) {
+            outColor = vec4(0.1, 0.1, 0.1, 1.0); // Background
+            return;
+        }
+        
+        // March through the volume
+        vec3 p = ro + rd * t.x;
+        float dist = t.x;
+        vec4 accColor = vec4(0.0);
+        
+        float stepSize = 0.02;
+        
+        for(int i=0; i<MAX_STEPS; i++) {
+            if (dist > t.y || accColor.a > 0.95) break;
+            
+            // Map p (-1..1) to tex coords (0..1)
+            vec3 texCoord = p * 0.5 + 0.5;
+            
+            vec4 voxel = texture(u_voxels, texCoord);
+            
+            // Accumulate
+            if (voxel.a > 0.0) {
+                // Simple lighting based on accumulated density
+                accColor.rgb += (1.0 - accColor.a) * voxel.rgb * voxel.a * 0.5;
+                accColor.a += (1.0 - accColor.a) * voxel.a * 0.5;
+            }
+            
+            p += rd * stepSize;
+            dist += stepSize;
+        }
+        
+        outColor = vec4(mix(vec3(0.1), accColor.rgb, accColor.a), 1.0);
+    }`;
+
+            // Helper function
+            function createProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc);
+                gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) throw new Error("VS: " + gl.getShaderInfoLog(vs));
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc);
+                gl.compileShader(fs);
+                if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) throw new Error("FS: " + gl.getShaderInfoLog(fs));
+
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error("Link: " + gl.getProgramInfoLog(prog));
+                return prog;
+            }
+
+            const sliceProgram = createProgram(sliceVsSource, sliceFsSource);
+            const rayProgram = createProgram(rayVsSource, rayFsSource);
+
+            // 4. Geometry Setup
+            // A spinning torus for voxelization
+            const torusData = [];
+            const torusIndices = [];
+            // ... Simplified: Just a Cube for now, simpler to generate inline
+            const cubeData = new Float32Array([
+                // Front face
+                -0.5, -0.5, 0.5,
+                0.5, -0.5, 0.5,
+                0.5, 0.5, 0.5,
+                -0.5, 0.5, 0.5,
+                // Back face
+                -0.5, -0.5, -0.5,
+                -0.5, 0.5, -0.5,
+                0.5, 0.5, -0.5,
+                0.5, -0.5, -0.5,
+            ]);
+            const cubeIndices = new Uint16Array([
+                0, 1, 2, 0, 2, 3,    // Front
+                4, 5, 6, 4, 6, 7,    // Back
+                // ... (incomplete cube is fine, it's spaghetti fuzzing)
+                0, 3, 5, 0, 5, 4,    // Left
+                1, 7, 6, 1, 6, 2,    // Right
+                3, 2, 6, 3, 6, 5,    // Top
+                0, 4, 7, 0, 7, 1     // Bottom
+            ]);
+
+            const meshVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, meshVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, cubeData, gl.STATIC_DRAW);
+
+            const meshIBO = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshIBO);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, cubeIndices, gl.STATIC_DRAW);
+
+            const meshVAO = gl.createVertexArray();
+            gl.bindVertexArray(meshVAO);
+            gl.bindBuffer(gl.ARRAY_BUFFER, meshVBO);
+            gl.enableVertexAttribArray(0); // position
+            gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshIBO);
+
+            // Quad for Raymarching
+            const quadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+            const quadVAO = gl.createVertexArray();
+            gl.bindVertexArray(quadVAO);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            // 5. Main Render Loop (Simulation)
+
+            function poisonState() {
+                if (Math.random() < 0.1) {
+                    gl.bindTexture(gl.TEXTURE_3D, Math.random() > 0.5 ? null : voxelTexture);
+                    const caps = [gl.BLEND, gl.DEPTH_TEST, gl.CULL_FACE];
+                    const cap = caps[Math.floor(Math.random() * 3)];
+                    Math.random() > 0.5 ? gl.enable(cap) : gl.disable(cap);
+                }
+            }
+
+            // A. VOXELIZATION PASS
+            // Clear 3D texture first? WebGL requires FBO attachment to clear. 
+            // We'll just clear while slicing layer by layer.
+
+            gl.useProgram(sliceProgram);
+            gl.bindVertexArray(meshVAO);
+            gl.viewport(0, 0, VOXEL_GRID_SIZE, VOXEL_GRID_SIZE);
+
+            const locModel = gl.getUniformLocation(sliceProgram, "u_model");
+
+            // Rotate the cube
+            const angle = 0.5;
+            const c = Math.cos(angle);
+            const s = Math.sin(angle);
+            const rotationMatrix = new Float32Array([
+                c, 0, s, 0,
+                0, 1, 0, 0,
+                -s, 0, c, 0,
+                0, 0, 0, 1
+            ]);
+            gl.uniformMatrix4fv(locModel, false, rotationMatrix);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, voxelFBO);
+
+            // Iterate through Z slices
+            for (let z = 0; z < VOXEL_GRID_SIZE; z++) {
+                // Map z from 0..63 to -1..1
+                const zNorm = (z / (VOXEL_GRID_SIZE - 1)) * 2.0 - 1.0;
+
+                // Attach layer z to FBO
+                gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, voxelTexture, 0, z);
+
+                gl.clearColor(0, 0, 0, 0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                // Draw the mesh
+                // Note: The vertex shader needs to "slice" the mesh.
+                // A proper voxelizer requires geometry shaders or carefully tuned viewports/clipping.
+                // For this spaghetti test, we just draw the whole mesh and hope something lands in Z=0 clip space if we adjust projection?
+                // Actually, without a GS, standard rasterization only Rasterizes triangles that intersect the Z plane? No.
+                // Standard rasterization rasterizes triangles *within* the clip volume.
+                // So for "Solid Voxelization", we'd usually use conservative rasterization (extension).
+                // BUT, here is the trick: We can manually project vertices in VS such that z becomes "flat" for the current slice?
+                // Simpler for fuzzing: Just draw the mesh. 
+                // Triangles crossing the current View Volume (which is thin?) will be drawn.
+                // Wait, standard gl_Position defines x,y,z,w.
+                // We want to verify FBO Layer attachment churn.
+                // So let's just make the mesh "move" through the fixed slice plane.
+
+                // Adjust the model matrix Z translation per slice to "scan" the mesh efficiently
+                // Or simply rely on the fact that we are attaching different layers, but rendering to "z=0" in clip space?
+                // frameBufferTextureLayer makes that attachment the color buffer.
+                // Rasterization happens into that 2D plane.
+
+                // This is a "Surface Voxelizer".
+                // We only see shells.
+                gl.drawElements(gl.TRIANGLES, cubeIndices.length, gl.UNSIGNED_SHORT, 0);
+
+                poisonState();
+            }
+
+            // B. RAYMARCH PASS (Visualization)
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, 512, 512);
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT); // Fixed: clear only color buffer for main FB
+
+            gl.useProgram(rayProgram);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_3D, voxelTexture);
+            gl.uniform1i(gl.getUniformLocation(rayProgram, "u_voxels"), 0);
+            gl.uniform1f(gl.getUniformLocation(rayProgram, "u_time"), 1.0);
+
+            gl.bindVertexArray(quadVAO);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION ENDS HERE
+            // ==========================================
+
+            // 3. ERROR CHECKING
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

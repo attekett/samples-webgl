@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 required");
+
+    // ==========================================
+    // HYPERDIMENSIONAL PARTICLE STORM IMPLEMENTATION
+    // Complex WebGL2 biomass: Transform Feedback + UBOs + Samplers + Queries + MRT + Instancing + 3D Textures
+    // ==========================================
+
+    const PARTICLE_COUNT = 2048;
+    const INSTANCE_COUNT = 64;
+    const TEXTURE_SIZE_3D = 32;
+    const MRT_COUNT = 4;
+    const QUERY_COUNT = 8;
+
+    // FUZZING VARIABLES: Mix inline literals with parameters
+    const TF_MODE = gl.SEPARATE_ATTRIBS;
+    const BLEND_SRC = gl.SRC_ALPHA;
+    const BLEND_DST = gl.ONE_MINUS_SRC_ALPHA;
+    const TEX_FILTER_MIN = gl.LINEAR_MIPMAP_LINEAR;
+    const TEX_FILTER_MAG = gl.LINEAR;
+    const TEX_WRAP = gl.REPEAT;
+    const DEPTH_FUNC = gl.LEQUAL;
+    const CULL_FACE = gl.BACK;
+
+    // 1. CREATE SHARED UNIFORM BUFFER OBJECTS
+    const matrixUBO = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, matrixUBO);
+    const matrixData = new Float32Array(16 * 4); // projection, view, model matrices
+    // Initialize with identity matrices
+    for (let i = 0; i < 16 * 4; i++) matrixData[i] = i % 16 === i / 16 ? 1.0 : 0.0;
+    gl.bufferData(gl.UNIFORM_BUFFER, matrixData, gl.DYNAMIC_DRAW);
+
+    const particleUBO = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, particleUBO);
+    const particleParams = new Float32Array([1.0, 0.5, 2.0, 0.1, 0.8, 0.3, 1.5, 0.7]); // time, speed, scale, etc.
+    gl.bufferData(gl.UNIFORM_BUFFER, particleParams, gl.DYNAMIC_DRAW);
+
+    // 2. CREATE 3D TEXTURE FOR VOLUMETRIC DATA
+    const volumeTexture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+    const volumeData = new Uint8Array(TEXTURE_SIZE_3D * TEXTURE_SIZE_3D * TEXTURE_SIZE_3D * 4);
+    for (let i = 0; i < volumeData.length; i++) volumeData[i] = Math.random() * 255;
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, TEXTURE_SIZE_3D, TEXTURE_SIZE_3D, TEXTURE_SIZE_3D, 0, gl.RGBA, gl.UNSIGNED_BYTE, volumeData);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, TEX_FILTER_MIN);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, TEX_FILTER_MAG);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, TEX_WRAP);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, TEX_WRAP);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, TEX_WRAP);
+    gl.generateMipmap(gl.TEXTURE_3D);
+
+    // Create a simple 2D particle texture
+    const particleTexture = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, particleTexture);
+    const particleData = new Uint8Array(32 * 32 * 4);
+    for (let i = 0; i < particleData.length; i += 4) {
+        particleData[i] = 255; // R
+        particleData[i + 1] = 255; // G
+        particleData[i + 2] = 255; // B
+        particleData[i + 3] = 255; // A
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, particleData);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    // 3. CREATE SAMPLER OBJECTS
+    const volumeSampler = gl.createSampler();
+    gl.samplerParameteri(volumeSampler, gl.TEXTURE_MIN_FILTER, TEX_FILTER_MIN);
+    gl.samplerParameteri(volumeSampler, gl.TEXTURE_MAG_FILTER, TEX_FILTER_MAG);
+    gl.samplerParameteri(volumeSampler, gl.TEXTURE_WRAP_S, TEX_WRAP);
+    gl.samplerParameteri(volumeSampler, gl.TEXTURE_WRAP_T, TEX_WRAP);
+    gl.samplerParameteri(volumeSampler, gl.TEXTURE_WRAP_R, TEX_WRAP);
+
+    const particleSampler = gl.createSampler();
+    gl.samplerParameteri(particleSampler, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.samplerParameteri(particleSampler, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+    // 4. CREATE TRANSFORM FEEDBACK BUFFERS
+    let tfInputs = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
+    let tfOutputs = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
+
+    const particleData = new Float32Array(PARTICLE_COUNT * 4); // position + velocity
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        particleData[i * 4] = (Math.random() - 0.5) * 4.0;
+        particleData[i * 4 + 1] = (Math.random() - 0.5) * 4.0;
+        particleData[i * 4 + 2] = (Math.random() - 0.5) * 4.0;
+        particleData[i * 4 + 3] = 1.0;
+    }
+
+    for (let i = 0; i < 3; i++) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfInputs[i]);
+        gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.STREAM_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfOutputs[i]);
+        gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.STREAM_DRAW);
+    }
+
+    // 5. CREATE TRANSFORM FEEDBACK OBJECT
+    const transformFeedback = gl.createTransformFeedback();
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfOutputs[0]);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, tfOutputs[1]);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 2, tfOutputs[2]);
+
+    // 6. CREATE MULTIPLE RENDER TARGETS FRAMEBUFFER
+    const mrtFramebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFramebuffer);
+
+    const mrtTextures = [];
+    const mrtRenderbuffers = [];
+
+    for (let i = 0; i < MRT_COUNT; i++) {
+        mrtTextures[i] = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0 + i + 1);
+        gl.bindTexture(gl.TEXTURE_2D, mrtTextures[i]);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, mrtTextures[i], 0);
+
+        mrtRenderbuffers[i] = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, mrtRenderbuffers[i]);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, 256, 256);
+        if (i === 0) {
+            gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, mrtRenderbuffers[i]);
+        }
+    }
+
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
+
+    // 7. CREATE QUERY OBJECTS
+    const queries = [];
+    for (let i = 0; i < QUERY_COUNT; i++) {
+        queries[i] = gl.createQuery();
+    }
+
+    // 8. CREATE SHADERS WITH COMPLEX INTERACTIONS
+
+    // Transform Feedback Update Shader
+    const tfVertexShader = `#version 300 es
+    precision highp float;
+    precision highp sampler3D;
+
+    layout(location = 0) in vec4 aPosition;
+    layout(location = 1) in vec4 aVelocity;
+    layout(location = 2) in float aLife;
+
+    uniform float uDeltaTime;
+    uniform vec3 uForce;
+    uniform sampler3D uVolumeTex;
+
+    out vec4 vPosition;
+    out vec4 vVelocity;
+    out float vLife;
+
+    void main() {
+        vec3 pos = aPosition.xyz;
+        vec3 vel = aVelocity.xyz;
+        float life = aLife;
+
+        // Sample 3D texture for force field
+        vec3 force = texture(uVolumeTex, pos * 0.1 + 0.5).xyz * 2.0 - 1.0;
+        vel += (uForce + force) * uDeltaTime;
+        pos += vel * uDeltaTime;
+        life -= uDeltaTime * 0.5;
+
+        // Boundary conditions
+        if (abs(pos.x) > 2.0) vel.x *= -0.8;
+        if (abs(pos.y) > 2.0) vel.y *= -0.8;
+        if (abs(pos.z) > 2.0) vel.z *= -0.8;
+
+        vPosition = vec4(pos, 1.0);
+        vVelocity = vec4(vel, 0.0);
+        vLife = life > 0.0 ? life : 1.0;
+    }`;
+
+    // Instanced Rendering Vertex Shader
+    const renderVertexShader = `#version 300 es
+    layout(location = 0) in vec4 aPosition;
+    layout(location = 1) in vec4 aVelocity;
+    layout(location = 2) in float aLife;
+    layout(location = 3) in mat4 aInstanceMatrix;
+
+    uniform Matrices {
+        mat4 uProjection;
+        mat4 uView;
+        mat4 uModel;
+    };
+
+    uniform ParticleParams {
+        float uTime;
+        float uSize;
+        vec3 uColor;
+        float uAlpha;
+    };
+
+    out vec3 vColor;
+    out float vAlpha;
+    out vec2 vTexCoord;
+
+    void main() {
+        vec4 worldPos = uModel * aInstanceMatrix * aPosition;
+        gl_Position = uProjection * uView * worldPos;
+        gl_PointSize = uSize * (aLife * 0.5 + 0.5);
+
+        vColor = uColor * (aVelocity.xyz * 0.5 + 0.5);
+        vAlpha = uAlpha * aLife;
+        vTexCoord = aPosition.xy * 0.5 + 0.5;
+    }`;
+
+    // Multiple Render Target Fragment Shader
+    const renderFragmentShader = `#version 300 es
+    precision highp float;
+    precision highp sampler2D;
+    precision highp sampler3D;
+
+    uniform sampler2D uParticleTex;
+    uniform sampler3D uVolumeTex;
+    uniform ParticleParams {
+        float uTime;
+        float uSize;
+        vec3 uColor;
+        float uAlpha;
+    };
+
+    in vec3 vColor;
+    in float vAlpha;
+    in vec2 vTexCoord;
+
+    layout(location = 0) out vec4 fragColor0;
+    layout(location = 1) out vec4 fragColor1;
+    layout(location = 2) out vec4 fragColor2;
+    layout(location = 3) out vec4 fragColor3;
+
+    void main() {
+        vec4 particleColor = texture(uParticleTex, vTexCoord);
+        vec4 volumeColor = texture(uVolumeTex, vec3(vTexCoord, sin(uTime) * 0.5 + 0.5));
+
+        fragColor0 = vec4(vColor, vAlpha) * particleColor;
+        fragColor1 = vec4(volumeColor.rgb * vColor, vAlpha);
+        fragColor2 = vec4(vColor.r, volumeColor.g, vColor.b, vAlpha);
+        fragColor3 = vec4(normalize(vColor + volumeColor.rgb), vAlpha);
+    }`;
+
+    // 9. COMPILE AND LINK PROGRAMS
+    function createShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            throw new Error('Shader compile failed: ' + gl.getShaderInfoLog(shader));
+        }
+        return shader;
+    }
+
+    // Transform feedback program
+    const tfFragmentShader = `#version 300 es
+    precision highp float;
+    void main() { }`;
+
+    const tfProgram = gl.createProgram();
+    gl.attachShader(tfProgram, createShader(gl.VERTEX_SHADER, tfVertexShader));
+    gl.attachShader(tfProgram, createShader(gl.FRAGMENT_SHADER, tfFragmentShader));
+    gl.transformFeedbackVaryings(tfProgram, ['vPosition', 'vVelocity', 'vLife'], TF_MODE);
+    gl.linkProgram(tfProgram);
+    if (!gl.getProgramParameter(tfProgram, gl.LINK_STATUS)) {
+        throw new Error('TF program link failed: ' + gl.getProgramInfoLog(tfProgram));
+    }
+
+    // Rendering program
+    const renderProgram = gl.createProgram();
+    gl.attachShader(renderProgram, createShader(gl.VERTEX_SHADER, renderVertexShader));
+    gl.attachShader(renderProgram, createShader(gl.FRAGMENT_SHADER, renderFragmentShader));
+    gl.linkProgram(renderProgram);
+    if (!gl.getProgramParameter(renderProgram, gl.LINK_STATUS)) {
+        throw new Error('Render program link failed: ' + gl.getProgramInfoLog(renderProgram));
+    }
+
+    // 10. SETUP UNIFORM BLOCK BINDINGS (only if blocks exist)
+    gl.useProgram(tfProgram);
+    const tfMatricesIndex = gl.getUniformBlockIndex(tfProgram, 'Matrices');
+    const tfParticleIndex = gl.getUniformBlockIndex(tfProgram, 'ParticleParams');
+    if (tfMatricesIndex !== gl.INVALID_INDEX) gl.uniformBlockBinding(tfProgram, tfMatricesIndex, 0);
+    if (tfParticleIndex !== gl.INVALID_INDEX) gl.uniformBlockBinding(tfProgram, tfParticleIndex, 1);
+
+    gl.useProgram(renderProgram);
+    const renderMatricesIndex = gl.getUniformBlockIndex(renderProgram, 'Matrices');
+    const renderParticleIndex = gl.getUniformBlockIndex(renderProgram, 'ParticleParams');
+    if (renderMatricesIndex !== gl.INVALID_INDEX) gl.uniformBlockBinding(renderProgram, renderMatricesIndex, 0);
+    if (renderParticleIndex !== gl.INVALID_INDEX) gl.uniformBlockBinding(renderProgram, renderParticleIndex, 1);
+
+    // 11. CREATE INSTANCE DATA
+    const instanceMatrices = new Float32Array(INSTANCE_COUNT * 16);
+    for (let i = 0; i < INSTANCE_COUNT; i++) {
+        const offset = i * 16;
+        // Identity matrix with slight rotation
+        instanceMatrices[offset + 0] = 1.0;
+        instanceMatrices[offset + 5] = 1.0;
+        instanceMatrices[offset + 10] = 1.0;
+        instanceMatrices[offset + 15] = 1.0;
+        instanceMatrices[offset + 0] = Math.cos(i * 0.1);
+        instanceMatrices[offset + 1] = Math.sin(i * 0.1);
+        instanceMatrices[offset + 4] = -Math.sin(i * 0.1);
+        instanceMatrices[offset + 5] = Math.cos(i * 0.1);
+    }
+
+    const instanceBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, instanceMatrices, gl.STATIC_DRAW);
+
+    // 12. SETUP VERTEX ARRAY OBJECTS
+    const tfVAO = gl.createVertexArray();
+    gl.bindVertexArray(tfVAO);
+    for (let i = 0; i < 3; i++) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfInputs[i]);
+        gl.enableVertexAttribArray(i);
+        gl.vertexAttribPointer(i, 4, gl.FLOAT, false, 0, 0);
+    }
+
+    const renderVAO = gl.createVertexArray();
+    gl.bindVertexArray(renderVAO);
+    // Position
+    gl.bindBuffer(gl.ARRAY_BUFFER, tfInputs[0]);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+    // Velocity
+    gl.bindBuffer(gl.ARRAY_BUFFER, tfInputs[1]);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0);
+    // Life
+    gl.bindBuffer(gl.ARRAY_BUFFER, tfInputs[2]);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 0, 0);
+    // Instance matrix
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+    for (let i = 0; i < 4; i++) {
+        gl.enableVertexAttribArray(3 + i);
+        gl.vertexAttribPointer(3 + i, 4, gl.FLOAT, false, 64, i * 16);
+        gl.vertexAttribDivisor(3 + i, 1);
+    }
+
+    // 13. MAIN RENDER LOOP (MULTIPLE PASSES FOR BIOMASS)
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(DEPTH_FUNC);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(BLEND_SRC, BLEND_DST);
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(CULL_FACE);
+
+    // Bind UBOs
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, matrixUBO);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, particleUBO);
+
+    // Bind samplers
+    gl.bindSampler(0, volumeSampler);
+    gl.bindSampler(1, particleSampler);
+    gl.bindSampler(2, particleSampler);
+
+    // Clear screen
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.clearColor(0.1, 0.1, 0.15, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // PASS 1: Transform Feedback Update
+    gl.useProgram(tfProgram);
+    gl.bindVertexArray(tfVAO);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+
+    // Update UBO data
+    gl.bindBuffer(gl.UNIFORM_BUFFER, particleUBO);
+    particleParams[0] = performance.now() * 0.001; // time
+    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, particleParams);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+    gl.uniform1i(gl.getUniformLocation(tfProgram, 'uVolumeTex'), 0);
+
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.beginTransformFeedback(gl.POINTS);
+    gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+    gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
+
+    // Swap buffers for ping-pong
+    const temp = tfInputs;
+    tfInputs = tfOutputs;
+    tfOutputs = temp;
+
+    // PASS 2: Render to Multiple Targets with Instancing and Queries
+    gl.useProgram(renderProgram);
+    gl.bindVertexArray(renderVAO);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFramebuffer);
+
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // Use queries for conditional rendering
+    gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[0]);
+
+    gl.drawArraysInstanced(gl.POINTS, 0, PARTICLE_COUNT, INSTANCE_COUNT);
+
+    gl.endQuery(gl.ANY_SAMPLES_PASSED);
+
+    // PASS 3: Composite to screen
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // Simple full-screen quad for compositing
+    const quadVertices = new Float32Array([
+        -1, -1, 0, 0,
+         1, -1, 1, 0,
+        -1,  1, 0, 1,
+         1,  1, 1, 1
+    ]);
+
+    const quadBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+
+    const quadVAO = gl.createVertexArray();
+    gl.bindVertexArray(quadVAO);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+
+    // Bind textures for rendering
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, particleTexture);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+
+    const particleTexLoc = gl.getUniformLocation(renderProgram, 'uParticleTex');
+    const volumeTexLoc = gl.getUniformLocation(renderProgram, 'uVolumeTex');
+    if (particleTexLoc) gl.uniform1i(particleTexLoc, 1);
+    if (volumeTexLoc) gl.uniform1i(volumeTexLoc, 2);
+
+    // Final composite render
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // ERROR CHECK
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+        throw new Error(`WebGL Error: ${error}`);
+    }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html></contents>
+</xai:function_call">

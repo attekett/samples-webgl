@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: WebGL2 core features (no extensions required)
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) throw new Error("WebGL2 not supported");
+
+ // 1. EXTENSION GATING (none required for WebGL2 core features)
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS (none)
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // FUZZING VARIABLES: Mix inline literals with parameters for mutation targeting
+ const NUM_PARTICLES = 1000;
+ const TRANSFORM_MODE = gl.SEPARATE_ATTRIBS;
+ const PRIMITIVE_MODE = gl.POINTS;
+ const STATE_CHANGE_COUNT = 25;
+
+ // Create simple vertex data (positions)
+ const vertices = new Float32Array(NUM_PARTICLES * 2);
+ for (let i = 0; i < NUM_PARTICLES; i++) {
+   vertices[i * 2] = (Math.random() - 0.5) * 2.0;
+   vertices[i * 2 + 1] = (Math.random() - 0.5) * 2.0;
+ }
+
+ // Create input and output buffers
+ const inputBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, inputBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STREAM_DRAW);
+
+ const outputBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, outputBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices.byteLength, gl.STREAM_DRAW);
+
+ // Simple vertex shader with transform feedback
+ const vertexShaderSource = `#version 300 es
+   in vec2 a_position;
+
+   out vec2 v_position;
+
+   void main() {
+     v_position = a_position + vec2(0.01, 0.01); // Simple offset for demonstration
+     gl_Position = vec4(v_position, 0.0, 1.0);
+     gl_PointSize = 2.0;
+   }
+ `;
+
+ // Simple fragment shader
+ const fragmentShaderSource = `#version 300 es
+   precision mediump float;
+
+   in vec2 v_position;
+
+   out vec4 fragColor;
+
+   void main() {
+     fragColor = vec4(1.0, 0.5, 0.0, 1.0);
+   }
+ `;
+
+ // Create and compile shaders
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error('Vertex shader compilation failed: ' + gl.getShaderInfoLog(vertexShader));
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error('Fragment shader compilation failed: ' + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ // Create program with transform feedback
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+
+ // Specify transform feedback varyings
+ const varyings = ['v_position'];
+ gl.transformFeedbackVaryings(program, varyings, TRANSFORM_MODE);
+
+ gl.linkProgram(program);
+
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+ }
+
+ gl.useProgram(program);
+
+ // STATE POISONING: Heavy state changes (25+ operations)
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+   gl.cullFace(gl.BACK);
+   gl.depthFunc(gl.LESS);
+   gl.viewport(0, 0, 256, 256);
+ }
+
+ // Get attribute location
+ const positionLoc = gl.getAttribLocation(program, 'a_position');
+
+ // Bind input buffer
+ gl.bindBuffer(gl.ARRAY_BUFFER, inputBuffer);
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+ // Create transform feedback object
+ const transformFeedback = gl.createTransformFeedback();
+ gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedback);
+
+ // Bind output buffer
+ gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, outputBuffer);
+
+ // Begin transform feedback and draw
+ gl.beginTransformFeedback(PRIMITIVE_MODE);
+ gl.drawArrays(PRIMITIVE_MODE, 0, NUM_PARTICLES);
+ gl.endTransformFeedback();
+
+ // STATE POISONING: Additional state changes
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+ gl.disable(gl.DEPTH_TEST);
+ gl.viewport(0, 0, 256, 256);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+ throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ console.error(err);
+});
+</script>
+</body>
+</html>

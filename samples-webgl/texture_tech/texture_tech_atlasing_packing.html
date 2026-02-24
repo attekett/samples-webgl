@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: Define required extensions here
+const REQUIRED_EXTENSIONS = [
+ // No extensions needed - core WebGL2 features
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+   throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // 1. EXTENSION GATING
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+   // Signal to the Test Runner that this is an environment limit, not a code bug
+   throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // FUZZING VARIABLES - Mix of inline literals and parameters
+ const ATLAS_SIZE = 256;
+ const SUB_TEXTURE_COUNT = 4;
+ const SUB_TEXTURE_SIZE = 64;
+ const COORDINATE_SCALE = 0.8;
+ const OFFSET_BIAS = 0.1;
+ const STATE_CHANGE_COUNT = 25;
+ const TEXTURE_BINDING_CYCLES = 8;
+ const ATLAS_LAYERS = 1;
+
+ // Create texture atlas with multiple sub-textures
+ const atlasTexture = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, atlasTexture);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+ // Generate atlas data with multiple colorful sub-textures
+ const atlasData = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE * 4);
+ for (let i = 0; i < SUB_TEXTURE_COUNT; i++) {
+   const x = (i % 2) * SUB_TEXTURE_SIZE;
+   const y = Math.floor(i / 2) * SUB_TEXTURE_SIZE;
+   const r = (i * 64) % 255;
+   const g = (i * 128) % 255;
+   const b = (i * 192) % 255;
+
+   for (let sy = 0; sy < SUB_TEXTURE_SIZE; sy++) {
+     for (let sx = 0; sx < SUB_TEXTURE_SIZE; sx++) {
+       const pixelX = x + sx;
+       const pixelY = y + sy;
+       if (pixelX < ATLAS_SIZE && pixelY < ATLAS_SIZE) {
+         const index = (pixelY * ATLAS_SIZE + pixelX) * 4;
+         atlasData[index] = r;
+         atlasData[index + 1] = g;
+         atlasData[index + 2] = b;
+         atlasData[index + 3] = 255;
+       }
+     }
+   }
+ }
+
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, ATLAS_SIZE, ATLAS_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlasData);
+
+ // Create vertex buffer for quad geometry
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ const vertices = new Float32Array([
+   -1.0, -1.0, 0.0, 0.0,
+   1.0, -1.0, 1.0, 0.0,
+   -1.0, 1.0, 0.0, 1.0,
+   1.0, 1.0, 1.0, 1.0
+ ]);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+ // Create shader program for atlas sampling
+ const vertexShaderSource = `#version 300 es
+ in vec2 a_position;
+ in vec2 a_texCoord;
+ out vec2 v_texCoord;
+ uniform float u_time;
+ uniform float u_offsetBias;
+
+ void main() {
+   // Transform coordinates with time-based animation and bias
+   vec2 transformedCoord = a_texCoord;
+   transformedCoord.x += sin(u_time * 0.01) * u_offsetBias;
+   transformedCoord.y += cos(u_time * 0.007) * u_offsetBias;
+
+   v_texCoord = transformedCoord;
+   gl_Position = vec4(a_position, 0.0, 1.0);
+ }
+ `;
+
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+ in vec2 v_texCoord;
+ out vec4 fragColor;
+ uniform sampler2D u_atlasTexture;
+ uniform float u_coordinateScale;
+ uniform int u_textureIndex;
+ uniform vec2 u_atlasOffset;
+ uniform vec2 u_atlasScale;
+
+ void main() {
+   // Calculate atlas coordinates with transformations for specific sub-texture
+   vec2 atlasCoord = v_texCoord * u_coordinateScale;
+   atlasCoord = atlasCoord * u_atlasScale + u_atlasOffset;
+
+   // Sample from texture atlas
+   vec4 color = texture(u_atlasTexture, atlasCoord);
+
+   // Apply coordinate-based color modulation with texture index influence
+   float modulation = (v_texCoord.x + v_texCoord.y) * 0.5 + 0.5;
+   modulation *= (float(u_textureIndex) * 0.1 + 0.8);
+   color.rgb *= modulation;
+
+   fragColor = color;
+ }
+ `;
+
+ // Compile shaders
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error('Vertex shader compilation failed: ' + gl.getShaderInfoLog(vertexShader));
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error('Fragment shader compilation failed: ' + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ // Create program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+ }
+ gl.useProgram(program);
+
+ // Set up attributes and uniforms
+ const positionLocation = gl.getAttribLocation(program, 'a_position');
+ const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+ const atlasLocation = gl.getUniformLocation(program, 'u_atlasTexture');
+ const timeLocation = gl.getUniformLocation(program, 'u_time');
+ const scaleLocation = gl.getUniformLocation(program, 'u_coordinateScale');
+ const indexLocation = gl.getUniformLocation(program, 'u_textureIndex');
+ const offsetLocation = gl.getUniformLocation(program, 'u_offsetBias');
+ const atlasOffsetLocation = gl.getUniformLocation(program, 'u_atlasOffset');
+ const atlasScaleLocation = gl.getUniformLocation(program, 'u_atlasScale');
+
+ gl.enableVertexAttribArray(positionLocation);
+ gl.enableVertexAttribArray(texCoordLocation);
+ gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 16, 0);
+ gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 16, 8);
+
+ // STATE POISONING - 25+ state changes for fragile state machine
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   // Capability toggling
+   gl.enable(gl.BLEND);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+
+   // Blend state changes
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+
+   // Texture binding cycles
+   for (let j = 0; j < TEXTURE_BINDING_CYCLES; j++) {
+     gl.activeTexture(gl.TEXTURE0 + j);
+     gl.bindTexture(gl.TEXTURE_2D, atlasTexture);
+     gl.bindTexture(gl.TEXTURE_2D, null);
+   }
+
+   // Buffer binding churn
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+   // Viewport changes
+   gl.viewport(0, 0, 256, 256);
+   gl.viewport(i % 16, i % 16, 256 - i % 16, 256 - i % 16);
+
+   // Scissor changes
+   gl.scissor(0, 0, 256, 256);
+   gl.scissor(i % 32, i % 32, 256 - i % 32, 256 - i % 32);
+
+   // Clear state changes
+   gl.clearColor(i / STATE_CHANGE_COUNT, 0.0, 0.0, 1.0);
+   gl.clear(gl.COLOR_BUFFER_BIT);
+ }
+
+ // Animation loop
+ function render(time) {
+   // More state poisoning in render loop
+   gl.enable(gl.BLEND);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+   // Bind texture and set uniforms
+   gl.activeTexture(gl.TEXTURE0);
+   gl.bindTexture(gl.TEXTURE_2D, atlasTexture);
+   gl.uniform1i(atlasLocation, 0);
+
+   // Render multiple atlas sub-textures
+   for (let i = 0; i < SUB_TEXTURE_COUNT; i++) {
+     // Calculate atlas offset and scale for this sub-texture
+     const cols = 2;
+     const rows = 2;
+     const col = i % cols;
+     const row = Math.floor(i / cols);
+     const subTextureWidth = SUB_TEXTURE_SIZE / ATLAS_SIZE;
+     const subTextureHeight = SUB_TEXTURE_SIZE / ATLAS_SIZE;
+     const offsetX = col * subTextureWidth;
+     const offsetY = row * subTextureHeight;
+
+     // Set uniforms for this sub-texture
+     gl.uniform1f(timeLocation, time);
+     gl.uniform1f(scaleLocation, COORDINATE_SCALE);
+     gl.uniform1i(indexLocation, i);
+     gl.uniform1f(offsetLocation, OFFSET_BIAS);
+     gl.uniform2f(atlasOffsetLocation, offsetX, offsetY);
+     gl.uniform2f(atlasScaleLocation, subTextureWidth, subTextureHeight);
+
+     // Calculate viewport for sub-texture display
+     const subWidth = 256 / cols;
+     const subHeight = 256 / rows;
+
+     gl.viewport(col * subWidth, row * subHeight, subWidth, subHeight);
+
+     // Draw quad
+     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+   }
+
+   // Continue animation
+   requestAnimationFrame(render);
+ }
+
+ // Start animation
+ render(0);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) throw new Error("WebGL2 required");
+
+ // HIGH-BIOMASS FUZZING SEED: Timer Queries + Sync Objects + 3D Textures + MRT + Instanced Rendering
+ // Biomass: Complex state machine with GPU synchronization, volumetric sampling, deferred rendering
+
+ const PARTICLE_COUNT = 2048;
+ const INSTANCE_BATCH_SIZE = 256;
+ const MRT_TARGETS = 4;
+ const VOLUME_SIZE = 32;
+ const TIMER_QUERY_COUNT = 8;
+ const SYNC_OBJECT_COUNT = 4;
+ const ATOMIC_BUFFER_SIZE = 1024;
+
+ // FUZZING PARAMETERS: Mix literals with variables for mutation surface
+ const COMPUTE_LOCAL_SIZE = 128;
+ const VOLUME_WRAP_MODE = gl.REPEAT;
+ const MRT_BLEND_SRC = gl.SRC_ALPHA;
+ const MRT_BLEND_DST = gl.ONE_MINUS_SRC_ALPHA;
+ const DEPTH_FUNC = gl.LEQUAL;
+ const STENCIL_REF = 7;
+ const CULL_FACE = gl.BACK;
+
+ // INITIAL STATE CHURN: Heavy state changes to create fragile state machine
+ gl.viewport(0, 0, 256, 256);
+ gl.clearColor(0.01, 0.02, 0.04, 1.0);
+ gl.clearDepth(1.0);
+ gl.clearStencil(0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+ // Enable/disable cycle for state poisoning
+ gl.enable(gl.DEPTH_TEST);
+ gl.disable(gl.DEPTH_TEST);
+ gl.enable(gl.STENCIL_TEST);
+ gl.disable(gl.STENCIL_TEST);
+ gl.enable(gl.BLEND);
+ gl.disable(gl.BLEND);
+ gl.enable(gl.CULL_FACE);
+ gl.disable(gl.CULL_FACE);
+ gl.enable(gl.SCISSOR_TEST);
+ gl.disable(gl.SCISSOR_TEST);
+
+ // Re-enable final state
+ gl.enable(gl.DEPTH_TEST);
+ gl.enable(gl.STENCIL_TEST);
+ gl.enable(gl.BLEND);
+ gl.enable(gl.CULL_FACE);
+ gl.depthFunc(DEPTH_FUNC);
+ gl.stencilFunc(gl.ALWAYS, STENCIL_REF, 0xFF);
+ gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+ gl.blendFunc(MRT_BLEND_SRC, MRT_BLEND_DST);
+ gl.cullFace(CULL_FACE);
+
+ // 1. CREATE PARTICLE DATA BUFFER
+ const particleBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+ const particleData = new Float32Array(PARTICLE_COUNT * 8); // pos.xyz, vel.xyz, life, type
+ for (let i = 0; i < particleData.length; i++) {
+  particleData[i] = (Math.random() - 0.5) * 2.0;
+ }
+ gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.DYNAMIC_DRAW);
+
+ // 2. CREATE 3D TEXTURE FOR VOLUMETRIC FORCE FIELD
+ const volumeTexture = gl.createTexture();
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+ const volumeData = new Uint8Array(VOLUME_SIZE * VOLUME_SIZE * VOLUME_SIZE * 4);
+ for (let z = 0; z < VOLUME_SIZE; z++) {
+  for (let y = 0; y < VOLUME_SIZE; y++) {
+   for (let x = 0; x < VOLUME_SIZE; x++) {
+    const idx = (z * VOLUME_SIZE * VOLUME_SIZE + y * VOLUME_SIZE + x) * 4;
+    volumeData[idx] = Math.sin(x * 0.1) * 127 + 128;     // R: force X
+    volumeData[idx + 1] = Math.cos(y * 0.1) * 127 + 128; // G: force Y
+    volumeData[idx + 2] = Math.sin(z * 0.1) * 127 + 128; // B: force Z
+    volumeData[idx + 3] = 255;                            // A: density
+   }
+  }
+ }
+ gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, VOLUME_SIZE, VOLUME_SIZE, VOLUME_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, volumeData);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, VOLUME_WRAP_MODE);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, VOLUME_WRAP_MODE);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, VOLUME_WRAP_MODE);
+ gl.generateMipmap(gl.TEXTURE_3D);
+
+ // 3. CREATE SAMPLER OBJECTS
+ const volumeSampler = gl.createSampler();
+ gl.samplerParameteri(volumeSampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+ gl.samplerParameteri(volumeSampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.samplerParameteri(volumeSampler, gl.TEXTURE_WRAP_S, VOLUME_WRAP_MODE);
+ gl.samplerParameteri(volumeSampler, gl.TEXTURE_WRAP_T, VOLUME_WRAP_MODE);
+ gl.samplerParameteri(volumeSampler, gl.TEXTURE_WRAP_R, VOLUME_WRAP_MODE);
+
+ const particleSampler = gl.createSampler();
+ gl.samplerParameteri(particleSampler, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+ gl.samplerParameteri(particleSampler, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+ // 4. CREATE MRT FRAMEBUFFER WITH MULTIPLE TARGETS
+ const mrtFbo = gl.createFramebuffer();
+ gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFbo);
+ const mrtTextures = [];
+ const mrtAttachments = [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3];
+
+ for (let i = 0; i < MRT_TARGETS; i++) {
+  const tex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1 + i);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, mrtAttachments[i], gl.TEXTURE_2D, tex, 0);
+  mrtTextures.push(tex);
+ }
+ gl.drawBuffers(mrtAttachments);
+
+ const depthTex = gl.createTexture();
+ gl.activeTexture(gl.TEXTURE5);
+ gl.bindTexture(gl.TEXTURE_2D, depthTex);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH24_STENCIL8, 256, 256, 0, gl.DEPTH_STENCIL, gl.UNSIGNED_INT_24_8, null);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, depthTex, 0);
+
+ // 5. CREATE TIMER QUERIES FOR GPU PROFILING
+ const timerQueries = [];
+ for (let i = 0; i < TIMER_QUERY_COUNT; i++) {
+  timerQueries.push(gl.createQuery());
+ }
+
+ // 6. CREATE SYNC OBJECTS FOR CPU-GPU SYNCHRONIZATION
+ const syncObjects = [];
+ for (let i = 0; i < SYNC_OBJECT_COUNT; i++) {
+  syncObjects.push(null);
+ }
+
+ // SHADERS: Simple particle simulation shader
+ const tfVertexShaderSrc = `#version 300 es
+precision highp float;
+precision highp int;
+
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 velocity;
+layout(location = 2) in float life;
+layout(location = 3) in uint type;
+
+uniform highp sampler3D volumeTex;
+uniform float deltaTime;
+uniform vec3 forceScale;
+
+out vec3 outPosition;
+out vec3 outVelocity;
+out float outLife;
+flat out uint outType;
+
+void main() {
+ vec3 pos = position;
+ vec3 vel = velocity;
+ float lifeVal = life;
+ uint typeVal = type;
+
+ // Sample 3D texture for force field
+ vec3 samplePos = (pos + 1.0) * 0.5; // Convert to 0-1 range
+ vec4 force = texture(volumeTex, samplePos) * 2.0 - 1.0; // Convert to -1 to 1
+
+ // Apply force and update physics
+ vel += force.xyz * forceScale * deltaTime;
+ pos += vel * deltaTime;
+
+ // Boundary conditions
+ if (any(greaterThan(abs(pos), vec3(1.0)))) {
+  pos = clamp(pos, vec3(-1.0), vec3(1.0));
+  vel *= -0.8; // Bounce with damping
+ }
+
+ // Update life
+ lifeVal -= deltaTime * 0.1;
+ if (lifeVal <= 0.0) {
+  lifeVal = 1.0;
+  pos = (vec3(float(gl_VertexID % 17), float((gl_VertexID / 17) % 17), float(gl_VertexID / 289)) - 8.0) * 0.1;
+  vel = vec3(0.0);
+ }
+
+ outPosition = pos;
+ outVelocity = vel;
+ outLife = lifeVal;
+ outType = typeVal;
+}
+`;
+
+ const renderVertexShaderSrc = `#version 300 es
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 velocity;
+layout(location = 2) in float life;
+layout(location = 3) in uint type;
+
+uniform mat4 modelViewProj;
+uniform float instanceOffset;
+uniform vec3 colorTint;
+
+out vec3 vVelocity;
+out float vLife;
+out vec3 vColor;
+
+void main() {
+ vec3 pos = position + vec3(instanceOffset, 0.0, 0.0);
+ gl_Position = modelViewProj * vec4(pos, 1.0);
+ vVelocity = velocity;
+ vLife = life;
+ vColor = colorTint * (0.5 + 0.5 * sin(life * 10.0));
+}
+`;
+
+ const renderFragmentShaderSrc = `#version 300 es
+precision highp float;
+
+in vec3 vVelocity;
+in float vLife;
+in vec3 vColor;
+
+layout(location = 0) out vec4 colorOut;
+layout(location = 1) out vec4 velocityOut;
+layout(location = 2) out vec4 normalOut;
+layout(location = 3) out vec4 lifeOut;
+
+void main() {
+ float alpha = vLife;
+ colorOut = vec4(vColor, alpha);
+ velocityOut = vec4(normalize(vVelocity) * 0.5 + 0.5, alpha);
+ normalOut = vec4(0.0, 0.0, 1.0, alpha);
+ lifeOut = vec4(vLife, vLife * vLife, sqrt(vLife), alpha);
+}
+`;
+
+ // CREATE PROGRAMS
+ const tfProgram = gl.createProgram();
+ const tfVs = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(tfVs, tfVertexShaderSrc);
+ gl.compileShader(tfVs);
+ gl.attachShader(tfProgram, tfVs);
+ const tfFs = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(tfFs, `void main() {}`);
+ gl.compileShader(tfFs);
+ gl.attachShader(tfProgram, tfFs);
+ gl.transformFeedbackVaryings(tfProgram, ['outPosition', 'outVelocity', 'outLife', 'outType'], gl.SEPARATE_ATTRIBS);
+ gl.linkProgram(tfProgram);
+
+ const renderProgram = gl.createProgram();
+ const renderVs = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(renderVs, renderVertexShaderSrc);
+ gl.compileShader(renderVs);
+ gl.attachShader(renderProgram, renderVs);
+ const renderFs = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(renderFs, renderFragmentShaderSrc);
+ gl.compileShader(renderFs);
+ gl.attachShader(renderProgram, renderFs);
+ gl.linkProgram(renderProgram);
+
+ // UNIFORMS AND BINDINGS
+ gl.useProgram(tfProgram);
+ gl.uniform1i(gl.getUniformLocation(tfProgram, "volumeTex"), 0);
+ gl.uniform1f(gl.getUniformLocation(tfProgram, "deltaTime"), 0.016);
+ gl.uniform3f(gl.getUniformLocation(tfProgram, "forceScale"), 1.0, 1.0, 1.0);
+
+ gl.useProgram(renderProgram);
+ const mvpLoc = gl.getUniformLocation(renderProgram, "modelViewProj");
+ const offsetLoc = gl.getUniformLocation(renderProgram, "instanceOffset");
+ const tintLoc = gl.getUniformLocation(renderProgram, "colorTint");
+
+ // CREATE INSTANCE DATA
+ const instanceBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+ const instanceData = new Float32Array(INSTANCE_BATCH_SIZE * 4);
+ for (let i = 0; i < instanceData.length; i++) instanceData[i] = (Math.random() - 0.5) * 0.1;
+ gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.STATIC_DRAW);
+
+ // STATE CHURN: Bind/unbind cycle for fragility
+ gl.bindBuffer(gl.ARRAY_BUFFER, null);
+ gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, null);
+ gl.bindBuffer(gl.ATOMIC_COUNTER_BUFFER, null);
+ gl.bindTexture(gl.TEXTURE_3D, null);
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.useProgram(null);
+
+ // RE-BIND EVERYTHING: Complex state restoration
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+ gl.bindSampler(0, volumeSampler);
+ gl.useProgram(tfProgram);
+
+ // START TIMER QUERY FOR SIMULATION PASS
+ gl.beginQuery(gl.TIME_ELAPSED, timerQueries[0]);
+
+ // SIMPLE SIMULATION: Just run the shader to update particles (no feedback capture for simplicity)
+ gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+ gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0); // position
+ gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 32, 12); // velocity
+ gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 32, 24); // life
+ gl.vertexAttribIPointer(3, 1, gl.UNSIGNED_INT, 32, 28); // type
+ gl.enableVertexAttribArray(0);
+ gl.enableVertexAttribArray(1);
+ gl.enableVertexAttribArray(2);
+ gl.enableVertexAttribArray(3);
+
+ // Draw to update particles (no transform feedback capture)
+ gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+
+ // END TIMER QUERY
+ gl.endQuery(gl.TIME_ELAPSED);
+
+ // CREATE SYNC OBJECT FOR SIMULATION COMPLETION
+ syncObjects[0] = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+ // RENDER PASS: MRT with instanced particles
+ gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFbo);
+ gl.viewport(0, 0, 256, 256);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+ gl.useProgram(renderProgram);
+ gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+ gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0); // position
+ gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 32, 12); // velocity
+ gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 32, 24); // life
+ gl.vertexAttribIPointer(3, 1, gl.UNSIGNED_INT, 32, 28); // type
+ gl.enableVertexAttribArray(0);
+ gl.enableVertexAttribArray(1);
+ gl.enableVertexAttribArray(2);
+ gl.enableVertexAttribArray(3);
+
+ // Bind instance buffer
+ gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+ gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 0, 0);
+ gl.enableVertexAttribArray(4);
+ gl.vertexAttribDivisor(4, 1);
+
+ // START TIMER QUERY FOR RENDER PASS
+ gl.beginQuery(gl.TIME_ELAPSED, timerQueries[1]);
+
+ // MVP matrix (simple orthographic)
+ const mvp = new Float32Array([
+  1.0, 0.0, 0.0, 0.0,
+  0.0, 1.0, 0.0, 0.0,
+  0.0, 0.0, 1.0, 0.0,
+  0.0, 0.0, 0.0, 1.0
+ ]);
+ gl.uniformMatrix4fv(mvpLoc, false, mvp);
+
+ // INSTANCED RENDERING: Multiple batches with MRT
+ for (let batch = 0; batch < INSTANCE_BATCH_SIZE / 64; batch++) {
+  gl.uniform1f(offsetLoc, batch * 0.1);
+  gl.uniform3f(tintLoc, Math.sin(batch * 0.5), Math.cos(batch * 0.3), Math.sin(batch * 0.7) * 0.5 + 0.5);
+  gl.drawArraysInstanced(gl.POINTS, 0, PARTICLE_COUNT, 64);
+ }
+
+ gl.endQuery(gl.TIME_ELAPSED);
+
+ // CREATE SYNC OBJECT FOR RENDER COMPLETION
+ syncObjects[1] = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+ // FINAL COMPOSITE TO CANVAS
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.viewport(0, 0, 256, 256);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+ // Simple composite shader would go here, but for simplicity just blit MRT texture 0
+ gl.bindFramebuffer(gl.READ_FRAMEBUFFER, mrtFbo);
+ gl.readBuffer(gl.COLOR_ATTACHMENT0);
+ gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+
+ // WAIT FOR SYNCS: CPU-GPU synchronization stress
+ for (let i = 0; i < 2; i++) {
+  if (syncObjects[i]) {
+   gl.waitSync(syncObjects[i], 0, gl.TIMEOUT_IGNORED);
+  }
+ }
+
+ // QUERY RESULTS: Read timer query results (skip for now to avoid function issues)
+
+ // CLEANUP: Delete some resources (fragile state)
+ gl.deleteSync(syncObjects[0]);
+ gl.deleteQuery(timerQueries[0]);
+ syncObjects[0] = null;
+ timerQueries[0] = null;
+
+ // FINAL ERROR CHECK
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) throw new Error(`WebGL Error: ${error}`);
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

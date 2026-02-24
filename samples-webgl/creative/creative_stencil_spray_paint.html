@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION
+        const REQUIRED_EXTENSIONS = []; // Stencil is core
+
+        // FUZZING PARAMETERS
+        const SHAPE_COUNT = 50;
+        const STENCIL_MASK_A = 0xFF;
+        const STENCIL_MASK_B = 0x0F;
+        const STATE_CHANGE_COUNT = 50;
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            // Request stencil buffer!
+            const gl = canvas.getContext('webgl2', { stencil: true });
+            if (!gl) throw new Error("WebGL2 required (with stencil)");
+
+            // 1. EXTENSION GATING
+            const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+            if (missingExtensions.length > 0) {
+                throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+            }
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION STARTS HERE
+            // ==========================================
+
+            // Setup Shaders (Simple flat color)
+            const vsSource = `#version 300 es
+    in vec2 position;
+    uniform vec2 u_offset;
+    uniform float u_scale;
+    void main() {
+        gl_Position = vec4(position * u_scale + u_offset, 0.0, 1.0);
+    }`;
+
+            const fsSource = `#version 300 es
+    precision highp float;
+    uniform vec4 u_color;
+    out vec4 outColor;
+    void main() {
+        outColor = u_color;
+    }`;
+
+            function createProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc);
+                gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(vs));
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc);
+                gl.compileShader(fs);
+                if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(fs));
+
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+                return prog;
+            }
+
+            const program = createProgram(vsSource, fsSource);
+            const locPos = gl.getAttribLocation(program, "position");
+            const locOffset = gl.getUniformLocation(program, "u_offset");
+            const locScale = gl.getUniformLocation(program, "u_scale");
+            const locColor = gl.getUniformLocation(program, "u_color");
+
+            // Geometry: Circle and Triangle
+            const circleData = [];
+            for (let i = 0; i <= 32; i++) {
+                const angle = (i / 32) * Math.PI * 2;
+                circleData.push(Math.cos(angle), Math.sin(angle));
+            }
+            const circleVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, circleVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(circleData), gl.STATIC_DRAW);
+
+            const triData = [0, 1, -0.8, -0.8, 0.8, -0.8];
+            const triVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, triVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triData), gl.STATIC_DRAW);
+
+            const quadData = [-1, -1, 1, -1, -1, 1, 1, 1];
+            const quadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(quadData), gl.STATIC_DRAW);
+
+            const vaoCircle = gl.createVertexArray();
+            gl.bindVertexArray(vaoCircle);
+            gl.bindBuffer(gl.ARRAY_BUFFER, circleVBO);
+            gl.enableVertexAttribArray(locPos);
+            gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+            const vaoTri = gl.createVertexArray();
+            gl.bindVertexArray(vaoTri);
+            gl.bindBuffer(gl.ARRAY_BUFFER, triVBO);
+            gl.enableVertexAttribArray(locPos);
+            gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+            const vaoQuad = gl.createVertexArray();
+            gl.bindVertexArray(vaoQuad);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.enableVertexAttribArray(locPos);
+            gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+            function poisonState() {
+                if (Math.random() < 0.1) {
+                    // Mess with stencil masks
+                    gl.stencilMask(Math.floor(Math.random() * 255));
+                    // Toggle Color Mask
+                    const r = Math.random() > 0.5;
+                    gl.colorMask(r, r, r, true);
+                }
+            }
+
+            // 1. CLEAR
+            gl.clearColor(0.1, 0.1, 0.1, 1.0);
+            gl.clearStencil(0);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+            gl.enable(gl.STENCIL_TEST);
+            gl.useProgram(program);
+
+            // 2. PASS 1: SPRAYER (INCR_WRAP)
+            // Draw only to Stencil, not Color
+            gl.colorMask(false, false, false, false);
+            gl.stencilMask(0xFF);
+            gl.stencilFunc(gl.ALWAYS, 0, 0xFF);
+            gl.stencilOp(gl.KEEP, gl.KEEP, gl.INCR_WRAP);
+
+            gl.bindVertexArray(vaoCircle);
+            for (let i = 0; i < SHAPE_COUNT; i++) {
+                gl.uniform2f(locOffset, (Math.random() - 0.5) * 1.8, (Math.random() - 0.5) * 1.8);
+                gl.uniform1f(locScale, 0.1 + Math.random() * 0.2);
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, 33);
+                poisonState();
+            }
+
+            // 3. PASS 2: CUTTER (INVERT)
+            gl.stencilOp(gl.KEEP, gl.KEEP, gl.INVERT);
+            gl.bindVertexArray(vaoTri);
+            for (let i = 0; i < SHAPE_COUNT / 2; i++) {
+                gl.uniform2f(locOffset, (Math.random() - 0.5) * 1.8, (Math.random() - 0.5) * 1.8);
+                gl.uniform1f(locScale, 0.2 + Math.random() * 0.3);
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+                poisonState();
+            }
+
+            // 4. VISUALIZATION PASSES
+            // Restore masks
+            gl.colorMask(true, true, true, true);
+            gl.stencilMask(0x00); // Do not write to stencil anymore
+
+            gl.bindVertexArray(vaoQuad);
+            gl.uniform2f(locOffset, 0, 0);
+            gl.uniform1f(locScale, 1.0);
+
+            // A. Filter > 4 (Red)
+            gl.stencilFunc(gl.GREATER, 4, 0xFF);
+            gl.uniform4f(locColor, 1.0, 0.0, 0.0, 1.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // B. Filter == 3 (Blue)
+            gl.stencilFunc(gl.EQUAL, 3, 0xFF);
+            gl.uniform4f(locColor, 0.0, 0.0, 1.0, 1.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // C. Filter (Stencil & 0x1) != 0 (Odd numbers - Stripey Green)
+            // NOTEQUAL to 0, mask 0x1
+            gl.stencilFunc(gl.NOTEQUAL, 0, 0x1);
+            // Additive blending for overlap visualization
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE);
+            gl.uniform4f(locColor, 0.0, 0.2, 0.0, 1.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION ENDS HERE
+            // ==========================================
+
+            // 3. ERROR CHECKING
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

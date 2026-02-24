@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: WebGL2 features don't require extensions
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2', { powerPreference: 'high-performance' });
+ if (!gl) {
+   // Try fallback to webgl1 with extensions, but this test requires WebGL2
+   throw new Error("WebGL2 not supported - this test requires WebGL2 UBOs");
+ }
+
+ // Verify we have WebGL2 features
+ if (!gl.bindBufferBase || typeof gl.UNIFORM_BUFFER === 'undefined') {
+   throw new Error("WebGL2 UBO features not available");
+ }
+
+ // 1. EXTENSION GATING (none required for WebGL2 UBOs)
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS (none)
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // FUZZING VARIABLES - expose for mutation targeting
+ const NUM_INSTANCES = 100;
+ const UBO_BLOCK_SIZE = 64;
+ const NUM_UBOS = 4;
+ const VERTEX_DENSITY = 32;
+ const UNIFORM_BLOCK_INDEX = 0;
+ const BINDING_POINT = 1;
+ const BUFFER_OFFSET = 0;
+ const STATE_CHANGE_COUNT = 25;
+
+ // Create vertex data - grid of points for complex geometry
+ const vertices = [];
+ const indices = [];
+ for (let y = 0; y < VERTEX_DENSITY; y++) {
+   for (let x = 0; x < VERTEX_DENSITY; x++) {
+     const u = x / (VERTEX_DENSITY - 1);
+     const v = y / (VERTEX_DENSITY - 1);
+     vertices.push(u * 2 - 1, v * 2 - 1, 0); // Position
+     vertices.push(u, v); // UV coordinates
+   }
+ }
+
+ for (let y = 0; y < VERTEX_DENSITY - 1; y++) {
+   for (let x = 0; x < VERTEX_DENSITY - 1; x++) {
+     const i = y * VERTEX_DENSITY + x;
+     indices.push(i, i + 1, i + VERTEX_DENSITY);
+     indices.push(i + 1, i + VERTEX_DENSITY + 1, i + VERTEX_DENSITY);
+   }
+ }
+
+ // Create buffers
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_INDEX_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+ // Create UBOs with complex data
+ const transformUBO = gl.createBuffer();
+ const materialUBO = gl.createBuffer();
+
+ // Transform UBO data
+ const transformData = new Float32Array(UBO_BLOCK_SIZE / 4);
+ const projection = new Float32Array([
+   2.0, 0.0, 0.0, 0.0,
+   0.0, 2.0, 0.0, 0.0,
+   0.0, 0.0, -1.0, -1.0,
+   0.0, 0.0, 0.0, 1.0
+ ]);
+ transformData.set(projection, 0);
+ transformData[16] = 1.0; transformData[17] = 0.8; transformData[18] = 0.6; transformData[19] = 1.0;
+ transformData[20] = 0.5; transformData[21] = 1.2;
+ transformData[22] = 0.1; transformData[23] = 0.05;
+
+ // Material UBO data
+ const materialData = new Float32Array(UBO_BLOCK_SIZE / 4);
+ materialData[0] = 0.7; materialData[1] = 0.9; materialData[2] = 1.0; materialData[3] = 1.0;
+ materialData[4] = 1.0; materialData[5] = 1.0; materialData[6] = 1.0; materialData[7] = 1.0;
+ materialData[8] = 32.0; materialData[9] = 1.0;
+ materialData[10] = 2.0; materialData[11] = 1.5;
+
+ // Upload UBO data
+ gl.bindBuffer(gl.UNIFORM_BUFFER, transformUBO);
+ gl.bufferData(gl.UNIFORM_BUFFER, transformData, gl.DYNAMIC_DRAW);
+ gl.bindBuffer(gl.UNIFORM_BUFFER, materialUBO);
+ gl.bufferData(gl.UNIFORM_BUFFER, materialData, gl.DYNAMIC_DRAW);
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, transformUBO);
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, materialUBO);
+
+ // STATE POISONING - Add 50+ state changes for fuzzing
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+   gl.enable(gl.STENCIL_TEST);
+
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+   gl.depthFunc(gl.LEQUAL);
+   gl.depthMask(true);
+
+   gl.viewport(0, 0, 256, 256);
+   gl.scissor(0, 0, 256, 256);
+
+   // Texture operations for state churn
+   const dummyTexture = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, dummyTexture);
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 16, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+   gl.bindTexture(gl.TEXTURE_2D, null);
+   gl.deleteTexture(dummyTexture);
+
+   // Buffer binding churn
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
+   gl.bindBuffer(gl.UNIFORM_BUFFER, transformUBO);
+   gl.bindBuffer(gl.UNIFORM_BUFFER, materialUBO);
+ }
+
+ // Create vertex shader with uniform block
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, `#version 300 es
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec2 aUV;
+
+layout(std140) uniform TransformBlock {
+  mat4 modelViewProjection;
+  vec4 colorMultiplier;
+  float timeOffset;
+  float scaleFactor;
+  vec2 uvOffset;
+  int instanceID;
+};
+
+out vec2 vUV;
+out vec4 vColor;
+
+void main() {
+  vUV = aUV + uvOffset;
+  vColor = colorMultiplier;
+  gl_Position = modelViewProjection * vec4(aPosition * scaleFactor, 1.0);
+}`);
+ gl.compileShader(vertexShader);
+
+ // Create fragment shader with uniform block
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, `#version 300 es
+precision highp float;
+
+layout(std140) uniform MaterialBlock {
+  vec4 diffuseColor;
+  vec4 specularColor;
+  float shininess;
+  float alpha;
+  vec2 textureScale;
+  int materialID;
+};
+
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+
+void main() {
+  vec2 scaledUV = vUV * textureScale;
+  float pattern = sin(scaledUV.x * 10.0) * cos(scaledUV.y * 8.0);
+  vec4 baseColor = vColor * diffuseColor;
+  fragColor = vec4(baseColor.rgb + pattern * 0.3, baseColor.a * alpha);
+}`);
+ gl.compileShader(fragmentShader);
+
+ // Create program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ gl.useProgram(program);
+
+ // Get uniform block indices
+ const transformBlockIndex = gl.getUniformBlockIndex(program, 'TransformBlock');
+ const materialBlockIndex = gl.getUniformBlockIndex(program, 'MaterialBlock');
+
+ // Bind uniform blocks to binding points
+ gl.uniformBlockBinding(program, transformBlockIndex, 0);
+ gl.uniformBlockBinding(program, materialBlockIndex, 1);
+
+ // Create complex geometry - grid with UVs
+ const vertices = [];
+ const indices = [];
+ for (let y = 0; y < VERTEX_DENSITY; y++) {
+   for (let x = 0; x < VERTEX_DENSITY; x++) {
+     const u = x / (VERTEX_DENSITY - 1);
+     const v = y / (VERTEX_DENSITY - 1);
+     vertices.push(u * 2 - 1, v * 2 - 1, 0); // Position
+     vertices.push(u, v); // UV coordinates
+   }
+ }
+
+ for (let y = 0; y < VERTEX_DENSITY - 1; y++) {
+   for (let x = 0; x < VERTEX_DENSITY - 1; x++) {
+     const i = y * VERTEX_DENSITY + x;
+     indices.push(i, i + 1, i + VERTEX_DENSITY);
+     indices.push(i + 1, i + VERTEX_DENSITY + 1, i + VERTEX_DENSITY);
+   }
+ }
+
+ // Create buffers
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_INDEX_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+ // Set up vertex attributes
+ const positionLoc = gl.getAttribLocation(program, 'aPosition');
+ const uvLoc = gl.getAttribLocation(program, 'aUV');
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 3, gl.FLOAT, false, 20, 0);
+ gl.enableVertexAttribArray(uvLoc);
+ gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 20, 12);
+
+ // Clear and draw
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, `#version 300 es
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec2 aUV;
+
+layout(std140) uniform TransformBlock {
+  mat4 modelViewProjection;
+  vec4 colorMultiplier;
+  float timeOffset;
+  float scaleFactor;
+  vec2 uvOffset;
+  int instanceID;
+};
+
+out vec2 vUV;
+out vec4 vColor;
+
+void main() {
+  vUV = aUV + uvOffset;
+  vColor = colorMultiplier;
+  gl_Position = modelViewProjection * vec4(aPosition * scaleFactor, 1.0);
+}`);
+ gl.compileShader(vertexShader);
+
+ // Create fragment shader with uniform block
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, `#version 300 es
+precision highp float;
+
+layout(std140) uniform MaterialBlock {
+  vec4 diffuseColor;
+  vec4 specularColor;
+  float shininess;
+  float alpha;
+  vec2 textureScale;
+  int materialID;
+};
+
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+
+void main() {
+  vec2 scaledUV = vUV * textureScale;
+  float pattern = sin(scaledUV.x * 10.0) * cos(scaledUV.y * 8.0);
+  vec4 baseColor = vColor * diffuseColor;
+  fragColor = vec4(baseColor.rgb + pattern * 0.3, baseColor.a * alpha);
+}`);
+ gl.compileShader(fragmentShader);
+
+ // Check shader compilation
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error('Vertex shader compilation failed: ' + gl.getShaderInfoLog(vertexShader));
+ }
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error('Fragment shader compilation failed: ' + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ // Create program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+
+ // Check program linking
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+ }
+
+ gl.useProgram(program);
+
+ // Get uniform block indices
+ const transformBlockIndex = gl.getUniformBlockIndex(program, 'TransformBlock');
+ const materialBlockIndex = gl.getUniformBlockIndex(program, 'MaterialBlock');
+
+ // Bind uniform blocks to binding points
+ gl.uniformBlockBinding(program, transformBlockIndex, 0);
+ gl.uniformBlockBinding(program, materialBlockIndex, 1);
+
+ // Bind UBOs to binding points
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, transformUBO);
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, materialUBO);
+
+ // Set up vertex attributes
+ const positionLoc = gl.getAttribLocation(program, 'aPosition');
+ const uvLoc = gl.getAttribLocation(program, 'aUV');
+
+ if (positionLoc === -1) throw new Error('aPosition attribute not found');
+ if (uvLoc === -1) throw new Error('aUV attribute not found');
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 3, gl.FLOAT, false, 20, 0);
+ gl.enableVertexAttribArray(uvLoc);
+ gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 20, 12);
+
+ // STATE POISONING - Create fragile state machine with 50+ state changes
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   // Enable/disable various capabilities in patterns
+   gl.enable(gl.BLEND);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+   gl.enable(gl.STENCIL_TEST);
+
+   // Change blend functions and equations
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+   gl.blendFuncSeparate(gl.SRC_COLOR, gl.ONE_MINUS_SRC_COLOR, gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+   // Change depth and stencil state
+   gl.depthFunc(gl.LEQUAL);
+   gl.depthMask(true);
+   gl.stencilFunc(gl.ALWAYS, 0, 0xFF);
+   gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+
+   // Viewport changes
+   gl.viewport(0, 0, 256, 256);
+   gl.scissor(0, 0, 256, 256);
+
+   // Texture binding churn
+   const dummyTexture = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, dummyTexture);
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 16, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+   gl.bindTexture(gl.TEXTURE_2D, null);
+   gl.deleteTexture(dummyTexture);
+
+   // Buffer binding changes - only bind valid buffers
+   if (vertexBuffer) gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   if (indexBuffer) gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
+   if (transformUBO) gl.bindBuffer(gl.UNIFORM_BUFFER, transformUBO);
+   if (materialUBO) gl.bindBuffer(gl.UNIFORM_BUFFER, materialUBO);
+ }
+
+ // Bind the correct buffers for rendering
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, transformUBO);
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, materialUBO);
+
+ // Final state setup for rendering
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+ // Render the geometry
+ gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+
+ // Additional state poisoning after rendering
+ for (let i = 0; i < STATE_CHANGE_COUNT / 2; i++) {
+   gl.enable(gl.BLEND);
+   gl.blendFunc(gl.ONE, gl.ONE);
+   gl.blendEquation(gl.FUNC_SUBTRACT);
+   gl.disable(gl.DEPTH_TEST);
+   gl.viewport(10, 10, 236, 236);
+   gl.scissor(20, 20, 216, 216);
+   gl.clearColor(0.2, 0.3, 0.4, 0.5);
+ }
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+ throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ console.error(err);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: WebGL2-only test, no extensions needed for core texture functionality
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ // ALWAYS use WebGL2 context - no fallback to WebGL1
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+ throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // 1. EXTENSION GATING (WebGL2 core features, no extensions needed)
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS (none for this test)
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // FUZZING VARIABLES: Expose parameters for mutation testing
+ const TEXTURE_ERROR_COUNT = 8;
+ const STATE_CHANGE_COUNT = 50;
+ const RESOURCE_BINDING_CYCLES = 8;
+ const INVALID_OPERATION_ATTEMPTS = 16;
+
+ // Create shader programs for visual feedback
+ const vertexShaderSource = `#version 300 es
+ in vec2 a_position;
+ in vec3 a_color;
+ out vec3 v_color;
+ void main() {
+   gl_Position = vec4(a_position, 0.0, 1.0);
+   v_color = a_color;
+ }
+ `;
+
+ const fragmentShaderSource = `#version 300 es
+ precision mediump float;
+ in vec3 v_color;
+ out vec4 fragColor;
+ void main() {
+   fragColor = vec4(v_color, 1.0);
+ }
+ `;
+
+ function createShaderProgram(vsSource, fsSource) {
+   const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+   gl.shaderSource(vertexShader, vsSource);
+   gl.compileShader(vertexShader);
+
+   const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+   gl.shaderSource(fragmentShader, fsSource);
+   gl.compileShader(fragmentShader);
+
+   const program = gl.createProgram();
+   gl.attachShader(program, vertexShader);
+   gl.attachShader(program, fragmentShader);
+   gl.linkProgram(program);
+   return program;
+ }
+
+ const program = createShaderProgram(vertexShaderSource, fragmentShaderSource);
+
+ // Create vertex data for 3x3 grid visualization
+ const vertices = new Float32Array([
+   // Row 0: Mipmap completeness errors
+   -0.9, 0.9, 1.0, 0.0, 0.0,   // Red: Incomplete mipmaps
+   -0.3, 0.9, 1.0, 0.0, 0.0,
+   0.3, 0.9, 1.0, 0.0, 0.0,
+   0.9, 0.9, 1.0, 0.0, 0.0,
+
+   // Row 1: Format validation errors
+   -0.9, 0.3, 0.0, 1.0, 0.0,   // Green: Invalid format combinations
+   -0.3, 0.3, 0.0, 1.0, 0.0,
+   0.3, 0.3, 0.0, 1.0, 0.0,
+   0.9, 0.3, 0.0, 1.0, 0.0,
+
+   // Row 2: Size constraint errors
+   -0.9, -0.3, 0.0, 0.0, 1.0,  // Blue: Size/format mismatches
+   -0.3, -0.3, 0.0, 0.0, 1.0,
+   0.3, -0.3, 0.0, 0.0, 1.0,
+   0.9, -0.3, 0.0, 0.0, 1.0,
+
+   // Row 3: Texture state errors
+   -0.9, -0.9, 1.0, 1.0, 0.0,  // Yellow: Texture state validation
+   -0.3, -0.9, 1.0, 1.0, 0.0,
+   0.3, -0.9, 1.0, 1.0, 0.0,
+   0.9, -0.9, 1.0, 1.0, 0.0
+ ]);
+
+ const indices = new Uint16Array([
+   0, 1, 4, 5, 1, 2, 5, 6, 2, 3, 6, 7,
+   4, 5, 8, 9, 5, 6, 9, 10, 6, 7, 10, 11,
+   8, 9, 12, 13, 9, 10, 13, 14, 10, 11, 14, 15
+ ]);
+
+ const vao = gl.createVertexArray();
+ gl.bindVertexArray(vao);
+
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+ const positionLoc = gl.getAttribLocation(program, 'a_position');
+ const colorLoc = gl.getAttribLocation(program, 'a_color');
+
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 20, 0);
+
+ gl.enableVertexAttribArray(colorLoc);
+ gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 20, 8);
+
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+ // Create textures for validation error testing - separate objects for different targets
+ const textures2D = [];
+ const texturesCube = [];
+ const texturesArray = [];
+ const texturesMultisample = [];
+
+ for (let i = 0; i < 4; i++) {
+   textures2D.push(gl.createTexture());
+   texturesCube.push(gl.createTexture());
+   texturesArray.push(gl.createTexture());
+   texturesMultisample.push(gl.createTexture());
+ }
+
+ // STATE POISONING: Heavy capability enable/disable operations
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+
+   // Texture unit binding churn
+   gl.activeTexture(gl.TEXTURE0 + (i % 16));
+   gl.bindTexture(gl.TEXTURE_2D, textures2D[i % 4]);
+
+   // Sampler parameter changes
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+ }
+
+ // TEXTURE VALIDATION ERROR SCENARIOS
+ // 1. Incomplete mipmaps - create texture with mipmap filtering but missing levels
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, textures2D[0]);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ // Deliberately omit mipmap levels - this creates incomplete texture
+
+ // 2. NPOT texture with mipmap filtering (size constraint violation)
+ gl.activeTexture(gl.TEXTURE1);
+ gl.bindTexture(gl.TEXTURE_2D, textures2D[1]);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 100, 100, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+ // 3. Cube map completeness - incomplete cube map
+ gl.activeTexture(gl.TEXTURE2);
+ gl.bindTexture(gl.TEXTURE_CUBE_MAP, texturesCube[0]);
+ gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ // Only define some faces, leave others undefined
+ gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, gl.RGBA, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, gl.RGBA, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, gl.RGBA, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ // Deliberately omit other faces
+
+ // 4. Invalid texture parameters
+ gl.activeTexture(gl.TEXTURE3);
+ gl.bindTexture(gl.TEXTURE_2D, textures2D[2]);
+ try {
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, -1); // Invalid enum
+ } catch (e) {
+   // Expected error - invalid parameter
+ }
+
+ // 5. Operations on unbound texture
+ gl.activeTexture(gl.TEXTURE4);
+ gl.bindTexture(gl.TEXTURE_2D, null);
+ try {
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+ } catch (e) {
+   // Expected error - no texture bound
+ }
+
+ // 6. Invalid compressed texture format
+ gl.activeTexture(gl.TEXTURE5);
+ gl.bindTexture(gl.TEXTURE_2D, textures2D[3]);
+ try {
+   gl.compressedTexImage2D(gl.TEXTURE_2D, 0, 0x83F0, 32, 32, 0, new Uint8Array(128));
+ } catch (e) {
+   // Expected error - invalid compressed format
+ }
+
+ // 7. Texture sub-image without base texture
+ gl.activeTexture(gl.TEXTURE6);
+ gl.bindTexture(gl.TEXTURE_2D, textures2D[0]); // Use texture with incomplete mipmaps
+ try {
+   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(256));
+ } catch (e) {
+   // Expected error - trying to update incomplete texture
+ }
+
+ // 8. Invalid wrap mode
+ gl.activeTexture(gl.TEXTURE7);
+ gl.bindTexture(gl.TEXTURE_2D, textures2D[1]);
+ try {
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.LINEAR); // Invalid wrap mode
+ } catch (e) {
+   // Expected error - invalid wrap parameter
+ }
+
+ // RESOURCE BINDING CHURN: Heavy texture binding/unbinding cycles
+ for (let cycle = 0; cycle < RESOURCE_BINDING_CYCLES; cycle++) {
+   for (let i = 0; i < 4; i++) {
+     gl.activeTexture(gl.TEXTURE0 + i);
+     gl.bindTexture(gl.TEXTURE_2D, textures2D[i]);
+     gl.bindTexture(gl.TEXTURE_2D, null);
+     gl.bindTexture(gl.TEXTURE_CUBE_MAP, texturesCube[i]);
+     gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texturesArray[i]);
+     gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+   }
+ }
+
+ // INVALID OPERATION ATTEMPTS: Try various invalid texture operations
+ for (let attempt = 0; attempt < INVALID_OPERATION_ATTEMPTS; attempt++) {
+   gl.activeTexture(gl.TEXTURE0);
+   gl.bindTexture(gl.TEXTURE_2D, textures2D[attempt % 4]);
+
+   // Try invalid parameter combinations
+   try {
+     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, -1);
+   } catch (e) {
+     // Expected error - invalid enum
+   }
+   try {
+     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+   } catch (e) {
+     // Expected error - invalid parameter for mag filter
+   }
+   try {
+     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.LINEAR);
+   } catch (e) {
+     // Expected error - invalid wrap mode
+   }
+
+   // Try operations on unbound textures
+   gl.bindTexture(gl.TEXTURE_2D, null);
+   try {
+     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+   } catch (e) {
+     // Expected error - no texture bound
+   }
+
+   // Try invalid texture sub-image operations
+   try {
+     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(256));
+   } catch (e) {
+     // Expected error - no texture data allocated
+   }
+ }
+
+ // FINAL STATE POISONING: More capability and state changes
+ for (let i = 0; i < STATE_CHANGE_COUNT / 2; i++) {
+   gl.enable(gl.BLEND);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.disable(gl.BLEND);
+
+   gl.enable(gl.DEPTH_TEST);
+   gl.depthFunc(gl.LESS);
+   gl.disable(gl.DEPTH_TEST);
+
+   // Viewport changes
+   gl.viewport(0, 0, 256, 256);
+   gl.viewport(10, 10, 236, 236);
+
+   // Scissor changes
+   gl.enable(gl.SCISSOR_TEST);
+   gl.scissor(0, 0, 256, 256);
+   gl.disable(gl.SCISSOR_TEST);
+ }
+
+ // Render the visual feedback grid
+ gl.useProgram(program);
+ gl.bindVertexArray(vao);
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+
+ gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+ throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+// No catch block - let any real errors bubble up naturally
+</script>
+</body>
+</html></contents>
+</xai:function_call"><xai:function_call>  
+<xai:function_call name="Shell">
+<parameter name="command">./run_tests.sh --test-file agent_outputs/errors_texture_validation.html

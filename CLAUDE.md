@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **WebGL/WebGL2 fuzzing corpus project** designed to create mutation-based fuzzing test cases. The primary goal is to generate self-contained HTML test files that exercise complex WebGL state machines and API interactions to uncover bugs in WebGL implementations.
+This is a **WebGL/WebGL2 fuzzing corpus project** containing **367 validated test files** (301 in `agent_outputs/`, 66 in `samples-webgl/`) designed for mutation-based fuzzing with Radamsa. The corpus was built over 8 iterative rounds using gap-driven feature combination analysis.
 
-**Critical distinction**: This is NOT a conformance test suite. Test cases are designed as "high-biomass" seeds for mutation-based fuzzing, featuring "spaghetti-like" valid resource usage patterns that mutators can corrupt into security vulnerabilities.
+**Critical distinction**: This is NOT a conformance test suite. Test cases are "high-biomass" seeds for mutation-based fuzzing, featuring "spaghetti-like" valid resource usage patterns that mutators can corrupt into security vulnerabilities.
+
+**Corpus status**: Production-ready. All critical, high, and medium 3-way feature combination gaps are closed. All coverage thresholds exceeded. See `docs/plans/2026-01-28-round8-completion-summary.md` for final metrics.
 
 ## Project-Specific Rules
 
@@ -22,7 +24,7 @@ This is a **WebGL/WebGL2 fuzzing corpus project** designed to create mutation-ba
 
 - Self-contained single HTML files (no external dependencies)
 - 256x256 canvas resolution
-- No console logging or code comments
+- No console logging or code comments in production seeds
 - No user interaction required
 - Extension checking required before advanced features
 - WebGL2 context required for all tests
@@ -58,6 +60,9 @@ deactivate
 
 # Test multiple files
 ./run_tests.sh --test-dir samples-webgl --browsers firefox
+
+# Run all tests with batch processing
+python run_all_tests.py
 ```
 
 **Important**: Always test with **Firefox** for extension-heavy tests, as it has superior WebGL extension support compared to Chromium in Playwright.
@@ -78,11 +83,21 @@ After running tests, check the generated `.json` file for success criteria:
 
 **Never assume fixes work - always re-run validation after changes.**
 
+### Coverage Analysis
+
+```bash
+# Feature combination matrix analysis
+bash scripts/feature_matrix.sh
+
+# Corpus analysis
+bash scripts/analyze_corpus.sh
+```
+
 ## Architecture Overview
 
 ### Test File Structure
 
-All test files follow this boilerplate pattern (see mutation-fuzzing-seed-structure-design.md for complete template):
+All test files follow the three-zone boilerplate (see `docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md` for complete template):
 
 ```html
 <!DOCTYPE html>
@@ -90,15 +105,13 @@ All test files follow this boilerplate pattern (see mutation-fuzzing-seed-struct
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [
-    // List required extensions here
-];
+const REQUIRED_EXTENSIONS = [];
 
 // ============ DECLARATION ZONE ============
-// Tier 1: Amplification Variables
+// Tier 1: Amplification Variables (5-8 per seed)
 const texSize = 256;
 const bufSize = texSize * texSize * 4;
-// Tier 3: Enum Constants
+// Tier 3: Enum Constants (4-6 per seed)
 const bufferTarget = gl.ARRAY_BUFFER;
 
 async function main() {
@@ -106,26 +119,23 @@ async function main() {
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
 
-    // Extension gating (no try-catch here)
     const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
     if (missingExtensions.length > 0) {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
-    // ============ SETUP ZONE ============
-    // Block 1: Buffer operations
+    // ============ SETUP ZONE (4-8 try-catch blocks) ============
     try {
         const buffer = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer);
         gl.bufferData(bufferTarget, bufSize, gl.STATIC_DRAW);
-    } catch(e) { console.log(e); } // Remove console.log for production
+    } catch(e) {}
 
-    // ============ EXECUTION ZONE ============
-    // Block N: Draw calls
+    // ============ EXECUTION ZONE (2-4 try-catch blocks) ============
     try {
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-    } catch(e) { console.log(e); } // Remove console.log for production
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });
@@ -136,7 +146,7 @@ main().catch(err => { throw err; });
 
 ### Test Design Philosophy
 
-Tests should maximize "fuzzing biomass" for mutation-based fuzzing (radamsa). See **docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md** for complete design:
+Tests maximize "fuzzing biomass" for Radamsa mutation. See **docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md** for complete design:
 
 **Three-Zone Architecture:**
 - **Declaration Zone**: Amplification variables + enum constants (strategic coupling)
@@ -162,16 +172,27 @@ Tests should maximize "fuzzing biomass" for mutation-based fuzzing (radamsa). Se
 
 ### Test Categories
 
-Tests are organized by feature complexity:
+**`agent_outputs/` (301 files):**
+- **Mutation seeds** (`mutation_bN_sN_*`): 259 seeds across 54 batches targeting specific feature combinations
+- **High-biomass seeds** (`seed_*`): 16 hypercomplex seeds combining 4-8+ WebGL2 features
+- **Creative tests** (`creative_*`): 4 advanced visual effect demos
+- **Edge cases** (`edge_cases_*`): 4 error path and boundary tests
+- **WebGL2 features** (`webgl2_*`): 5 core feature tests
+- **Extensions** (`extensions_*`): 2 extension-specific seeds
+- **Integrated** (`integrated_*`): 2 multi-feature integration tests
+- **Rendering/Multipass**: 3 pipeline tests
 
-- **Integrated Pipelines**: "Kitchen sink" seeds combining multiple features (MRT + Float Textures + Instancing + UBOs)
-- **Extensions**: Tests targeting specific WebGL extensions
-- **Compute-style**: Transform feedback and data processing patterns
-- **Creative**: Complex visual demos demonstrating advanced features
+**`samples-webgl/` (66 files):**
+- **Creative**: 13 visual effect demos
+- **WebGL2 core**: 11 feature tests
+- **Extensions**: 12 extension tests
+- **Multipass**: 5 rendering pipeline tests
+- **Errors**: 5 error handling tests
+- **Limits**: 4 WebGL limit tests
+- **Integrated**: 5 combination tests
+- **Other** (compute, texture, shaders, rendering, resource): 11 tests
 
 ### Error Handling Strategy
-
-The test runner distinguishes between error types:
 
 | Error Type | Example | Action |
 |------------|---------|--------|
@@ -182,44 +203,74 @@ The test runner distinguishes between error types:
 
 **Try-Catch Block Strategy (for mutation-based fuzzing):**
 
-Use try-catch blocks strategically to maximize driver error path exploitation:
-
 - **Development Phase**: `catch(e) { console.log(e); }` - debug with run_tests.sh, check JSON console_logs
 - **Production Phase**: `catch(e) {}` - silent for fuzzing, strip console.log before commit
 - **Block Structure**: One try-catch per logical operation group (6-10 blocks per seed)
 - **Purpose**: Allow driver state corruption in error paths to accumulate, triggering crashes in subsequent operations
 - **Signal Preservation**: Driver crashes/segfaults are NOT masked - these are the target bugs
 
-See **docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md** for complete rationale and implementation details.
+See **docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md** for complete rationale.
 
 ### Test Runner (`webgl_test_runner.py`)
 
-Python-based Playwright test runner that:
+Python-based Playwright test runner (~960 lines) that:
 
 - Executes HTML test files in real browsers (Firefox, Chromium, Edge)
 - Captures JavaScript errors, WebGL errors, and console output
 - Generates detailed JSON reports per test file
 - Takes screenshots of rendered output
 - Supports parallel test execution
+- Configures Firefox with optimized WebGL preferences (fingerprinting disabled, EGL backend, draft extensions enabled)
 
 ### Key Scripts
 
-- **`run_tests.sh`**: Main test launcher with virtual environment auto-detection
-- **`webgl_test_runner.py`**: Playwright-based test execution engine
-- **`setup_venv.sh`**: Virtual environment initialization script
+| Script | Purpose |
+|--------|---------|
+| `run_tests.sh` | Main test launcher with venv auto-detection |
+| `webgl_test_runner.py` | Playwright-based test execution engine (~960 lines) |
+| `run_all_tests.py` | Batch test execution across the corpus |
+| `run_tests.py` | Python wrapper for venv management |
+| `setup_venv.sh` | Virtual environment initialization |
+| `cleanup_js_comments.py` | Strip comments from HTML test files |
+| `check_gl.py` | WebGL capability detection via Playwright |
+| `verify_firefox.py` | Firefox WebGL validation with ASAN logging |
+| `scripts/feature_matrix.sh` | Feature combination matrix analysis |
+| `scripts/analyze_corpus.sh` | Corpus statistics and analysis |
+
+## Corpus Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total HTML test files | 367 (301 + 66) |
+| Mutation seed batches | 54 (b1-b54) |
+| Mutation seeds | 259 |
+| Iterative rounds completed | 8 |
+| Feature categories covered | 18 |
+| Average seed complexity | ~260 lines |
+| Test result JSON files | ~370 |
+| Screenshots | ~383 |
+
+### Coverage Milestones (Rounds 6-8)
+
+- All critical 2-way feature gaps closed
+- All critical/high/medium 3-way feature gaps closed (83% reduction)
+- Transform Feedback: 20.8% coverage (exceeded 20% threshold)
+- Pixel Operations: 20.1% coverage (exceeded 20% threshold)
+- Texture Arrays: 21.6% coverage (exceeded 20% threshold)
 
 ## Browser Compatibility
 
-- **Primary**: Firefox (best extension support for fuzzing)
-- **Secondary**: Chromium (avoid for extension-heavy tests)
+- **Primary**: Firefox (best extension support for fuzzing, 24 extensions)
+- **Secondary**: Chromium (core WebGL2 only, ANGLE limits extension exposure)
 - **Extension Detection**: Always check extension availability before use
-- **Playwright Limitation**: Headless browsers have reduced extension support compared to native browsers
+- **Playwright Firefox**: Configured with optimized prefs for WebGL2 + extensions (see `UNSUPPORTED.md` for details)
+- **Known unsupported**: `EXT_disjoint_timer_query_webgl2` in Firefox, various WebGL1 extensions in Chromium
 
 ## Development Workflow
 
 1. Check `UNSUPPORTED.md` for known limitations
 2. Read `.cursorrules`, `CODING_RULES.md`, `AGENTS.md`, and **mutation-fuzzing-seed-structure-design.md**
-3. Identify target feature from project documentation
+3. Identify target feature from project documentation or coverage gaps
 4. Create test file in `agent_outputs/` following three-zone architecture with try-catch blocks
 5. **Include `console.log(e)` in all catch blocks during development**
 6. Run `./run_tests.sh --test-file <file> --browsers firefox`
@@ -228,15 +279,29 @@ Python-based Playwright test runner that:
 9. **Strip all `console.log(e)` statements** - replace with `catch(e) {}`
 10. Final validation run - verify `passed: true` and `console_logs: []`
 11. Commit clean seed file (no console.log statements)
-12. Update coverage documentation after successful validation
+12. Run `scripts/feature_matrix.sh` to update coverage analysis
 
 ## File Organization
 
-- **`agent_outputs/`**: Output directory for newly created test files
-- **`samples-webgl/`**: Main test corpus directory with existing test cases
-- **`screenshots/`**: Visual output from test execution
-- **`docs/`**: Additional documentation
-- **`venv/`**: Python virtual environment (auto-created)
+```
+samples-webgl/
+├── agent_outputs/           # Generated seeds (301 HTML + ~307 JSON results)
+├── samples-webgl/           # Baseline test corpus (66 HTML + 61 JSON results)
+├── screenshots/             # Visual output from test execution (~383 PNGs)
+├── docs/
+│   ├── plans/               # Design docs and round completion summaries (15 files)
+│   └── *.md                 # Reference docs (Radamsa guide, spec docs, etc.)
+├── scripts/                 # Analysis tools (feature_matrix.sh, analyze_corpus.sh)
+├── old_docs/                # Archived documentation
+├── venv/                    # Python virtual environment (auto-created)
+├── webgl_test_runner.py     # Main test runner
+├── run_tests.sh             # Test launcher
+├── .cursorrules             # Core mission
+├── CODING_RULES.md          # Test creation procedures
+├── AGENTS.md                # Agent instructions
+├── UNSUPPORTED.md           # Browser/extension limitations
+└── requirements.txt         # Python dependencies
+```
 
 ## Dependencies
 
@@ -247,8 +312,9 @@ Python-based Playwright test runner that:
 ## Code Style
 
 - Minimalist, machine-parseable code
-- No comments in test files
-- No console.log() statements
+- No comments in production test files
+- No console.log() statements in production seeds
 - Simple control flow (avoid complex abstractions)
 - Inline some values, parameterize others for fuzzing
 - Self-documenting variable names
+- 150-300 lines per seed (excluding shader source)

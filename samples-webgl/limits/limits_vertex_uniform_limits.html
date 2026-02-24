@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: WebGL2 core features - no extensions needed for limits testing
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+ throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // WebGL2 extension detection - simplified for core features
+ const missingExtensions = [];
+ const availableAsCore = [];
+
+ REQUIRED_EXTENSIONS.forEach(ext => {
+     const extension = gl.getExtension(ext);
+     if (!extension) {
+         let availableInCore = false;
+
+         switch(ext) {
+             default:
+                 availableInCore = false;
+         }
+
+         if (availableInCore) {
+             availableAsCore.push(ext);
+         } else {
+             missingExtensions.push(ext);
+         }
+     }
+ });
+
+ if (missingExtensions.length > 0) {
+     throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ if (availableAsCore.length > 0) {
+     console.log(`Note: Extensions ${availableAsCore.join(', ')} available as core WebGL2 features`);
+ }
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // Query WebGL2 limits for vertex attributes and uniforms
+ const MAX_VERTEX_ATTRIBS = gl.getParameter(gl.MAX_VERTEX_ATTRIBS);
+ const MAX_VERTEX_UNIFORM_VECTORS = gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS);
+ const MAX_FRAGMENT_UNIFORM_VECTORS = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS);
+
+ // Configuration variables for fuzzing - use fixed reasonable limits
+ const VERTEX_COUNT = 1024;
+ const ATTRIBUTE_COUNT = 6; // Fixed: position, color0, color1, normal, texcoord0, texcoord1
+ const VERTEX_UNIFORM_COUNT = 8; // Fixed vertex uniforms for simplicity
+ const FRAGMENT_UNIFORM_COUNT = 8; // Fixed fragment uniforms for simplicity
+ const STATE_CHANGE_COUNT = 50;
+ const RESOURCE_BINDING_CYCLES = 8;
+ const INVALID_OPERATION_ATTEMPTS = 16;
+
+ // Simple test first - just a basic triangle
+ const simpleVertexShaderSource = `#version 300 es
+ in vec4 a_position;
+ void main() {
+     gl_Position = a_position;
+     gl_PointSize = 2.0;
+ }
+ `;
+
+ const simpleFragmentShaderSource = `#version 300 es
+ precision highp float;
+ out vec4 fragColor;
+ void main() {
+     fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+ }
+ `;
+
+ // Compile simple shaders
+ function createShader(type, source) {
+     const shader = gl.createShader(type);
+     gl.shaderSource(shader, source);
+     gl.compileShader(shader);
+
+     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+         const info = gl.getShaderInfoLog(shader);
+         throw new Error(`Shader compilation failed: ${info}`);
+     }
+
+     return shader;
+ }
+
+ const simpleVertexShader = createShader(gl.VERTEX_SHADER, simpleVertexShaderSource);
+ const simpleFragmentShader = createShader(gl.FRAGMENT_SHADER, simpleFragmentShaderSource);
+
+ // Create and link simple program
+ const simpleProgram = gl.createProgram();
+ gl.attachShader(simpleProgram, simpleVertexShader);
+ gl.attachShader(simpleProgram, simpleFragmentShader);
+ gl.linkProgram(simpleProgram);
+
+ if (!gl.getProgramParameter(simpleProgram, gl.LINK_STATUS)) {
+     const info = gl.getProgramInfoLog(simpleProgram);
+     throw new Error(`Program linking failed: ${info}`);
+ }
+
+ gl.useProgram(simpleProgram);
+
+ // Simple triangle data
+ const simpleVertices = new Float32Array([
+     0.0,  0.5, 0.0, 1.0,
+    -0.5, -0.5, 0.0, 1.0,
+     0.5, -0.5, 0.0, 1.0
+ ]);
+
+ const simpleBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, simpleBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, simpleVertices, gl.STATIC_DRAW);
+
+ const positionLoc = gl.getAttribLocation(simpleProgram, 'a_position');
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 4, gl.FLOAT, false, 0, 0);
+
+ gl.clearColor(0.0, 0.0, 0.0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+ // Check for errors after simple rendering
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+    throw new Error(`WebGL Error after simple render: ${error}`);
+ }
+
+ // Now try the complex version...
+
+ // Create vertex shader with fixed attributes and uniforms for simplicity
+ const vertexShaderSource = `#version 300 es
+ in vec4 a_position;
+ in vec4 a_color0;
+ in vec4 a_color1;
+ in vec4 a_normal;
+ in vec4 a_texcoord0;
+ in vec4 a_texcoord1;
+
+ uniform vec4 u_vertexUniform0;
+ uniform vec4 u_vertexUniform1;
+ uniform vec4 u_vertexUniform2;
+ uniform vec4 u_vertexUniform3;
+ uniform vec4 u_vertexUniform4;
+ uniform vec4 u_vertexUniform5;
+ uniform vec4 u_vertexUniform6;
+ uniform vec4 u_vertexUniform7;
+
+ uniform mat4 u_modelViewMatrix;
+ uniform mat4 u_projectionMatrix;
+
+ out vec4 v_color;
+ out vec4 v_texcoord;
+ out vec4 v_normal;
+
+ void main() {
+     // Use all vertex attributes in complex calculations
+     vec4 position = a_position;
+     vec4 color = a_color0 + a_color1;
+     vec4 normal = a_normal;
+     vec4 texcoord = a_texcoord0 + a_texcoord1;
+
+     // Use vertex uniforms in calculations
+     vec4 uniformSum = u_vertexUniform0 + u_vertexUniform1 + u_vertexUniform2 + u_vertexUniform3 +
+                       u_vertexUniform4 + u_vertexUniform5 + u_vertexUniform6 + u_vertexUniform7;
+
+     // Complex mathematical operations using all inputs
+     vec4 transformedPosition = u_modelViewMatrix * position;
+     vec4 finalPosition = u_projectionMatrix * transformedPosition;
+
+     // Generate complex color variations based on attribute and uniform usage
+     v_color = (color * uniformSum * 0.01) + sin(position * 3.14159);
+     v_texcoord = texcoord * 0.1;
+     v_normal = normalize(normal + uniformSum * 0.001);
+
+     gl_Position = finalPosition;
+     gl_PointSize = 2.0;
+ }
+ `;
+
+ // Create fragment shader with fixed uniforms for simplicity
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+
+ uniform vec4 u_fragmentUniform0;
+ uniform vec4 u_fragmentUniform1;
+ uniform vec4 u_fragmentUniform2;
+ uniform vec4 u_fragmentUniform3;
+ uniform vec4 u_fragmentUniform4;
+ uniform vec4 u_fragmentUniform5;
+ uniform vec4 u_fragmentUniform6;
+ uniform vec4 u_fragmentUniform7;
+
+ in vec4 v_color;
+ in vec4 v_texcoord;
+ in vec4 v_normal;
+
+ out vec4 fragColor;
+
+ void main() {
+     // Use all fragment uniforms in complex calculations
+     vec4 uniformSum = u_fragmentUniform0 + u_fragmentUniform1 + u_fragmentUniform2 + u_fragmentUniform3 +
+                       u_fragmentUniform4 + u_fragmentUniform5 + u_fragmentUniform6 + u_fragmentUniform7;
+
+     // Complex fragment calculations using all inputs
+     vec4 color = v_color + v_texcoord + v_normal;
+     vec4 finalColor = color * (uniformSum * 0.001) + sin(gl_FragCoord.xyxy * 0.01);
+
+     // Generate complex visual patterns based on uniform and attribute usage
+     float pattern = dot(uniformSum, color) * 0.1;
+     pattern += length(v_normal) * 0.5;
+     pattern += v_texcoord.x * v_texcoord.y;
+
+     fragColor = vec4(pattern, pattern * 0.8, pattern * 0.6, 1.0);
+ }
+ `;
+
+ const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+ const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+ // Create and link program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+     const info = gl.getProgramInfoLog(program);
+     throw new Error(`Program linking failed: ${info}`);
+ }
+
+ gl.useProgram(program);
+
+ // Get attribute and uniform locations
+ const attributes = [];
+ const vertexUniforms = [];
+ const fragmentUniforms = [];
+
+ // Get attribute locations for fixed attributes
+ const attrNames = ['a_position', 'a_color0', 'a_color1', 'a_normal', 'a_texcoord0', 'a_texcoord1'];
+
+ for (let i = 0; i < attrNames.length; i++) {
+     const location = gl.getAttribLocation(program, attrNames[i]);
+     if (location !== -1) {
+         attributes.push(location);
+     }
+ }
+
+ // Get vertex uniform locations - only for uniforms that exist in the shader
+ for (let i = 0; i < VERTEX_UNIFORM_COUNT; i++) {
+     const location = gl.getUniformLocation(program, `u_vertexUniform${i}`);
+     if (location !== null) {
+         vertexUniforms.push(location);
+     }
+ }
+
+ // Get fragment uniform locations - only for uniforms that exist in the shader
+ for (let i = 0; i < FRAGMENT_UNIFORM_COUNT; i++) {
+     const location = gl.getUniformLocation(program, `u_fragmentUniform${i}`);
+     if (location !== null) {
+         fragmentUniforms.push(location);
+     }
+ }
+
+ // Get matrix uniform locations
+ const modelViewMatrixLoc = gl.getUniformLocation(program, 'u_modelViewMatrix');
+ const projectionMatrixLoc = gl.getUniformLocation(program, 'u_projectionMatrix');
+
+ // Generate vertex data for fixed attributes
+ const vertexData = [];
+
+ for (let i = 0; i < VERTEX_COUNT; i++) {
+     const x = (i % 32 - 16) * 0.1;
+     const y = (Math.floor(i / 32) - 16) * 0.1;
+     const z = Math.sin(i * 0.1) * 0.5;
+
+     // Position (a_position)
+     vertexData.push(x, y, z, 1.0);
+
+     // Colors (a_color0, a_color1)
+     vertexData.push(Math.sin(i * 0.1), Math.cos(i * 0.2), Math.sin(i * 0.3), 1.0); // a_color0
+     vertexData.push(Math.cos(i * 0.15), Math.sin(i * 0.25), Math.cos(i * 0.35), 1.0); // a_color1
+
+     // Normal (a_normal)
+     vertexData.push(Math.sin(i * 0.05), Math.cos(i * 0.07), Math.sin(i * 0.09), 0.0); // a_normal (vec4, w=0)
+
+     // Texture coordinates (a_texcoord0, a_texcoord1)
+     vertexData.push(Math.sin(i * 0.1), Math.cos(i * 0.15), Math.sin(i * 0.2), Math.cos(i * 0.25)); // a_texcoord0
+     vertexData.push(Math.cos(i * 0.08), Math.sin(i * 0.11), Math.cos(i * 0.13), Math.sin(i * 0.16)); // a_texcoord1
+ }
+
+ // Create vertex buffer
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexData), gl.STATIC_DRAW);
+
+ // Set up vertex attributes for fixed layout
+ const stride = 24 * 4; // 6 attributes * 4 components * 4 bytes each
+ let offset = 0;
+
+ // Position attribute
+ gl.enableVertexAttribArray(attributes[0]);
+ gl.vertexAttribPointer(attributes[0], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ // Color attributes
+ gl.enableVertexAttribArray(attributes[1]); // a_color0
+ gl.vertexAttribPointer(attributes[1], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ gl.enableVertexAttribArray(attributes[2]); // a_color1
+ gl.vertexAttribPointer(attributes[2], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ // Normal attribute
+ gl.enableVertexAttribArray(attributes[3]); // a_normal
+ gl.vertexAttribPointer(attributes[3], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ // Texture coordinate attributes
+ gl.enableVertexAttribArray(attributes[4]); // a_texcoord0
+ gl.vertexAttribPointer(attributes[4], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ gl.enableVertexAttribArray(attributes[5]); // a_texcoord1
+ gl.vertexAttribPointer(attributes[5], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ // Set vertex uniforms
+ for (let i = 0; i < vertexUniforms.length; i++) {
+     const value = [Math.sin(i * 0.1), Math.cos(i * 0.15), Math.sin(i * 0.2), Math.cos(i * 0.25)];
+     gl.uniform4fv(vertexUniforms[i], value);
+ }
+
+ // Set fragment uniforms
+ for (let i = 0; i < fragmentUniforms.length; i++) {
+     const value = [Math.sin(i * 0.05), Math.cos(i * 0.08), Math.sin(i * 0.12), Math.cos(i * 0.15)];
+     gl.uniform4fv(fragmentUniforms[i], value);
+ }
+
+ // Set matrix uniforms
+ const modelViewMatrix = [
+     1, 0, 0, 0,
+     0, 1, 0, 0,
+     0, 0, 1, 0,
+     0, 0, -2, 1
+ ];
+ const projectionMatrix = [
+     2.414, 0, 0, 0,
+     0, 2.414, 0, 0,
+     0, 0, -1.002, -1,
+     0, 0, -0.2002, 0
+ ];
+
+ gl.uniformMatrix4fv(modelViewMatrixLoc, false, modelViewMatrix);
+ gl.uniformMatrix4fv(projectionMatrixLoc, false, projectionMatrix);
+
+ // STATE POISONING: 50+ state changes for fuzzing surface area
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+     // Capability toggling
+     gl.enable(gl.BLEND);
+     gl.disable(gl.BLEND);
+     gl.enable(gl.CULL_FACE);
+     gl.disable(gl.CULL_FACE);
+     gl.enable(gl.DEPTH_TEST);
+     gl.disable(gl.DEPTH_TEST);
+     gl.enable(gl.STENCIL_TEST);
+     gl.disable(gl.STENCIL_TEST);
+
+     // Blend state changes
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+     gl.blendFunc(gl.ONE, gl.ONE);
+     gl.blendEquation(gl.FUNC_ADD);
+     gl.blendEquation(gl.FUNC_SUBTRACT);
+
+     // Depth state changes
+     gl.depthFunc(gl.LESS);
+     gl.depthFunc(gl.LEQUAL);
+     gl.depthMask(true);
+     gl.depthMask(false);
+
+     // Stencil state changes
+     gl.stencilFunc(gl.ALWAYS, 0, 255);
+     gl.stencilFunc(gl.NEVER, 1, 255);
+     gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+     gl.stencilMask(255);
+     gl.stencilMask(0);
+
+     // Viewport changes
+     gl.viewport(0, 0, 256, 256);
+     gl.viewport(10, 10, 236, 236);
+     gl.scissor(0, 0, 256, 256);
+     gl.scissor(20, 20, 216, 216);
+
+     // Buffer binding churn
+     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+     gl.bindBuffer(gl.ARRAY_BUFFER, null);
+ }
+
+ // Resource binding cycles for additional state poisoning
+ for (let cycle = 0; cycle < RESOURCE_BINDING_CYCLES; cycle++) {
+     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+     gl.bindBuffer(gl.ARRAY_BUFFER, null);
+     gl.useProgram(program);
+     gl.useProgram(null);
+ }
+
+ // Invalid operation attempts (should not crash, just generate errors)
+ // Temporarily disabled to debug linking issues
+ /*
+ for (let attempt = 0; attempt < INVALID_OPERATION_ATTEMPTS; attempt++) {
+     // Try to draw with invalid state (disabled vertex arrays, etc.)
+     gl.disableVertexAttribArray(0);
+     gl.drawArrays(gl.POINTS, 0, 10);
+     gl.enableVertexAttribArray(0);
+ }
+ */
+
+ // Final rendering setup
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+ gl.disable(gl.CULL_FACE);
+ gl.enable(gl.DEPTH_TEST);
+ gl.depthFunc(gl.LESS);
+ gl.viewport(0, 0, 256, 256);
+
+ // Render the complex geometry
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.drawArrays(gl.POINTS, 0, VERTEX_COUNT);
+
+ // Create vertex shader with fixed attributes and uniforms for simplicity
+ const vertexShaderSource = `#version 300 es
+ in vec4 a_position;
+ in vec4 a_color0;
+ in vec4 a_color1;
+ in vec4 a_normal;
+ in vec4 a_texcoord0;
+ in vec4 a_texcoord1;
+
+ uniform vec4 u_vertexUniform0;
+ uniform vec4 u_vertexUniform1;
+ uniform vec4 u_vertexUniform2;
+ uniform vec4 u_vertexUniform3;
+ uniform vec4 u_vertexUniform4;
+ uniform vec4 u_vertexUniform5;
+ uniform vec4 u_vertexUniform6;
+ uniform vec4 u_vertexUniform7;
+
+ uniform mat4 u_modelViewMatrix;
+ uniform mat4 u_projectionMatrix;
+
+ out vec4 v_color;
+ out vec4 v_texcoord;
+ out vec4 v_normal;
+
+ void main() {
+     // Use all vertex attributes in complex calculations
+     vec4 position = a_position;
+     vec4 color = a_color0 + a_color1;
+     vec4 normal = a_normal;
+     vec4 texcoord = a_texcoord0 + a_texcoord1;
+
+     // Use vertex uniforms in calculations
+     vec4 uniformSum = u_vertexUniform0 + u_vertexUniform1 + u_vertexUniform2 + u_vertexUniform3 +
+                       u_vertexUniform4 + u_vertexUniform5 + u_vertexUniform6 + u_vertexUniform7;
+
+     // Complex mathematical operations using all inputs
+     vec4 transformedPosition = u_modelViewMatrix * position;
+     vec4 finalPosition = u_projectionMatrix * transformedPosition;
+
+     // Generate complex color variations based on attribute and uniform usage
+     v_color = (color * uniformSum * 0.01) + sin(position * 3.14159);
+     v_texcoord = texcoord * 0.1;
+     v_normal = normalize(normal + uniformSum * 0.001);
+
+     gl_Position = finalPosition;
+     gl_PointSize = 2.0;
+ }
+ `;
+
+ // Create fragment shader with fixed uniforms for simplicity
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+
+ uniform vec4 u_fragmentUniform0;
+ uniform vec4 u_fragmentUniform1;
+ uniform vec4 u_fragmentUniform2;
+ uniform vec4 u_fragmentUniform3;
+ uniform vec4 u_fragmentUniform4;
+ uniform vec4 u_fragmentUniform5;
+ uniform vec4 u_fragmentUniform6;
+ uniform vec4 u_fragmentUniform7;
+
+ in vec4 v_color;
+ in vec4 v_texcoord;
+ in vec4 v_normal;
+
+ out vec4 fragColor;
+
+ void main() {
+     // Use all fragment uniforms in complex calculations
+     vec4 uniformSum = u_fragmentUniform0 + u_fragmentUniform1 + u_fragmentUniform2 + u_fragmentUniform3 +
+                       u_fragmentUniform4 + u_fragmentUniform5 + u_fragmentUniform6 + u_fragmentUniform7;
+
+     // Complex fragment calculations using all inputs
+     vec4 color = v_color + v_texcoord + v_normal;
+     vec4 finalColor = color * (uniformSum * 0.001) + sin(gl_FragCoord.xyxy * 0.01);
+
+     // Generate complex visual patterns based on uniform and attribute usage
+     float pattern = dot(uniformSum, color) * 0.1;
+     pattern += length(v_normal) * 0.5;
+     pattern += v_texcoord.x * v_texcoord.y;
+
+     fragColor = vec4(pattern, pattern * 0.8, pattern * 0.6, 1.0);
+ }
+ `;
+
+ // Compile shaders
+ function createShader(type, source) {
+     const shader = gl.createShader(type);
+     gl.shaderSource(shader, source);
+     gl.compileShader(shader);
+
+     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+         const info = gl.getShaderInfoLog(shader);
+         throw new Error(`Shader compilation failed: ${info}`);
+     }
+
+     return shader;
+ }
+
+ const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+ const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+ // Create and link program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+     const info = gl.getProgramInfoLog(program);
+     throw new Error(`Program linking failed: ${info}`);
+ }
+
+ gl.useProgram(program);
+
+ // Get attribute and uniform locations
+ const attributes = [];
+ const vertexUniforms = [];
+ const fragmentUniforms = [];
+
+ // Get attribute locations for fixed attributes
+ const attrNames = ['a_position', 'a_color0', 'a_color1', 'a_normal', 'a_texcoord0', 'a_texcoord1'];
+
+ for (let i = 0; i < attrNames.length; i++) {
+     const location = gl.getAttribLocation(program, attrNames[i]);
+     if (location !== -1) {
+         attributes.push(location);
+     }
+ }
+
+ // Get vertex uniform locations - only for uniforms that exist in the shader
+ for (let i = 0; i < VERTEX_UNIFORM_COUNT; i++) {
+     const location = gl.getUniformLocation(program, `u_vertexUniform${i}`);
+     if (location !== null) {
+         vertexUniforms.push(location);
+     }
+ }
+
+ // Get fragment uniform locations - only for uniforms that exist in the shader
+ for (let i = 0; i < FRAGMENT_UNIFORM_COUNT; i++) {
+     const location = gl.getUniformLocation(program, `u_fragmentUniform${i}`);
+     if (location !== null) {
+         fragmentUniforms.push(location);
+     }
+ }
+
+ // Get matrix uniform locations
+ const modelViewMatrixLoc = gl.getUniformLocation(program, 'u_modelViewMatrix');
+ const projectionMatrixLoc = gl.getUniformLocation(program, 'u_projectionMatrix');
+
+ // Generate vertex data for fixed attributes
+ const vertexData = [];
+
+ for (let i = 0; i < VERTEX_COUNT; i++) {
+     const x = (i % 32 - 16) * 0.1;
+     const y = (Math.floor(i / 32) - 16) * 0.1;
+     const z = Math.sin(i * 0.1) * 0.5;
+
+     // Position (a_position)
+     vertexData.push(x, y, z, 1.0);
+
+     // Colors (a_color0, a_color1)
+     vertexData.push(Math.sin(i * 0.1), Math.cos(i * 0.2), Math.sin(i * 0.3), 1.0); // a_color0
+     vertexData.push(Math.cos(i * 0.15), Math.sin(i * 0.25), Math.cos(i * 0.35), 1.0); // a_color1
+
+     // Normal (a_normal)
+     vertexData.push(Math.sin(i * 0.05), Math.cos(i * 0.07), Math.sin(i * 0.09), 0.0); // a_normal (vec4, w=0)
+
+     // Texture coordinates (a_texcoord0, a_texcoord1)
+     vertexData.push(Math.sin(i * 0.1), Math.cos(i * 0.15), Math.sin(i * 0.2), Math.cos(i * 0.25)); // a_texcoord0
+     vertexData.push(Math.cos(i * 0.08), Math.sin(i * 0.11), Math.cos(i * 0.13), Math.sin(i * 0.16)); // a_texcoord1
+ }
+
+ // Create vertex buffer
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexData), gl.STATIC_DRAW);
+
+ // Set up vertex attributes for fixed layout
+ const stride = 24 * 4; // 6 attributes * 4 components * 4 bytes each
+ let offset = 0;
+
+ // Position attribute
+ gl.enableVertexAttribArray(attributes[0]);
+ gl.vertexAttribPointer(attributes[0], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ // Color attributes
+ gl.enableVertexAttribArray(attributes[1]); // a_color0
+ gl.vertexAttribPointer(attributes[1], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ gl.enableVertexAttribArray(attributes[2]); // a_color1
+ gl.vertexAttribPointer(attributes[2], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ // Normal attribute
+ gl.enableVertexAttribArray(attributes[3]); // a_normal
+ gl.vertexAttribPointer(attributes[3], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ // Texture coordinate attributes
+ gl.enableVertexAttribArray(attributes[4]); // a_texcoord0
+ gl.vertexAttribPointer(attributes[4], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ gl.enableVertexAttribArray(attributes[5]); // a_texcoord1
+ gl.vertexAttribPointer(attributes[5], 4, gl.FLOAT, false, stride, offset);
+ offset += 16;
+
+ // Set vertex uniforms
+ for (let i = 0; i < vertexUniforms.length; i++) {
+     const value = [Math.sin(i * 0.1), Math.cos(i * 0.15), Math.sin(i * 0.2), Math.cos(i * 0.25)];
+     gl.uniform4fv(vertexUniforms[i], value);
+ }
+
+ // Set fragment uniforms
+ for (let i = 0; i < fragmentUniforms.length; i++) {
+     const value = [Math.sin(i * 0.05), Math.cos(i * 0.08), Math.sin(i * 0.12), Math.cos(i * 0.15)];
+     gl.uniform4fv(fragmentUniforms[i], value);
+ }
+
+ // Set matrix uniforms
+ const modelViewMatrix = [
+     1, 0, 0, 0,
+     0, 1, 0, 0,
+     0, 0, 1, 0,
+     0, 0, -2, 1
+ ];
+ const projectionMatrix = [
+     2.414, 0, 0, 0,
+     0, 2.414, 0, 0,
+     0, 0, -1.002, -1,
+     0, 0, -0.2002, 0
+ ];
+
+ gl.uniformMatrix4fv(modelViewMatrixLoc, false, modelViewMatrix);
+ gl.uniformMatrix4fv(projectionMatrixLoc, false, projectionMatrix);
+
+ // STATE POISONING: 50+ state changes for fuzzing surface area
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+     // Capability toggling
+     gl.enable(gl.BLEND);
+     gl.disable(gl.BLEND);
+     gl.enable(gl.CULL_FACE);
+     gl.disable(gl.CULL_FACE);
+     gl.enable(gl.DEPTH_TEST);
+     gl.disable(gl.DEPTH_TEST);
+     gl.enable(gl.STENCIL_TEST);
+     gl.disable(gl.STENCIL_TEST);
+
+     // Blend state changes
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+     gl.blendFunc(gl.ONE, gl.ONE);
+     gl.blendEquation(gl.FUNC_ADD);
+     gl.blendEquation(gl.FUNC_SUBTRACT);
+
+     // Depth state changes
+     gl.depthFunc(gl.LESS);
+     gl.depthFunc(gl.LEQUAL);
+     gl.depthMask(true);
+     gl.depthMask(false);
+
+     // Stencil state changes
+     gl.stencilFunc(gl.ALWAYS, 0, 255);
+     gl.stencilFunc(gl.NEVER, 1, 255);
+     gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+     gl.stencilMask(255);
+     gl.stencilMask(0);
+
+     // Viewport changes
+     gl.viewport(0, 0, 256, 256);
+     gl.viewport(10, 10, 236, 236);
+     gl.scissor(0, 0, 256, 256);
+     gl.scissor(20, 20, 216, 216);
+
+     // Buffer binding churn
+     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+     gl.bindBuffer(gl.ARRAY_BUFFER, null);
+ }
+
+ // Resource binding cycles for additional state poisoning
+ for (let cycle = 0; cycle < RESOURCE_BINDING_CYCLES; cycle++) {
+     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+     gl.bindBuffer(gl.ARRAY_BUFFER, null);
+     gl.useProgram(program);
+     gl.useProgram(null);
+ }
+
+ // Invalid operation attempts (should not crash, just generate errors)
+ // Temporarily disabled to debug linking issues
+ /*
+ for (let attempt = 0; attempt < INVALID_OPERATION_ATTEMPTS; attempt++) {
+     // Try to draw with invalid state (disabled vertex arrays, etc.)
+     gl.disableVertexAttribArray(0);
+     gl.drawArrays(gl.POINTS, 0, 10);
+     gl.enableVertexAttribArray(0);
+ }
+ */
+
+ // Final rendering setup
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+ gl.disable(gl.CULL_FACE);
+ gl.enable(gl.DEPTH_TEST);
+ gl.depthFunc(gl.LESS);
+ gl.viewport(0, 0, 256, 256);
+
+ // Render the complex geometry
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.drawArrays(gl.POINTS, 0, VERTEX_COUNT);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+    throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

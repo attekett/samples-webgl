@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const textureSize = 256;
+    const instanceCount = 100;
+    const bufferSize = 65536;
+    const uniformBlockIndex = 0;
+    const maxIterations = 50;
+
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    const vertexShaderSource = `#version 300 es
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aTexCoord;
+layout(location = 3) in mat4 aInstanceMatrix;
+
+uniform Matrices {
+    mat4 uProjection;
+    mat4 uView;
+    mat4 uModel;
+};
+
+out vec3 vNormal;
+out vec2 vTexCoord;
+out vec4 vPosition;
+
+void main() {
+    vNormal = aNormal;
+    vTexCoord = aTexCoord;
+    vPosition = uModel * aInstanceMatrix * vec4(aPosition, 1.0);
+    gl_Position = uProjection * uView * vPosition;
+}`;
+
+    const fragmentShaderSource = `#version 300 es
+precision highp float;
+
+uniform sampler2D uTexture0;
+uniform sampler2D uTexture1;
+uniform vec3 uLightPos;
+uniform float uTime;
+
+in vec3 vNormal;
+in vec2 vTexCoord;
+in vec4 vPosition;
+
+layout(location = 0) out vec4 fragColor0;
+layout(location = 1) out vec4 fragColor1;
+layout(location = 2) out vec4 fragColor2;
+
+void main() {
+    vec3 normal = normalize(vNormal);
+    vec3 lightDir = normalize(uLightPos - vPosition.xyz);
+    float diffuse = max(dot(normal, lightDir), 0.0);
+
+    vec4 texColor0 = texture(uTexture0, vTexCoord);
+    vec4 texColor1 = texture(uTexture1, vTexCoord * 2.0);
+
+    fragColor0 = vec4(texColor0.rgb * diffuse, texColor0.a);
+    fragColor1 = vec4(texColor1.rgb * (1.0 - diffuse), texColor1.a);
+    fragColor2 = vec4(normal * 0.5 + 0.5, 1.0);
+}`;
+
+    function createShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            throw new Error('Shader compilation failed: ' + gl.getShaderInfoLog(shader));
+        }
+        return shader;
+    }
+
+    function createProgram(vertexSource, fragmentSource) {
+        const vertexShader = createShader(gl.VERTEX_SHADER, vertexSource);
+        const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentSource);
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+        }
+        return program;
+    }
+
+    const program = createProgram(vertexShaderSource, fragmentShaderSource);
+
+    const matricesBlockIndex = gl.getUniformBlockIndex(program, 'Matrices');
+    gl.uniformBlockBinding(program, matricesBlockIndex, uniformBlockIndex);
+
+    const matricesBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, matricesBuffer);
+    gl.bufferData(gl.UNIFORM_BUFFER, bufferSize, gl.DYNAMIC_DRAW);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, uniformBlockIndex, matricesBuffer);
+
+    const projectionMatrix = new Float32Array([
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, -1.0, -1.0,
+        0.0, 0.0, -0.1, 0.0
+    ]);
+    const viewMatrix = new Float32Array([
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, -5.0,
+        0.0, 0.0, 0.0, 1.0
+    ]);
+    const modelMatrix = new Float32Array([
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    ]);
+
+    const matricesData = new Float32Array([...projectionMatrix, ...viewMatrix, ...modelMatrix]);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, matricesData);
+
+    const vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    const vertices = new Float32Array([
+        -1.0, -1.0, 0.0,  0.0, 0.0, 1.0,  0.0, 0.0,
+         1.0, -1.0, 0.0,  0.0, 0.0, 1.0,  1.0, 0.0,
+        -1.0,  1.0, 0.0,  0.0, 0.0, 1.0,  0.0, 1.0,
+         1.0,  1.0, 0.0,  0.0, 0.0, 1.0,  1.0, 1.0
+    ]);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    const indices = new Uint16Array([0, 1, 2, 2, 1, 3]);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+    const instanceBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+    const instanceData = new Float32Array(instanceCount * 16);
+    for (let i = 0; i < instanceCount; i++) {
+        const offset = i * 16;
+        const x = (Math.random() - 0.5) * 4.0;
+        const y = (Math.random() - 0.5) * 4.0;
+        const z = (Math.random() - 0.5) * 4.0;
+        instanceData.set([
+            1.0, 0.0, 0.0, x,
+            0.0, 1.0, 0.0, y,
+            0.0, 0.0, 1.0, z,
+            0.0, 0.0, 0.0, 1.0
+        ], offset);
+    }
+    gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.STATIC_DRAW);
+
+    const texture0 = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture0);
+    const texData0 = new Uint8Array(textureSize * textureSize * 4);
+    for (let i = 0; i < texData0.length; i++) {
+        texData0[i] = Math.random() * 255;
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureSize, textureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, texData0);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    const texture1 = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, texture1);
+    const texData1 = new Uint8Array(textureSize * textureSize * 4);
+    for (let i = 0; i < texData1.length; i++) {
+        texData1[i] = Math.random() * 255;
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureSize, textureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, texData1);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    const framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+    const renderbuffer0 = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer0);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, textureSize, textureSize);
+
+    const renderbuffer1 = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer1);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, textureSize, textureSize);
+
+    const renderbuffer2 = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer2);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, textureSize, textureSize);
+
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, renderbuffer0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, renderbuffer1);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.RENDERBUFFER, renderbuffer2);
+
+    gl.drawBuffers([
+        gl.COLOR_ATTACHMENT0,
+        gl.COLOR_ATTACHMENT1,
+        gl.COLOR_ATTACHMENT2
+    ]);
+
+    gl.viewport(0, 0, textureSize, textureSize);
+
+    gl.useProgram(program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 32, 12);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 32, 24);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+    for (let i = 0; i < 4; i++) {
+        gl.enableVertexAttribArray(3 + i);
+        gl.vertexAttribPointer(3 + i, 4, gl.FLOAT, false, 64, i * 16);
+        gl.vertexAttribDivisor(3 + i, 1);
+    }
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+    gl.uniform1i(gl.getUniformLocation(program, 'uTexture0'), 0);
+    gl.uniform1i(gl.getUniformLocation(program, 'uTexture1'), 1);
+    gl.uniform3f(gl.getUniformLocation(program, 'uLightPos'), 5.0, 5.0, 5.0);
+    gl.uniform1f(gl.getUniformLocation(program, 'uTime'), 0.0);
+
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    gl.drawElementsInstanced(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0, instanceCount);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, 256, 256);
+
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+        throw new Error(`WebGL Error: ${error}`);
+    }
+}
+
+main().catch(err => {
+    throw err;
+});
+</script>
+</body>
+</html>

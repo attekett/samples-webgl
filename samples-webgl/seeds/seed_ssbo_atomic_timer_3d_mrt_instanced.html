@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) throw new Error("WebGL2 required");
+
+ // Occlusion query for sync
+ const occlusionQuery = gl.createQuery();
+ gl.beginQuery(gl.ANY_SAMPLES_PASSED, occlusionQuery);
+
+ // Use regular uniform buffer for shared data instead of SSBO
+ const sharedDataBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.UNIFORM_BUFFER, sharedDataBuffer);
+ const sharedData = new Float32Array(1024);
+ for (let i = 0; i < 1024; i++) sharedData[i] = Math.sin(i * 0.1);
+ gl.bufferData(gl.UNIFORM_BUFFER, sharedData, gl.STATIC_DRAW);
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, sharedDataBuffer);
+
+ // UBO for shared uniforms
+ const ubo = gl.createBuffer();
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
+ const uboData = new Float32Array([1.0, 0.5, 0.2, 1.0, 256.0, 0.0, 0.0, 0.0]);
+ gl.bufferData(gl.UNIFORM_BUFFER, uboData.byteLength, gl.STATIC_DRAW);
+ gl.bufferSubData(gl.UNIFORM_BUFFER, 0, uboData);
+
+ // Additional shared buffer for complex operations
+ const sharedBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, sharedBuffer);
+ const sharedData = new Float32Array(2048);
+ for (let i = 0; i < 2048; i++) sharedData[i] = Math.sin(i * 0.01) * Math.cos(i * 0.005);
+ gl.bufferData(gl.ARRAY_BUFFER, sharedData, gl.STATIC_DRAW);
+
+ // 3D texture for complex sampling
+ const tex3D = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_3D, tex3D);
+ gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 32, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.generateMipmap(gl.TEXTURE_3D);
+
+ // MRT textures
+ const mrtTex0 = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, mrtTex0);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+ const mrtTex1 = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, mrtTex1);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+ // Sampler objects
+ const sampler0 = gl.createSampler();
+ gl.samplerParameteri(sampler0, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+ gl.samplerParameteri(sampler0, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.samplerParameteri(sampler0, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+ gl.samplerParameteri(sampler0, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+ gl.samplerParameteri(sampler0, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+
+ // FBO for MRT
+ const fbo = gl.createFramebuffer();
+ gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, mrtTex0, 0);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, mrtTex1, 0);
+ gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+
+ // Atomic operations will be done in vertex shader via image load/store
+ const atomicTex = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, atomicTex);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32UI, 32, 32, 0, gl.RED_INTEGER, gl.UNSIGNED_INT, null);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+ // Vertex shader with instancing and transform feedback
+ const vertSrc = `#version 300 es
+ layout(location = 0) in vec4 position;
+ layout(location = 1) in vec4 instanceData;
+ layout(std140, binding = 1) uniform SharedData {
+  float data[1024];
+ };
+ uniform mat4 mvp;
+ out vec4 tfPos;
+ out vec4 tfData;
+ void main() {
+  uint idx = uint(gl_InstanceID) % 1024u;
+  vec4 pos = mvp * position + instanceData;
+  gl_Position = pos;
+  tfPos = pos;
+  tfData = instanceData * 2.0 + vec4(data[idx], data[(idx + 1u) % 1024u], data[(idx + 2u) % 1024u], 1.0);
+ }
+ `;
+ const fragSrc = `#version 300 es
+ precision highp float;
+ layout(location = 0) out vec4 color0;
+ layout(location = 1) out vec4 color1;
+ in vec4 tfData;
+ uniform vec4 colorMult;
+ void main() {
+  color0 = tfData * colorMult;
+  color1 = vec4(1.0) - tfData * colorMult;
+ }
+ `;
+
+ const vertShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertShader, vertSrc);
+ gl.compileShader(vertShader);
+ const fragShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragShader, fragSrc);
+ gl.compileShader(fragShader);
+
+ // Render program
+ const renderProgram = gl.createProgram();
+ gl.attachShader(renderProgram, vertShader);
+ gl.attachShader(renderProgram, fragShader);
+ gl.transformFeedbackVaryings(renderProgram, ['tfPos', 'tfData'], gl.SEPARATE_ATTRIBS);
+ gl.linkProgram(renderProgram);
+
+ // Post-process shaders
+ const ppVertSrc = `#version 300 es
+ layout(location = 0) in vec2 pos;
+ out vec2 uv;
+ void main() {
+  uv = pos * 0.5 + 0.5;
+  gl_Position = vec4(pos, 0.0, 1.0);
+ }
+ `;
+ const ppFragSrc = `#version 300 es
+ precision highp float;
+ precision highp sampler2D;
+ precision highp sampler3D;
+ in vec2 uv;
+ uniform sampler2D tex0;
+ uniform sampler2D tex1;
+ uniform sampler3D tex3D;
+ uniform vec3 params;
+ out vec4 fragColor;
+ void main() {
+  vec4 c0 = texture(tex0, uv);
+  vec4 c1 = texture(tex1, uv);
+  vec4 c3d = texture(tex3D, vec3(uv, params.z));
+  fragColor = mix(c0, c1, params.x) + c3d * params.y;
+ }
+ `;
+
+ const ppVert = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(ppVert, ppVertSrc);
+ gl.compileShader(ppVert);
+ const ppFrag = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(ppFrag, ppFragSrc);
+ gl.compileShader(ppFrag);
+ const ppProgram = gl.createProgram();
+ gl.attachShader(ppProgram, ppVert);
+ gl.attachShader(ppProgram, ppFrag);
+ gl.linkProgram(ppProgram);
+
+ // Transform feedback buffer
+ const tfBuffer0 = gl.createBuffer();
+ gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer0);
+ gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 1000 * 8 * 4, gl.STATIC_DRAW);
+ const tfBuffer1 = gl.createBuffer();
+ gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
+ gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 1000 * 8 * 4, gl.STATIC_DRAW);
+ gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, null);
+
+ // VAOs
+ const instanceVao = gl.createVertexArray();
+ gl.bindVertexArray(instanceVao);
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-0.5,-0.5,0,1, 0.5,-0.5,0,1, 0,0.5,0,1]), gl.STATIC_DRAW);
+ gl.enableVertexAttribArray(0);
+ gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+ const instanceBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+ const instanceData = new Float32Array(1000 * 4);
+ for (let i = 0; i < 1000; i++) {
+  instanceData[i*4] = (Math.random()-0.5)*2;
+  instanceData[i*4+1] = (Math.random()-0.5)*2;
+  instanceData[i*4+2] = 0;
+  instanceData[i*4+3] = Math.random();
+ }
+ gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.STATIC_DRAW);
+ gl.enableVertexAttribArray(1);
+ gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0);
+ gl.vertexAttribDivisor(1, 1);
+ gl.bindVertexArray(null);
+
+ const quadVao = gl.createVertexArray();
+ gl.bindVertexArray(quadVao);
+ const quadBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+ gl.enableVertexAttribArray(0);
+ gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+ gl.bindVertexArray(null);
+
+ // State setup with lots of changes
+ gl.viewport(0, 0, 256, 256);
+ gl.clearColor(0.1, 0.2, 0.3, 1.0);
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+ gl.enable(gl.DEPTH_TEST);
+ gl.depthFunc(gl.LEQUAL);
+ gl.enable(gl.CULL_FACE);
+ gl.cullFace(gl.BACK);
+
+ // Atomic operations will happen during vertex processing
+
+ // Bind transform feedback
+ gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer0);
+ gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, tfBuffer1);
+
+ // Render to MRT with transform feedback
+ gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.useProgram(renderProgram);
+ gl.uniformMatrix4fv(gl.getUniformLocation(renderProgram, 'mvp'), false, [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+ gl.uniform4fv(gl.getUniformLocation(renderProgram, 'colorMult'), [0.8, 0.6, 0.4, 1.0]);
+ gl.bindVertexArray(instanceVao);
+ gl.beginTransformFeedback(gl.TRIANGLES);
+ gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, 100);
+ gl.endTransformFeedback();
+ gl.bindVertexArray(null);
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+ // End occlusion query
+ gl.endQuery(gl.ANY_SAMPLES_PASSED);
+
+ // Post-process
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.useProgram(ppProgram);
+ gl.bindSampler(0, sampler0);
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, mrtTex0);
+ gl.uniform1i(gl.getUniformLocation(ppProgram, 'tex0'), 0);
+ gl.bindSampler(1, sampler0);
+ gl.activeTexture(gl.TEXTURE1);
+ gl.bindTexture(gl.TEXTURE_2D, mrtTex1);
+ gl.uniform1i(gl.getUniformLocation(ppProgram, 'tex1'), 1);
+ gl.bindSampler(2, sampler0);
+ gl.activeTexture(gl.TEXTURE2);
+ gl.bindTexture(gl.TEXTURE_3D, tex3D);
+ gl.uniform1i(gl.getUniformLocation(ppProgram, 'tex3D'), 2);
+ gl.uniform3fv(gl.getUniformLocation(ppProgram, 'params'), [0.5, 0.3, 0.7]);
+ gl.bindVertexArray(quadVao);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+ gl.bindVertexArray(null);
+
+ // Query result
+ const queryResult = gl.getQueryParameter(occlusionQuery, gl.QUERY_RESULT);
+
+ // Cleanup with aggressive deletion
+ gl.deleteBuffer(sharedDataBuffer);
+ gl.deleteBuffer(ubo);
+ gl.deleteBuffer(sharedBuffer);
+ gl.deleteBuffer(vertexBuffer);
+ gl.deleteBuffer(instanceBuffer);
+ gl.deleteBuffer(quadBuffer);
+ gl.deleteBuffer(tfBuffer0);
+ gl.deleteBuffer(tfBuffer1);
+ gl.deleteTexture(tex3D);
+ gl.deleteTexture(atomicTex);
+ gl.deleteTexture(mrtTex0);
+ gl.deleteTexture(mrtTex1);
+ gl.deleteSampler(sampler0);
+ gl.deleteFramebuffer(fbo);
+ gl.deleteVertexArray(instanceVao);
+ gl.deleteVertexArray(quadVao);
+ gl.deleteProgram(renderProgram);
+ gl.deleteProgram(ppProgram);
+ gl.deleteShader(vertShader);
+ gl.deleteShader(fragShader);
+ gl.deleteShader(ppVert);
+ gl.deleteShader(ppFrag);
+ gl.deleteQuery(occlusionQuery);
+
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+  throw new Error(`WebGL Error: ${error}`);
+ }
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+   throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+   throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ const queryCount = 8;
+ const syncTimeout = 1000000;
+ const bufferSize = 1024;
+ const timingDelay = 100;
+ const stateChangeCount = 50;
+
+ const vertexShaderSource = `#version 300 es
+layout(location = 0) in vec2 a_position;
+layout(location = 1) in vec3 a_color;
+out vec3 v_color;
+uniform mat4 u_mvpMatrix;
+
+void main() {
+  gl_Position = u_mvpMatrix * vec4(a_position, 0.0, 1.0);
+  v_color = a_color;
+}
+`;
+
+ const fragmentShaderSource = `#version 300 es
+precision highp float;
+in vec3 v_color;
+out vec4 fragColor;
+uniform float u_visibility;
+
+void main() {
+  fragColor = vec4(v_color * u_visibility, 1.0);
+}
+`;
+
+ function createShader(gl, type, source) {
+   const shader = gl.createShader(type);
+   gl.shaderSource(shader, source);
+   gl.compileShader(shader);
+   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+     throw new Error('Shader compilation failed: ' + gl.getShaderInfoLog(shader));
+   }
+   return shader;
+ }
+
+ function createProgram(gl, vertexShader, fragmentShader) {
+   const program = gl.createProgram();
+   gl.attachShader(program, vertexShader);
+   gl.attachShader(program, fragmentShader);
+   gl.linkProgram(program);
+   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+     throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+   }
+   return program;
+ }
+
+ const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+ const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+ const program = createProgram(gl, vertexShader, fragmentShader);
+
+ const positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+ const colorAttributeLocation = gl.getAttribLocation(program, 'a_color');
+ const mvpMatrixLocation = gl.getUniformLocation(program, 'u_mvpMatrix');
+ const visibilityLocation = gl.getUniformLocation(program, 'u_visibility');
+
+ const positionBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ const positions = new Float32Array([
+   -0.8, -0.8,
+    0.8, -0.8,
+   -0.8,  0.8,
+    0.8,  0.8,
+ ]);
+ gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+ const colorBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+ const colors = new Float32Array([
+   1.0, 0.0, 0.0,
+   0.0, 1.0, 0.0,
+   0.0, 0.0, 1.0,
+   1.0, 1.0, 0.0,
+ ]);
+ gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+
+ const vao = gl.createVertexArray();
+ gl.bindVertexArray(vao);
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.enableVertexAttribArray(positionAttributeLocation);
+ gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+ gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+ gl.enableVertexAttribArray(colorAttributeLocation);
+ gl.vertexAttribPointer(colorAttributeLocation, 3, gl.FLOAT, false, 0, 0);
+
+ const queries = [];
+ for (let i = 0; i < queryCount; i++) {
+   queries.push(gl.createQuery());
+ }
+
+ const syncObjects = [];
+ for (let i = 0; i < 4; i++) {
+   syncObjects.push(gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0));
+ }
+
+ const feedbackBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
+ const feedbackData = new Float32Array(4);
+ gl.bufferData(gl.ARRAY_BUFFER, feedbackData, gl.DYNAMIC_READ);
+
+ function createMvpMatrix(x, y, scale) {
+   const matrix = new Float32Array(16);
+   matrix[0] = scale;
+   matrix[5] = scale;
+   matrix[10] = 1;
+   matrix[12] = x;
+   matrix[13] = y;
+   matrix[15] = 1;
+   return matrix;
+ }
+
+ function performStateChanges() {
+   for (let i = 0; i < stateChangeCount; i++) {
+     gl.enable(gl.BLEND);
+     gl.disable(gl.BLEND);
+     gl.enable(gl.DEPTH_TEST);
+     gl.disable(gl.DEPTH_TEST);
+     gl.enable(gl.CULL_FACE);
+     gl.disable(gl.CULL_FACE);
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+     gl.depthFunc(gl.LESS);
+     gl.cullFace(gl.BACK);
+     gl.viewport(0, 0, canvas.width, canvas.height);
+   }
+ }
+
+ function renderOcclusionQueryTest(x, y, queryIndex) {
+   const query = queries[queryIndex % queries.length];
+   gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, query);
+
+   gl.useProgram(program);
+   gl.bindVertexArray(vao);
+   gl.uniformMatrix4fv(mvpMatrixLocation, false, createMvpMatrix(x, y, 0.3));
+   gl.uniform1f(visibilityLocation, 1.0);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+   gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
+
+   if (gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) {
+     const result = gl.getQueryParameter(query, gl.QUERY_RESULT);
+     gl.uniform1f(visibilityLocation, result ? 1.0 : 0.5);
+     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+   }
+ }
+
+ function renderSyncTest(x, y, syncIndex) {
+   const sync = syncObjects[syncIndex % syncObjects.length];
+   const status = gl.clientWaitSync(sync, 0, syncTimeout);
+
+   let visibility = 0.3;
+   if (status === gl.ALREADY_SIGNALED || status === gl.CONDITION_SATISFIED) {
+     visibility = 1.0;
+   } else if (status === gl.TIMEOUT_EXPIRED) {
+     visibility = 0.7;
+   }
+
+   gl.useProgram(program);
+   gl.bindVertexArray(vao);
+   gl.uniformMatrix4fv(mvpMatrixLocation, false, createMvpMatrix(x, y, 0.3));
+   gl.uniform1f(visibilityLocation, visibility);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+   gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+ }
+
+ function renderBufferMappingTest(x, y) {
+   gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
+   gl.getBufferSubData(gl.ARRAY_BUFFER, 0, feedbackData);
+
+   const sum = feedbackData[0] + feedbackData[1] + feedbackData[2] + feedbackData[3];
+   const avgValue = sum / 4.0;
+   const visibility = Math.max(0.2, Math.min(1.0, avgValue + 0.5));
+
+   gl.useProgram(program);
+   gl.bindVertexArray(vao);
+   gl.uniformMatrix4fv(mvpMatrixLocation, false, createMvpMatrix(x, y, 0.3));
+   gl.uniform1f(visibilityLocation, visibility);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+   feedbackData[0] = Math.random();
+   feedbackData[1] = Math.random();
+   feedbackData[2] = Math.random();
+   feedbackData[3] = Math.random();
+   gl.bufferSubData(gl.ARRAY_BUFFER, 0, feedbackData);
+ }
+
+ function render() {
+   gl.clearColor(0.1, 0.1, 0.1, 1.0);
+   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+   performStateChanges();
+
+   const cellSize = 2.0 / 3.0;
+   let cellIndex = 0;
+
+   for (let row = 0; row < 3; row++) {
+     for (let col = 0; col < 3; col++) {
+       const x = (col - 1) * cellSize;
+       const y = (1 - row) * cellSize;
+
+       if (row === 0) {
+         renderOcclusionQueryTest(x, y, cellIndex);
+       } else if (row === 1) {
+         renderSyncTest(x, y, cellIndex);
+       } else {
+         renderBufferMappingTest(x, y);
+       }
+
+       cellIndex++;
+     }
+   }
+ }
+
+ render();
+
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ throw err;
+});
+</script>
+</body>
+</html>

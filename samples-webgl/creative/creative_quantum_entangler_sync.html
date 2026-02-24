@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        /**
+         * WEBGL-CREATIVE-014: The Quantum Entangler
+         * ----------------------------------------
+         * Focus: GPU/CPU Synchronization (Sync Objects)
+         * 
+         * This test stresses the driver's synchronization primitives by creating a matrix
+         * of blocks that are "entangled" with the GPU's command pipeline completion.
+         * We measure "jitter" using fenceSync and clientWaitSync.
+         */
+
+        // CONFIGURATION
+        const MATRIX_SIZE = 16;
+        const SYNC_OBJECT_COUNT = 32;
+        const STATE_CHANGE_COUNT = 50;
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 required for Sync Objects");
+
+            // 1. Shaders
+            const vsSource = `#version 300 es
+                layout(location=0) in vec2 a_pos;
+                layout(location=1) in float a_jitter;
+                
+                out float v_intensity;
+                
+                void main() {
+                    v_intensity = a_jitter;
+                    gl_Position = vec4(a_pos, 0.0, 1.0);
+                }`;
+
+            const fsSource = `#version 300 es
+                precision highp float;
+                in float v_intensity;
+                out vec4 outColor;
+                
+                void main() {
+                    // Visualizing the sync jitter as a "quantum" flicker
+                    outColor = vec4(v_intensity * 0.5, v_intensity, 1.0 - v_intensity, 1.0);
+                }`;
+
+            function createProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc);
+                gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(vs));
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc);
+                gl.compileShader(fs);
+                if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(fs));
+
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+                return prog;
+            }
+
+            const program = createProgram(vsSource, fsSource);
+
+            // 2. Buffers
+            const posBuffer = gl.createBuffer();
+            const jitterBuffer = gl.createBuffer();
+
+            const positions = new Float32Array(MATRIX_SIZE * MATRIX_SIZE * 12); // 2 Tris per cell
+            const jitters = new Float32Array(MATRIX_SIZE * MATRIX_SIZE * 6);
+
+            for (let y = 0; y < MATRIX_SIZE; y++) {
+                for (let x = 0; x < MATRIX_SIZE; x++) {
+                    const i = (y * MATRIX_SIZE + x);
+                    const x0 = (x / MATRIX_SIZE) * 2 - 1;
+                    const y0 = (y / MATRIX_SIZE) * 2 - 1;
+                    const x1 = ((x + 1) / MATRIX_SIZE) * 2 - 1;
+                    const y1 = ((y + 1) / MATRIX_SIZE) * 2 - 1;
+
+                    // Quad
+                    positions.set([
+                        x0, y0, x1, y0, x0, y1,
+                        x0, y1, x1, y0, x1, y1
+                    ], i * 12);
+                }
+            }
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+            const vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, jitterBuffer);
+            gl.enableVertexAttribArray(1);
+            gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
+
+            // 3. Sync Logic
+            const syncs = [];
+
+            function statePoison() {
+                for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+                    if (Math.random() < 0.5) gl.enable(gl.BLEND); else gl.disable(gl.BLEND);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, Math.random() < 0.5 ? posBuffer : jitterBuffer);
+                }
+            }
+
+            function updateJitters() {
+                // We create a sync, wait for it, and use the result to seed the jitter
+                const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+                gl.flush();
+
+                // Stress: Wait for previous syncs
+                if (syncs.length > SYNC_OBJECT_COUNT) {
+                    const oldSync = syncs.shift();
+                    gl.deleteSync(oldSync);
+                }
+                syncs.push(sync);
+
+                // Polling for jitter (intentional stall)
+                const res = gl.clientWaitSync(sync, 0, 0);
+                const jitterValue = (res === gl.ALREADY_SIGNALED || res === gl.CONDITION_SATISFIED) ? 1.0 : 0.5;
+
+                for (let i = 0; i < jitters.length; i++) {
+                    jitters[i] = jitterValue + Math.random() * 0.1;
+                }
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, jitterBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, jitters, gl.DYNAMIC_DRAW);
+            }
+
+            // 4. Main Loop (Simulated for 1 frame in test runner context)
+            gl.clearColor(0.1, 0.1, 0.1, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.useProgram(program);
+
+            updateJitters();
+            statePoison();
+
+            gl.bindVertexArray(vao);
+            gl.drawArrays(gl.TRIANGLES, 0, MATRIX_SIZE * MATRIX_SIZE * 6);
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION ENDS HERE
+            // ==========================================
+
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

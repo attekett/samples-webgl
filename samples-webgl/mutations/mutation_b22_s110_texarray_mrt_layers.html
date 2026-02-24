@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const layerCount = 24;
+const mrtCount = 4;
+const drawCycles = 32;
+const layerSwapCount = 16;
+const texSize = 256;
+const bufferSize = texSize * texSize * 4;
+
+const arrayTarget = 35866;
+const textureFormat = 32856;
+const colorAttachment0 = 36064;
+const colorAttachment1 = 36065;
+const colorAttachment2 = 36066;
+const colorAttachment3 = 36067;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const mrtArray1 = gl.createTexture();
+        const mrtArray2 = gl.createTexture();
+        const mrtArray3 = gl.createTexture();
+        const mrtArray4 = gl.createTexture();
+        gl.bindTexture(arrayTarget, mrtArray1);
+        gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
+        gl.bindTexture(arrayTarget, mrtArray2);
+        gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
+        gl.bindTexture(arrayTarget, mrtArray3);
+        gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
+        gl.bindTexture(arrayTarget, mrtArray4);
+        gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
+    } catch(e) { console.log(e); }
+
+    try {
+        const fbo1 = gl.createFramebuffer();
+        const fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(36160, fbo1);
+        gl.framebufferTextureLayer(36160, colorAttachment0, mrtArray1, 0, 0);
+        gl.framebufferTextureLayer(36160, colorAttachment1, mrtArray2, 0, 0);
+        gl.framebufferTextureLayer(36160, colorAttachment2, mrtArray3, 0, 0);
+        gl.framebufferTextureLayer(36160, colorAttachment3, mrtArray4, 0, 0);
+        gl.drawBuffers([colorAttachment0, colorAttachment1, colorAttachment2, colorAttachment3]);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < 8; i++) {
+            const layer = i * 3;
+            gl.framebufferTextureLayer(36160, colorAttachment0, mrtArray1, 0, layer);
+            gl.framebufferTextureLayer(36160, colorAttachment1, mrtArray2, 0, layer);
+            gl.framebufferTextureLayer(36160, colorAttachment2, mrtArray3, 0, layer);
+            gl.framebufferTextureLayer(36160, colorAttachment3, mrtArray4, 0, layer);
+            gl.clearColor(i * 0.125, 0.5, 1.0 - i * 0.1, 1.0);
+            gl.clear(16384);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        const vs = gl.createShader(35633);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            out vec3 vPosition;
+            out float vLayer;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                vPosition = position;
+                vLayer = float(gl_VertexID) * 0.5;
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(35632);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            in vec3 vPosition;
+            in float vLayer;
+            layout(location = 0) out vec4 fragColor0;
+            layout(location = 1) out vec4 fragColor1;
+            layout(location = 2) out vec4 fragColor2;
+            layout(location = 3) out vec4 fragColor3;
+            void main() {
+                float layerMod = mod(vLayer, float(${layerCount}));
+                fragColor0 = vec4(vPosition.x, 0.5, layerMod / ${layerCount}.0, 1.0);
+                fragColor1 = vec4(0.5, vPosition.y, layerMod / ${layerCount}.0, 1.0);
+                fragColor2 = vec4(vPosition.x, vPosition.y, layerMod / ${layerCount}.0, 1.0);
+                fragColor3 = vec4(1.0 - vPosition.x, 1.0 - vPosition.y, layerMod / ${layerCount}.0, 1.0);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) { console.log(e); }
+
+    try {
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(34962, buffer1);
+        gl.bindBuffer(34962, buffer2);
+        gl.bindBuffer(34962, buffer1);
+        gl.bufferData(34962, bufferSize, 35044);
+        const positions = new Float32Array([-1,-1,0, 1,-1,0, -1,1,0, 1,1,0]);
+        gl.bufferSubData(34962, 0, positions);
+        gl.vertexAttribPointer(0, 3, 5126, false, 0, 0);
+        gl.enableVertexAttribArray(0);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let cycle = 0; cycle < layerSwapCount; cycle++) {
+            const layer = cycle % layerCount;
+            gl.framebufferTextureLayer(36160, colorAttachment0, mrtArray1, 0, layer);
+            gl.framebufferTextureLayer(36160, colorAttachment1, mrtArray2, 0, (layer + 1) % layerCount);
+            gl.framebufferTextureLayer(36160, colorAttachment2, mrtArray3, 0, (layer + 2) % layerCount);
+            gl.framebufferTextureLayer(36160, colorAttachment3, mrtArray4, 0, (layer + 3) % layerCount);
+            gl.drawArrays(5, 0, 4);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        const vs2 = gl.createShader(35633);
+        gl.shaderSource(vs2, `#version 300 es
+            in vec3 position;
+            out vec3 vTexCoord;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                vTexCoord = vec3(position.xy * 0.5 + 0.5, float(gl_VertexID) * 0.25);
+            }
+        `);
+        gl.compileShader(vs2);
+
+        const fs2 = gl.createShader(35632);
+        gl.shaderSource(fs2, `#version 300 es
+            precision highp float;
+            precision highp sampler2DArray;
+            uniform sampler2DArray uMrtArray1;
+            uniform sampler2DArray uMrtArray2;
+            uniform sampler2DArray uMrtArray3;
+            uniform sampler2DArray uMrtArray4;
+            in vec3 vTexCoord;
+            out vec4 fragColor;
+            void main() {
+                vec4 s1 = texture(uMrtArray1, vTexCoord);
+                vec4 s2 = texture(uMrtArray2, vTexCoord);
+                vec4 s3 = texture(uMrtArray3, vTexCoord);
+                vec4 s4 = texture(uMrtArray4, vTexCoord);
+                fragColor = (s1 + s2 + s3 + s4) * 0.25;
+            }
+        `);
+        gl.compileShader(fs2);
+
+        const program2 = gl.createProgram();
+        gl.attachShader(program2, vs2);
+        gl.attachShader(program2, fs2);
+        gl.linkProgram(program2);
+        gl.useProgram(program2);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.enable(3042);
+        gl.blendFunc(770, 771);
+        gl.disable(3042);
+        gl.enable(3042);
+        gl.blendEquation(32774);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindFramebuffer(36160, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.drawArrays(5, 0, 4);
+        gl.drawArrays(4, 0, drawCycles);
+        gl.drawArrays(5, 0, 4);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindTexture(arrayTarget, mrtArray1);
+        gl.deleteTexture(mrtArray1);
+        gl.bindTexture(arrayTarget, mrtArray1);
+        gl.framebufferTextureLayer(36160, colorAttachment0, mrtArray1, 0, 0);
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

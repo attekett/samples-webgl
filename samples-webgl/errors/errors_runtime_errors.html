@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: Define required extensions here - none needed for runtime errors
+const REQUIRED_EXTENSIONS = [
+];
+
+// Runtime WebGL errors test configuration
+const RUNTIME_ERROR_COUNT = 8;
+const STATE_CHANGE_COUNT = 50;
+const RESOURCE_BINDING_CYCLES = 8;
+const INVALID_OPERATION_ATTEMPTS = 16;
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ // WEBGL2-ONLY POLICY: Request WebGL2 context directly - no WebGL1 fallback
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+   throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // 1. EXTENSION GATING - no extensions required for this test
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+   throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS - none needed
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // Initialize state poisoning counters
+ let stateChangesPerformed = 0;
+ let bindingCycles = 0;
+ let errorTriggers = 0;
+
+ // Function to trigger and detect runtime errors
+ function testRuntimeError(errorTriggerFunction, testIndex) {
+   // Clear any existing errors
+   gl.getError();
+
+   // State poisoning: Extensive binding operations before error trigger
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+   gl.bindTexture(gl.TEXTURE_2D, null);
+   gl.bindTexture(gl.TEXTURE_3D, null);
+   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+   gl.bindVertexArray(null);
+   gl.bindSampler(0, null);
+   gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+   gl.useProgram(null);
+   stateChangesPerformed += 12;
+
+   // Trigger the runtime error
+   errorTriggerFunction();
+
+   // Check for errors
+   const error = gl.getError();
+
+   // State poisoning: More operations after error check
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   stateChangesPerformed += 4;
+
+   return {
+     testIndex,
+     errorCode: error,
+     errorName: getErrorName(error)
+   };
+ }
+
+ // Helper function to get error name
+ function getErrorName(error) {
+   switch(error) {
+     case gl.NO_ERROR: return "NO_ERROR";
+     case gl.INVALID_ENUM: return "INVALID_ENUM";
+     case gl.INVALID_VALUE: return "INVALID_VALUE";
+     case gl.INVALID_OPERATION: return "INVALID_OPERATION";
+     case gl.INVALID_FRAMEBUFFER_OPERATION: return "INVALID_FRAMEBUFFER_OPERATION";
+     case gl.OUT_OF_MEMORY: return "OUT_OF_MEMORY";
+     case gl.CONTEXT_LOST_WEBGL: return "CONTEXT_LOST_WEBGL";
+     default: return `UNKNOWN_ERROR_${error}`;
+   }
+ }
+
+ // Define runtime error test cases
+ const runtimeErrorTests = [
+   // Test 0: INVALID_ENUM - Invalid texture target
+   () => {
+     gl.texImage2D(99999, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+   },
+   // Test 1: INVALID_VALUE - Negative texture size
+   () => {
+     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, -256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+   },
+   // Test 2: INVALID_OPERATION - Draw without bound program
+   () => {
+     gl.useProgram(null);
+     gl.drawArrays(gl.TRIANGLES, 0, 3);
+   },
+   // Test 3: INVALID_OPERATION - Uniform location from wrong program
+   () => {
+     const program1 = gl.createProgram();
+     const program2 = gl.createProgram();
+     gl.useProgram(program1);
+     const loc = gl.getUniformLocation(program2, "testUniform");
+     gl.uniform1f(loc, 1.0);
+   },
+   // Test 4: INVALID_FRAMEBUFFER_OPERATION - Draw to incomplete framebuffer
+   () => {
+     const fbo = gl.createFramebuffer();
+     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+     // Don't attach anything - framebuffer is incomplete
+     gl.clear(gl.COLOR_BUFFER_BIT);
+   },
+   // Test 5: INVALID_VALUE - Out of bounds vertex attrib pointer
+   () => {
+     gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, -1);
+   },
+   // Test 6: INVALID_OPERATION - Buffer data with wrong target binding
+   () => {
+     gl.bindBuffer(gl.ARRAY_BUFFER, null);
+     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Float32Array([1,2,3]), gl.STATIC_DRAW);
+   },
+   // Test 7: INVALID_ENUM - Invalid buffer usage pattern
+   () => {
+     const data = new Float32Array(1024);
+     gl.bufferData(gl.ARRAY_BUFFER, data, 99999);
+   }
+ ];
+
+ // Run runtime error tests
+ const errorResults = [];
+ for (let i = 0; i < RUNTIME_ERROR_COUNT; i++) {
+   // State poisoning: Multiple binding cycles between tests
+   for (let cycle = 0; cycle < RESOURCE_BINDING_CYCLES; cycle++) {
+     gl.bindBuffer(gl.ARRAY_BUFFER, null);
+     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+     gl.bindTexture(gl.TEXTURE_2D, null);
+     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+     gl.bindVertexArray(null);
+     bindingCycles++;
+     stateChangesPerformed += 5;
+   }
+
+   const result = testRuntimeError(runtimeErrorTests[i], i);
+   errorResults.push(result);
+   errorTriggers++;
+
+   // State poisoning: Capability churn between tests
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.POLYGON_OFFSET_FILL);
+   gl.disable(gl.POLYGON_OFFSET_FILL);
+   gl.enable(gl.SAMPLE_COVERAGE);
+   gl.disable(gl.SAMPLE_COVERAGE);
+   stateChangesPerformed += 6;
+ }
+
+ // Create visual representation shader
+ const vertexShaderSource = `#version 300 es
+ in vec2 a_position;
+ in vec2 a_texCoord;
+ out vec2 v_texCoord;
+ void main() {
+   gl_Position = vec4(a_position, 0.0, 1.0);
+   v_texCoord = a_texCoord;
+ }`;
+
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+ in vec2 v_texCoord;
+ out vec4 fragColor;
+ uniform int u_errorCode;
+ uniform int u_testIndex;
+ void main() {
+   // Create visual pattern based on error type
+   vec2 uv = v_texCoord;
+
+   // Base pattern
+   float pattern = sin(uv.x * 20.0) * sin(uv.y * 20.0) * 0.5 + 0.5;
+
+   // Color based on error type
+   vec3 color;
+   if (u_errorCode == 1280) { // INVALID_ENUM
+     color = vec3(1.0, 0.0, 0.0); // Red
+   } else if (u_errorCode == 1281) { // INVALID_VALUE
+     color = vec3(0.0, 1.0, 0.0); // Green
+   } else if (u_errorCode == 1282) { // INVALID_OPERATION
+     color = vec3(0.0, 0.0, 1.0); // Blue
+   } else if (u_errorCode == 1286) { // INVALID_FRAMEBUFFER_OPERATION
+     color = vec3(1.0, 1.0, 0.0); // Yellow
+   } else if (u_errorCode == 1285) { // OUT_OF_MEMORY
+     color = vec3(1.0, 0.0, 1.0); // Magenta
+   } else if (u_errorCode == 0) { // NO_ERROR
+     color = vec3(0.5, 0.5, 0.5); // Gray
+   } else {
+     color = vec3(0.0, 1.0, 1.0); // Cyan for other errors
+   }
+
+   // Mix with pattern
+   color = mix(color, vec3(0.2), pattern * 0.3);
+
+   fragColor = vec4(color, 1.0);
+ }`;
+
+ // Create and compile shaders
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+
+ // Create program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+
+ // State poisoning: More operations before rendering
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+ gl.disable(gl.DEPTH_TEST);
+ gl.enable(gl.SCISSOR_TEST);
+ gl.scissor(0, 0, 256, 256);
+ stateChangesPerformed += 5;
+
+ // Create geometry for rendering test results
+ const vertices = new Float32Array([
+   -1.0, -1.0, 0.0, 0.0,
+   1.0, -1.0, 1.0, 0.0,
+   -1.0, 1.0, 0.0, 1.0,
+   1.0, 1.0, 1.0, 1.0
+ ]);
+
+ const indices = new Uint16Array([0, 1, 2, 1, 3, 2]);
+
+ // Create buffers
+ const vertexBuffer = gl.createBuffer();
+ const indexBuffer = gl.createBuffer();
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+ // Setup attributes and uniforms
+ gl.useProgram(program);
+ const positionLoc = gl.getAttribLocation(program, 'a_position');
+ const texCoordLoc = gl.getAttribLocation(program, 'a_texCoord');
+ const errorCodeLoc = gl.getUniformLocation(program, 'u_errorCode');
+ const testIndexLoc = gl.getUniformLocation(program, 'u_testIndex');
+
+ gl.enableVertexAttribArray(positionLoc);
+ gl.enableVertexAttribArray(texCoordLoc);
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
+ gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 16, 8);
+
+ // Render each test result in a 3x3 grid
+ const gridSize = 3;
+ for (let i = 0; i < Math.min(RUNTIME_ERROR_COUNT, 8); i++) {
+   const row = Math.floor(i / gridSize);
+   const col = i % gridSize;
+
+   const x = (col / gridSize) * 2.0 - 1.0;
+   const y = (row / gridSize) * 2.0 - 1.0;
+   const w = 2.0 / gridSize;
+   const h = 2.0 / gridSize;
+
+   gl.scissor(col * (256 / gridSize), row * (256 / gridSize), 256 / gridSize, 256 / gridSize);
+
+   // Set uniforms for this test case
+   gl.uniform1i(errorCodeLoc, errorResults[i].errorCode);
+   gl.uniform1i(testIndexLoc, i);
+
+   gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+   // State poisoning: Blend mode changes between renders
+   gl.blendFunc(gl.ONE, gl.ONE);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   stateChangesPerformed += 2;
+ }
+
+ // Additional state poisoning: Extensive final state changes
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.SCISSOR_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+   gl.enable(gl.POLYGON_OFFSET_FILL);
+   gl.disable(gl.POLYGON_OFFSET_FILL);
+   stateChangesPerformed += 10;
+ }
+
+ // Clean up resources
+ gl.deleteBuffer(vertexBuffer);
+ gl.deleteBuffer(indexBuffer);
+ gl.deleteShader(vertexShader);
+ gl.deleteShader(fragmentShader);
+ gl.deleteProgram(program);
+
+ // Final cleanup bindings
+ gl.bindBuffer(gl.ARRAY_BUFFER, null);
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+ gl.bindTexture(gl.TEXTURE_2D, null);
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.bindVertexArray(null);
+ gl.useProgram(null);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ throw err;
+});
+</script>
+</body>
+</html>

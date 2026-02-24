@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION: Define required extensions here
+        const REQUIRED_EXTENSIONS = [
+            // WebGL2 native features (TEXTURE_2D_ARRAY), no extensions needed
+        ];
+
+        // FUZZING PARAMETERS (Exposed for mutation)
+        const HISTORY_DEPTH = 64;
+        const TEXTURE_WIDTH = 512;
+        const TEXTURE_HEIGHT = 512;
+        const WARP_FREQUENCY = 10.0;
+        const STATE_CHANGE_COUNT = 50;
+        const POISON_CHANCE = 0.1;
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 required for Texture Arrays");
+
+            // 1. EXTENSION GATING
+            const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+            if (missingExtensions.length > 0) {
+                throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+            }
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION STARTS HERE
+            // ==========================================
+
+            // 1. Setup Texture Array (The Ring Buffer)
+            const textureArray = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+            // Allocate immutable storage for 64 layers
+            gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, TEXTURE_WIDTH, TEXTURE_HEIGHT, HISTORY_DEPTH);
+            gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+            // 2. Setup Screen Quad (for both scene and warp pass)
+            const quadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+                -1, -1, 1, -1, -1, 1,
+                -1, 1, 1, -1, 1, 1
+            ]), gl.STATIC_DRAW);
+
+            // 3. Setup Shaders
+            // Scene Shader: Renders a spinning pattern
+            const sceneVsSource = `#version 300 es
+    in vec2 position;
+    out vec2 v_uv;
+    void main() {
+        v_uv = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+    }`;
+
+            const sceneFsSource = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    in vec2 v_uv;
+    uniform float u_time;
+    void main() {
+        vec2 center = vec2(0.5);
+        vec2 pos = v_uv - center;
+        float angle = atan(pos.y, pos.x);
+        float radius = length(pos);
+        float spiral = sin(angle * 5.0 + u_time * 5.0 - radius * 20.0);
+        outColor = vec4(
+            0.5 + 0.5 * sin(u_time + radius * 10.0),
+            0.5 + 0.5 * cos(u_time * 0.5 + spiral),
+            spiral,
+            1.0
+        );
+    }`;
+
+            // Warp Shader: Samples from Texture Array based on x-coord
+            const warpVsSource = `#version 300 es
+    in vec2 position;
+    out vec2 v_uv;
+    void main() {
+        v_uv = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+    }`;
+
+            const warpFsSource = `#version 300 es
+    precision highp float;
+    precision highp sampler2DArray;
+    
+    out vec4 outColor;
+    in vec2 v_uv;
+    
+    uniform sampler2DArray u_history;
+    uniform int u_currentFrame;
+    uniform float u_historyDepth;
+    uniform float u_warpFreq;
+    
+    void main() {
+        // Slit-scan logic: Time depends on X coordinate
+        // If x=0, we see frame N. If x=1, we see frame N-64
+        float timeOffset = v_uv.x * u_historyDepth; 
+        
+        // Add some sine wave distortion to the time lookup
+        timeOffset += sin(v_uv.y * u_warpFreq) * 5.0;
+        
+        // Calculate layer index (Ring Buffer math)
+        // (Current - Offset) % Depth
+        float layerFloat = mod(float(u_currentFrame) - timeOffset, u_historyDepth);
+        
+        // Ensure positive index
+        if (layerFloat < 0.0) layerFloat += u_historyDepth;
+        
+        outColor = texture(u_history, vec3(v_uv, floor(layerFloat)));
+    }`;
+
+            function createProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc);
+                gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(vs));
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc);
+                gl.compileShader(fs);
+                if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(fs));
+
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+                return prog;
+            }
+
+            const sceneProgram = createProgram(sceneVsSource, sceneFsSource);
+            const warpProgram = createProgram(warpVsSource, warpFsSource);
+
+            // Locations
+            const locScenePos = gl.getAttribLocation(sceneProgram, "position");
+            const locSceneTime = gl.getUniformLocation(sceneProgram, "u_time");
+
+            const locWarpPos = gl.getAttribLocation(warpProgram, "position");
+            const locWarpHist = gl.getUniformLocation(warpProgram, "u_history");
+            const locWarpFrame = gl.getUniformLocation(warpProgram, "u_currentFrame");
+            const locWarpDepth = gl.getUniformLocation(warpProgram, "u_historyDepth");
+            const locWarpFreq = gl.getUniformLocation(warpProgram, "u_warpFreq");
+
+            // VAO Setup
+            const vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.enableVertexAttribArray(locScenePos);
+            gl.vertexAttribPointer(locScenePos, 2, gl.FLOAT, false, 0, 0);
+            // Note: Assuming same loc for warp pos or just reusing for simplicity since geometry is same
+
+            // 4. Main Loop for "Pre-warming" the History
+            // We need to render N frames to fill the buffer so the effect is visible immediately
+            // For the test, we'll simulate 64 frames in a quick loop
+
+            // STATE POISONING HELPER
+            function poisonState() {
+                if (Math.random() > POISON_CHANCE) return;
+
+                // Randomly toggle capabilities
+                const caps = [gl.BLEND, gl.CULL_FACE, gl.DEPTH_TEST, gl.SCISSOR_TEST];
+                const cap = caps[Math.floor(Math.random() * caps.length)];
+                Math.random() > 0.5 ? gl.enable(cap) : gl.disable(cap);
+
+                // Randomly bind/unbind texture array (this should persist correctly since we re-bind before use)
+                gl.bindTexture(gl.TEXTURE_2D_ARRAY, Math.random() > 0.5 ? null : textureArray);
+            }
+
+            for (let frame = 0; frame < HISTORY_DEPTH * 2; frame++) {
+                const time = frame * 0.1;
+
+                // A. Render Scene to Framebuffer (Screen directly for simplicity, then copy)
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                gl.viewport(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+
+                gl.useProgram(sceneProgram);
+                gl.uniform1f(locSceneTime, time);
+
+                gl.bindVertexArray(vao);
+                // Ensure attribs are enabled (State Poisoning might disable them)
+                gl.enableVertexAttribArray(locScenePos);
+
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+                // B. Capture to Texture Array
+                // copyTexSubImage3D(target, level, xoffset, yoffset, zoffset, x, y, width, height)
+                const layerIndex = frame % HISTORY_DEPTH;
+
+                // State Poisoning: Texture Binding Churn
+                gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+
+                gl.copyTexSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex, 0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+
+                poisonState();
+            }
+
+            // 5. Final Render: The Time Warp Pass
+            // We render one last frame using the Warp Shader
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(warpProgram);
+
+            // Bind the ring buffer
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+            gl.uniform1i(locWarpHist, 0);
+
+            gl.uniform1i(locWarpFrame, HISTORY_DEPTH * 2); // Current virtual frame
+            gl.uniform1f(locWarpDepth, HISTORY_DEPTH);
+            gl.uniform1f(locWarpFreq, WARP_FREQUENCY);
+
+            gl.bindVertexArray(vao);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION ENDS HERE
+            // ==========================================
+
+            // 3. ERROR CHECKING
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

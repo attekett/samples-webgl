@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION
+        const REQUIRED_EXTENSIONS = [];
+
+        // FUZZING PARAMETERS
+        const TEXTURE_SIZE = 512;
+        const MIP_LEVELS = 10; // log2(512) + 1 = 10
+        const STATE_CHANGE_COUNT = 50;
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 required for Texture Levels");
+
+            // 1. EXTENSION GATING
+            const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+            if (missingExtensions.length > 0) {
+                throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+            }
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION STARTS HERE
+            // ==========================================
+
+            // 1. Setup Texture with immutable storage
+            const texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texStorage2D(gl.TEXTURE_2D, MIP_LEVELS, gl.RGBA8, TEXTURE_SIZE, TEXTURE_SIZE);
+
+            // Initial State: Random noise in Level 0
+            // We can use texSubImage2D or render to it. Let's render to it for consistency.
+
+            // 2. Setup Shaders
+            // Pattern Shader (for Level 0)
+            const patternVs = `#version 300 es
+    in vec2 position;
+    out vec2 v_uv;
+    void main() {
+        v_uv = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+    }`;
+
+            const patternFs = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    in vec2 v_uv;
+    void main() {
+        outColor = vec4(v_uv, 0.5 + 0.5*sin(v_uv.x * 20.0), 1.0);
+    }`;
+
+            // Cascade Shader (Downsample)
+            // Reads from sampler (Level K-1) and outputs color (Level K)
+            const cascadeVs = `#version 300 es
+    in vec2 position;
+    out vec2 v_uv;
+    void main() {
+        v_uv = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+    }`;
+
+            const cascadeFs = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    in vec2 v_uv;
+    uniform sampler2D u_prevLevel;
+    
+    void main() {
+        // Simple 2x2 box filter logic is implicit if we use linear filtering?
+        // But let's do something weird.
+        // We invert colors and add noise.
+        vec4 c = texture(u_prevLevel, v_uv);
+        outColor = vec4(1.0 - c.rgb, 1.0);
+    }`;
+
+            // Visualization Shader (Draw final texture)
+            const drawFs = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    in vec2 v_uv;
+    uniform sampler2D u_texture;
+    uniform float u_lod;
+    
+    void main() {
+        outColor = textureLod(u_texture, v_uv, u_lod);
+    }`;
+
+            function createProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc);
+                gl.compileShader(vs);
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc);
+                gl.compileShader(fs);
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+                return prog;
+            }
+
+            const patternProgram = createProgram(patternVs, patternFs);
+            const cascadeProgram = createProgram(cascadeVs, cascadeFs);
+            const drawProgram = createProgram(cascadeVs, drawFs);
+
+            // Quad
+            const quadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+            const vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            // FBO
+            const fbo = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+            function poisonState() {
+                if (Math.random() < 0.1) {
+                    // Randomly set parameter
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+                }
+            }
+
+            // 1. Render Level 0
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+            gl.viewport(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+
+            gl.useProgram(patternProgram);
+            gl.bindVertexArray(vao);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // 2. Cascade Loop (Level 1 to 9)
+            gl.useProgram(cascadeProgram);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, texture); // Bind same texture object
+            gl.uniform1i(gl.getUniformLocation(cascadeProgram, "u_prevLevel"), 0);
+
+            for (let i = 1; i < MIP_LEVELS; i++) {
+                let w = Math.max(1, TEXTURE_SIZE >> i);
+                let h = Math.max(1, TEXTURE_SIZE >> i);
+                gl.viewport(0, 0, w, h);
+
+                // CRITICAL: Restrict sampling to the PREVIOUS level
+                // If we don't do this, sampling is "incomplete" or "feedback loop" because other levels are attached/undefined?
+                // Actually, "In OpenGL ES 3.0... if the texture is attached to the currently bound framebuffer, AND the texture unit is currently sampling from it... rendering is defined ONLY if..."
+                // "Using TEXTURE_BASE_LEVEL / MAX_LEVEL to restrict the texture to levels NOT attached... is safe."
+
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, i - 1);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, i - 1);
+
+                // Attach Level i to FBO
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, i);
+
+                // Validity Check
+                if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+                    throw new Error("FBO Incomplete at level " + i);
+                }
+
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                poisonState();
+            }
+
+            // 3. Visualization
+            // Reset Levels to show everything
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, 0);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, MIP_LEVELS - 1);
+            // Min filter must be mipmap compatible
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, 512, 512); // Display sized
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(drawProgram);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.uniform1i(gl.getUniformLocation(drawProgram, "u_texture"), 0);
+
+            // Draw 4 Quadrants showing different LODs
+            // TL: LOD 0
+            gl.viewport(0, 256, 256, 256);
+            gl.uniform1f(gl.getUniformLocation(drawProgram, "u_lod"), 0.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // TR: LOD 2
+            gl.viewport(256, 256, 256, 256);
+            gl.uniform1f(gl.getUniformLocation(drawProgram, "u_lod"), 2.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // BL: LOD 4
+            gl.viewport(0, 0, 256, 256);
+            gl.uniform1f(gl.getUniformLocation(drawProgram, "u_lod"), 4.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // BR: LOD 6
+            gl.viewport(256, 0, 256, 256);
+            gl.uniform1f(gl.getUniformLocation(drawProgram, "u_lod"), 6.0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION ENDS HERE
+            // ==========================================
+
+            // 3. ERROR CHECKING
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

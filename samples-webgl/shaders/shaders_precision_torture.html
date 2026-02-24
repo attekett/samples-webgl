@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+ if (!gl) throw new Error("WebGL not supported");
+
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // PRECISION TORTURE IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // FUZZING VARIABLES: Exposed for mutation testing
+ const precisionMix = 3; // Mix highp/mediump/lowp combinations
+ const boundaryValue = 0.0001; // Near-zero boundary testing
+ const mathOperations = 16; // Number of mathematical operations per fragment
+ const conversionCount = 8; // Precision conversions per operation
+
+ // Create vertex buffer for 16x16 grid (256 vertices)
+ const vertexData = new Float32Array(256 * 2);
+ for (let i = 0; i < 16; i++) {
+   for (let j = 0; j < 16; j++) {
+     const idx = (i * 16 + j) * 2;
+     vertexData[idx] = (j - 7.5) * 0.1;     // x coordinate
+     vertexData[idx + 1] = (i - 7.5) * 0.1; // y coordinate
+   }
+ }
+
+ // Create vertex buffer
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+
+ // Create index buffer for triangles
+ const indexData = new Uint16Array(256 * 6); // 256 triangles * 3 indices
+ let indexIdx = 0;
+ for (let i = 0; i < 15; i++) {
+   for (let j = 0; j < 15; j++) {
+     const v0 = i * 16 + j;
+     const v1 = i * 16 + j + 1;
+     const v2 = (i + 1) * 16 + j;
+     const v3 = (i + 1) * 16 + j + 1;
+
+     // First triangle
+     indexData[indexIdx++] = v0;
+     indexData[indexIdx++] = v1;
+     indexData[indexIdx++] = v2;
+
+     // Second triangle
+     indexData[indexIdx++] = v1;
+     indexData[indexIdx++] = v3;
+     indexData[indexIdx++] = v2;
+   }
+ }
+
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexData, gl.STATIC_DRAW);
+
+ // VERTEX SHADER: Simple passthrough with position
+ const vertexShaderSource = `
+   attribute vec2 a_position;
+   varying highp vec2 v_position;
+
+   void main() {
+     v_position = a_position;
+     gl_Position = vec4(a_position, 0.0, 1.0);
+   }
+ `;
+
+ // FRAGMENT SHADER: Precision torture with mixed precision calculations
+ const fragmentShaderSource = `
+   precision highp float;
+   precision mediump int;
+
+   varying vec2 v_position;
+
+   uniform float u_time;
+   uniform float u_boundary;
+
+   // Helper function with mathematical operations
+   float precisionMix(vec2 pos) {
+     float result = 0.0;
+
+     // Boundary value testing near zero and large values
+     float nearZero = u_boundary;
+     float nearMax = 1e20;
+
+     // Fixed loop count (constant expression required)
+     for (int i = 0; i < 16; i++) {
+       // Mathematical operations with precision boundaries
+       float h_val = pos.x * float(i) + nearZero;
+       float m_val = pos.y * float(i) + u_boundary;
+       float l_val = float(i) * 0.1;
+
+       // Use fract, pow, exp functions with boundary values
+       float pow_result = pow(abs(h_val + nearZero), 2.0);
+       float exp_result = exp(clamp(m_val, -1.0, 1.0));
+       float fract_result = fract(l_val);
+
+       // Mix precision through mathematical operations
+       float conv1 = pow_result * nearZero;
+       float conv2 = exp_result * nearMax;
+       float conv3 = fract_result;
+
+       // Accumulate with boundary value stress
+       result += conv1 + conv2 + conv3;
+     }
+
+     return result;
+   }
+
+   void main() {
+     vec2 pos = v_position;
+
+     // Multiple precision mixing calls with different position scales
+     float val1 = precisionMix(pos);
+     float val2 = precisionMix(pos * 2.0);
+     float val3 = precisionMix(pos * 0.5);
+
+     // Final color calculation with boundary value testing
+     float r = fract(val1 * u_boundary + u_time);
+     float g = clamp(val2 * u_boundary, 0.0, 1.0);
+     float b = abs(val3) * 0.5;
+
+     gl_FragColor = vec4(r, g, b, 1.0);
+   }
+ `;
+
+ // Create and compile shaders
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error('Vertex shader compilation failed: ' + gl.getShaderInfoLog(vertexShader));
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error('Fragment shader compilation failed: ' + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ // Create and link program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+ }
+ gl.useProgram(program);
+
+ // Set up attributes and uniforms
+ const positionLocation = gl.getAttribLocation(program, 'a_position');
+ gl.enableVertexAttribArray(positionLocation);
+ gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+ const timeLocation = gl.getUniformLocation(program, 'u_time');
+ const boundaryLocation = gl.getUniformLocation(program, 'u_boundary');
+
+ // STATE POISONING: 50+ redundant state changes and capability toggling
+ for (let i = 0; i < 25; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+
+   gl.viewport(0, 0, 256, 256);
+   gl.scissor(0, 0, 256, 256);
+
+   gl.clearColor(0.0, 0.0, 0.0, 1.0);
+   gl.clearDepth(1.0);
+   gl.clearStencil(0);
+ }
+
+ // Bind buffers multiple times (redundant binding)
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+ // Clear and render
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+ // Set uniforms with boundary values
+ gl.uniform1f(timeLocation, performance.now() * 0.001);
+ gl.uniform1f(boundaryLocation, boundaryValue);
+
+ // Draw with redundant state changes
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+ gl.drawElements(gl.TRIANGLES, indexData.length, gl.UNSIGNED_SHORT, 0);
+ gl.disable(gl.BLEND);
+
+ // Additional redundant operations
+ gl.flush();
+ gl.finish();
+
+ // ==========================================
+ // PRECISION TORTURE IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ console.error(err);
+});
+</script>
+</body>
+</html>

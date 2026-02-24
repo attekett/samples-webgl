@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+ // 3D textures are core WebGL2 feature, no extensions required
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+ if (!gl) throw new Error("WebGL not supported");
+
+ // Check required extensions (none for WebGL2 3D textures)
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // Enable required extensions (none needed)
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // FUZZING VARIABLES - mix of inline literals and parameterized values
+ const textureSize = 32;
+ const textureDepth = 16;
+ const volumeSlices = 8;
+ const wrapModeR = gl.CLAMP_TO_EDGE;
+ const wrapModeS = gl.REPEAT;
+ const wrapModeT = gl.REPEAT;
+ const minFilter = gl.LINEAR_MIPMAP_LINEAR;
+ const magFilter = gl.LINEAR;
+ const vertexDensity = 64;
+ const shaderComplexity = 4;
+ const stateChangeCount = 25;
+
+ // ==========================================
+ // 3D TEXTURE CREATION AND SETUP
+ // ==========================================
+
+ // Create 3D texture
+ const texture3D = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_3D, texture3D);
+
+ // Generate 3D texture data - volume with procedural patterns
+ const textureData = new Uint8Array(textureSize * textureSize * textureDepth * 4);
+ for (let z = 0; z < textureDepth; z++) {
+   for (let y = 0; y < textureSize; y++) {
+     for (let x = 0; x < textureSize; x++) {
+       const index = (z * textureSize * textureSize + y * textureSize + x) * 4;
+
+       // Procedural volume data - mix of patterns for visual interest
+       const distance = Math.sqrt(
+         Math.pow((x / textureSize - 0.5) * 2, 2) +
+         Math.pow((y / textureSize - 0.5) * 2, 2) +
+         Math.pow((z / textureDepth - 0.5) * 2, 2)
+       );
+
+       const noise1 = Math.sin(x * 0.1) * Math.cos(y * 0.1) * Math.sin(z * 0.2);
+       const noise2 = Math.sin(distance * 10) * 0.5;
+
+       const r = Math.floor((noise1 + noise2 + 1) * 127.5);
+       const g = Math.floor((Math.sin(x * 0.05 + z * 0.1) + 1) * 127.5);
+       const b = Math.floor((Math.cos(y * 0.05 + z * 0.15) + 1) * 127.5);
+       const a = 255;
+
+       textureData[index] = r;
+       textureData[index + 1] = g;
+       textureData[index + 2] = b;
+       textureData[index + 3] = a;
+     }
+   }
+ }
+
+ // Upload 3D texture data with inline literals for critical parameters
+ gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA, textureSize, textureSize, textureDepth, 0, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
+
+ // Set 3D texture parameters including TEXTURE_WRAP_R
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, wrapModeR);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, wrapModeS);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, wrapModeT);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, minFilter);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, magFilter);
+
+ // Generate mipmaps for 3D texture
+ gl.generateMipmap(gl.TEXTURE_3D);
+
+ // ==========================================
+ // SHADER CREATION - 3D texture sampling
+ // ==========================================
+
+ const vertexShaderSource = `#version 300 es
+ in vec2 a_position;
+ in vec3 a_texCoord;
+
+ out vec3 v_texCoord;
+
+ uniform mat4 u_projection;
+ uniform mat4 u_modelView;
+ uniform float u_time;
+
+ void main() {
+   // Pass texture coordinates with some animation
+   v_texCoord = a_texCoord + vec3(u_time * 0.1, u_time * 0.05, 0.0);
+
+   // Transform position
+   gl_Position = u_projection * u_modelView * vec4(a_position, 0.0, 1.0);
+ }
+ `;
+
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+
+ in vec3 v_texCoord;
+
+ out vec4 fragColor;
+
+ uniform highp sampler3D u_texture3D;
+ uniform float u_time;
+ uniform int u_shaderComplexity;
+
+ void main() {
+   // Sample 3D texture with animated coordinates
+   vec3 texCoord = v_texCoord;
+
+   // Add some procedural animation to texture coordinates
+   texCoord.x += sin(u_time * 2.0 + texCoord.y * 10.0) * 0.1;
+   texCoord.y += cos(u_time * 1.5 + texCoord.z * 8.0) * 0.1;
+   texCoord.z += sin(u_time * 3.0 + texCoord.x * 12.0) * 0.05;
+
+   // Clamp R coordinate for 3D texture sampling
+   texCoord.z = mod(texCoord.z, 1.0);
+
+   vec4 color = texture(u_texture3D, texCoord);
+
+   // Apply complex shader operations based on complexity parameter
+   if (u_shaderComplexity > 1) {
+     color.r = sin(color.r * 3.14159 + u_time) * 0.5 + 0.5;
+   }
+   if (u_shaderComplexity > 2) {
+     color.g = cos(color.g * 3.14159 + u_time * 0.7) * 0.5 + 0.5;
+   }
+   if (u_shaderComplexity > 3) {
+     color.b = fract(color.b + u_time * 0.3);
+   }
+
+   // Volume rendering effect - accumulate samples
+   vec4 finalColor = color;
+   for (int i = 1; i < 4; i++) {
+     vec3 offsetCoord = texCoord + vec3(float(i) * 0.01, float(i) * 0.005, float(i) * 0.02);
+     offsetCoord.z = mod(offsetCoord.z, 1.0);
+     vec4 sampleColor = texture(u_texture3D, offsetCoord);
+     finalColor = mix(finalColor, sampleColor, 0.1);
+   }
+
+   fragColor = finalColor;
+ }
+ `;
+
+ // Create and compile shaders
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+
+ // Check vertex shader compilation
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   const infoLog = gl.getShaderInfoLog(vertexShader);
+   throw new Error(`Vertex shader compilation failed: ${infoLog}`);
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+
+ // Check fragment shader compilation
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   const infoLog = gl.getShaderInfoLog(fragmentShader);
+   throw new Error(`Fragment shader compilation failed: ${infoLog}`);
+ }
+
+ // Create program and link
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+
+ // Check program linking
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   const infoLog = gl.getProgramInfoLog(program);
+   throw new Error(`Program linking failed: ${infoLog}`);
+ }
+
+ gl.useProgram(program);
+
+ // ==========================================
+ // GEOMETRY CREATION - Volume visualization
+ // ==========================================
+
+ // Create vertex data for volume visualization
+ const vertices = [];
+ const texCoords = [];
+ const indices = [];
+
+ // Generate grid of quads for volume sampling
+ const gridSize = vertexDensity;
+ for (let y = 0; y < gridSize; y++) {
+   for (let x = 0; x < gridSize; x++) {
+     const u = x / (gridSize - 1);
+     const v = y / (gridSize - 1);
+
+     // Position in NDC coordinates
+     const posX = (u - 0.5) * 2.0;
+     const posY = (v - 0.5) * 2.0;
+
+     vertices.push(posX, posY);
+     texCoords.push(u, v, 0.5); // Include R coordinate for 3D texture
+   }
+ }
+
+ // Generate indices for triangle mesh
+ for (let y = 0; y < gridSize - 1; y++) {
+   for (let x = 0; x < gridSize - 1; x++) {
+     const i = y * gridSize + x;
+     indices.push(i, i + 1, i + gridSize);
+     indices.push(i + 1, i + gridSize + 1, i + gridSize);
+   }
+ }
+
+ // Create buffers
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+ const texCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
+
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+ // Set up attributes
+ const positionLoc = gl.getAttribLocation(program, 'a_position');
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+ const texCoordLoc = gl.getAttribLocation(program, 'a_texCoord');
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.enableVertexAttribArray(texCoordLoc);
+ gl.vertexAttribPointer(texCoordLoc, 3, gl.FLOAT, false, 0, 0);
+
+ // ==========================================
+ // HEAVY STATE POISONING - 50+ operations
+ // ==========================================
+
+ // Capability toggling (25 operations)
+ const capabilities = [
+   gl.BLEND, gl.CULL_FACE, gl.DEPTH_TEST, gl.DITHER, gl.POLYGON_OFFSET_FILL,
+   gl.SAMPLE_ALPHA_TO_COVERAGE, gl.SAMPLE_COVERAGE, gl.SCISSOR_TEST, gl.STENCIL_TEST
+ ];
+
+ for (let i = 0; i < stateChangeCount; i++) {
+   capabilities.forEach(cap => {
+     gl.enable(cap);
+     gl.disable(cap);
+   });
+ }
+
+ // Blend state changes
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+ gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+ gl.blendEquation(gl.FUNC_ADD);
+ gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+ gl.disable(gl.BLEND);
+
+ // Depth state changes
+ gl.enable(gl.DEPTH_TEST);
+ gl.depthFunc(gl.LESS);
+ gl.depthMask(true);
+ gl.depthRange(0.0, 1.0);
+ gl.disable(gl.DEPTH_TEST);
+
+ // Texture binding churn (bind/unbind multiple times)
+ for (let i = 0; i < 10; i++) {
+   gl.bindTexture(gl.TEXTURE_3D, texture3D);
+   gl.bindTexture(gl.TEXTURE_3D, null);
+   gl.bindTexture(gl.TEXTURE_2D, null); // Invalid binding for poisoning
+ }
+
+ // Buffer binding patterns
+ for (let i = 0; i < 5; i++) {
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+ }
+
+ // Viewport changes
+ for (let i = 0; i < 8; i++) {
+   gl.viewport(0, 0, 256, 256);
+   gl.viewport(i * 10, i * 5, 256 - i * 20, 256 - i * 10);
+ }
+
+ // Clear state variations
+ gl.clearColor(0.1, 0.2, 0.3, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.clearColor(0.0, 0.0, 0.0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+ // ==========================================
+ // RENDERING LOOP SETUP
+ // ==========================================
+
+ // Set uniforms
+ const projectionLoc = gl.getUniformLocation(program, 'u_projection');
+ const modelViewLoc = gl.getUniformLocation(program, 'u_modelView');
+ const timeLoc = gl.getUniformLocation(program, 'u_time');
+ const textureLoc = gl.getUniformLocation(program, 'u_texture3D');
+ const complexityLoc = gl.getUniformLocation(program, 'u_shaderComplexity');
+
+ // Set up matrices
+ const projection = new Float32Array([
+   1.0, 0.0, 0.0, 0.0,
+   0.0, 1.0, 0.0, 0.0,
+   0.0, 0.0, 1.0, 0.0,
+   0.0, 0.0, 0.0, 1.0
+ ]);
+
+ const modelView = new Float32Array([
+   1.0, 0.0, 0.0, 0.0,
+   0.0, 1.0, 0.0, 0.0,
+   0.0, 0.0, 1.0, 0.0,
+   0.0, 0.0, 0.0, 1.0
+ ]);
+
+ gl.uniformMatrix4fv(projectionLoc, false, projection);
+ gl.uniformMatrix4fv(modelViewLoc, false, modelView);
+ gl.uniform1i(textureLoc, 0);
+ gl.uniform1i(complexityLoc, shaderComplexity);
+
+ // Animation loop
+ let startTime = Date.now();
+ function render() {
+   const currentTime = (Date.now() - startTime) * 0.001;
+   gl.uniform1f(timeLoc, currentTime);
+
+   // More state poisoning during render
+   gl.enable(gl.BLEND);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+   gl.bindTexture(gl.TEXTURE_3D, texture3D);
+
+   // Ensure element array buffer is bound before drawing
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+   // Draw the volume visualization
+   gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+
+   // Additional redundant operations for state poisoning
+   gl.disable(gl.BLEND);
+   gl.bindTexture(gl.TEXTURE_3D, null);
+
+   requestAnimationFrame(render);
+ }
+
+ // Start rendering
+ render();
+
+ // ==========================================
+ // FINAL STATE POISONING AND VALIDATION
+ // ==========================================
+
+ // Final round of state changes
+ gl.enable(gl.CULL_FACE);
+ gl.cullFace(gl.BACK);
+ gl.disable(gl.CULL_FACE);
+
+ gl.enable(gl.SCISSOR_TEST);
+ gl.scissor(0, 0, 256, 256);
+ gl.disable(gl.SCISSOR_TEST);
+
+ // Validate WebGL state
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
