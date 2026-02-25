@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_compressed_texture_s3tc'
+];
+
+const layerCount = 16;
+const blockSize = 16;
+const compressionRatio = 4;
+const mipCount = 6;
+const texSize = 128;
+
+const arrayTarget = 35866;
+const compressedFormat = 33779;
+const textureFormat = 32856;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const compArray1 = gl.createTexture();
+        const compArray2 = gl.createTexture();
+        const compArray3 = gl.createTexture();
+        gl.bindTexture(arrayTarget, compArray1);
+        gl.bindTexture(arrayTarget, compArray2);
+        gl.bindTexture(arrayTarget, compArray1);
+        gl.texStorage3D(arrayTarget, mipCount, compressedFormat, texSize, texSize, layerCount);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindTexture(arrayTarget, compArray2);
+        gl.texStorage3D(arrayTarget, 1, compressedFormat, 256, 256, 32);
+        gl.texParameteri(arrayTarget, 10241, 9729);
+        gl.texParameteri(arrayTarget, 10240, 9729);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindTexture(arrayTarget, compArray1);
+        const blockSizeBytes = blockSize;
+        const blocksWide = Math.ceil(texSize / compressionRatio);
+        const blocksHigh = Math.ceil(texSize / compressionRatio);
+        const dataSize = blocksWide * blocksHigh * blockSizeBytes;
+
+        for (let layer = 0; layer < layerCount; layer++) {
+            const compData = new Uint8Array(dataSize);
+            for (let i = 0; i < compData.length; i++) {
+                compData[i] = (i + layer * 17) % 256;
+            }
+            gl.compressedTexSubImage3D(arrayTarget, 0, 0, 0, layer, texSize, texSize, 1, compressedFormat, compData);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindTexture(arrayTarget, compArray2);
+        const dataSize2 = 64 * 64 * blockSize;
+        for (let layer = 0; layer < 8; layer++) {
+            const compData = new Uint8Array(dataSize2);
+            for (let i = 0; i < compData.length; i++) {
+                compData[i] = (layer * 32 + i) % 256;
+            }
+            gl.compressedTexSubImage3D(arrayTarget, 0, 0, 0, layer, 256, 256, 1, compressedFormat, compData);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        const normalArray = gl.createTexture();
+        gl.bindTexture(arrayTarget, normalArray);
+        gl.texStorage3D(arrayTarget, 1, textureFormat, 256, 256, 24);
+        const normalData = new Uint8Array(256 * 256 * 4 * 8);
+        for (let i = 0; i < normalData.length; i++) {
+            normalData[i] = (i * 3) % 256;
+        }
+        gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, 256, 256, 8, 6408, 5121, normalData);
+    } catch(e) { console.log(e); }
+
+    try {
+        const vs = gl.createShader(35633);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            out vec3 vTexCoord;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                vTexCoord = vec3(position.xy * 0.5 + 0.5, float(gl_VertexID) * 0.33);
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(35632);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            precision highp sampler2DArray;
+            uniform sampler2DArray uCompArray;
+            uniform sampler2DArray uNormalArray;
+            in vec3 vTexCoord;
+            out vec4 fragColor;
+            void main() {
+                vec4 compSample = texture(uCompArray, vTexCoord);
+                vec4 normalSample = texture(uNormalArray, vTexCoord + vec3(0.1, 0.1, 1.0));
+                fragColor = mix(compSample, normalSample, 0.6);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) { console.log(e); }
+
+    try {
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(34962, buffer1);
+        gl.bindBuffer(34962, buffer2);
+        gl.bindBuffer(34962, buffer1);
+        gl.bufferData(34962, 4096, 35044);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.enable(3042);
+        gl.blendFunc(770, 771);
+        gl.disable(3042);
+        gl.enable(3042);
+        gl.blendEquation(32774);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.viewport(0, 0, 256, 256);
+        gl.drawArrays(4, 0, 6);
+        gl.drawArrays(4, 0, 12);
+        gl.drawArrays(4, 0, 18);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindTexture(arrayTarget, compArray1);
+        gl.deleteTexture(compArray1);
+        gl.bindTexture(arrayTarget, compArray1);
+        gl.texParameteri(arrayTarget, 10241, 9728);
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

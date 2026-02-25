@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const bufferSize = 2048;
+    const copySize = 512;
+    const copyOffset = 256;
+    const subDataCount = 4;
+    const vertexCount = 12;
+    const dataChunk = 128;
+
+    const srcTarget = gl.COPY_READ_BUFFER;
+    const dstTarget = gl.COPY_WRITE_BUFFER;
+    const bufferUsage = gl.DYNAMIC_DRAW;
+    const arrayTarget = gl.ARRAY_BUFFER;
+    const primitiveMode = gl.TRIANGLES;
+
+    try {
+        const srcData1 = new Float32Array(512);
+        const srcData2 = new Float32Array(512);
+        for (let i = 0; i < 512; i++) {
+            srcData1[i] = Math.sin(i * 0.1);
+            srcData2[i] = Math.cos(i * 0.1);
+        }
+        const srcBuffer1 = gl.createBuffer();
+        const srcBuffer2 = gl.createBuffer();
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.bufferData(srcTarget, srcData1, gl.STATIC_DRAW);
+        gl.bindBuffer(srcTarget, srcBuffer2);
+        gl.bufferData(srcTarget, srcData2, gl.STATIC_DRAW);
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.bufferData(srcTarget, bufferSize, bufferUsage);
+        gl.bufferSubData(srcTarget, 0, srcData1);
+    } catch(e) {}
+
+    try {
+        const dstBuffer1 = gl.createBuffer();
+        const dstBuffer2 = gl.createBuffer();
+        gl.bindBuffer(dstTarget, dstBuffer1);
+        gl.bindBuffer(dstTarget, dstBuffer2);
+        gl.bindBuffer(dstTarget, dstBuffer1);
+        gl.bufferData(dstTarget, bufferSize, bufferUsage);
+        gl.bufferData(dstTarget, 4096, gl.DYNAMIC_COPY);
+        gl.bufferData(dstTarget, bufferSize, bufferUsage);
+        gl.bindBuffer(dstTarget, dstBuffer2);
+        gl.bufferData(dstTarget, bufferSize, bufferUsage);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.bindBuffer(dstTarget, dstBuffer1);
+        gl.copyBufferSubData(srcTarget, dstTarget, 0, 0, copySize);
+        gl.copyBufferSubData(srcTarget, dstTarget, copyOffset, copyOffset, copySize);
+        gl.copyBufferSubData(srcTarget, dstTarget, 128, 128, 256);
+        gl.bindBuffer(srcTarget, srcBuffer2);
+        gl.copyBufferSubData(srcTarget, dstTarget, 0, 512, copySize);
+        gl.bindBuffer(dstTarget, dstBuffer2);
+        gl.copyBufferSubData(srcTarget, dstTarget, 0, 0, copySize);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.bindBuffer(dstTarget, dstBuffer1);
+        gl.copyBufferSubData(srcTarget, dstTarget, 256, 0, 512);
+        gl.copyBufferSubData(srcTarget, dstTarget, 0, 512, 512);
+        gl.copyBufferSubData(dstTarget, srcTarget, 0, 0, copySize);
+        gl.copyBufferSubData(srcTarget, dstTarget, copyOffset, copyOffset * 2, dataChunk);
+    } catch(e) {}
+
+    try {
+        for (let i = 0; i < subDataCount; i++) {
+            const offset = i * dataChunk;
+            const data = new Float32Array(32);
+            for (let j = 0; j < 32; j++) {
+                data[j] = i + j * 0.1;
+            }
+            gl.bindBuffer(dstTarget, dstBuffer1);
+            gl.bufferSubData(dstTarget, offset, data);
+            gl.bindBuffer(dstTarget, dstBuffer2);
+            gl.bufferSubData(dstTarget, offset * 2, data);
+            gl.bindBuffer(srcTarget, srcBuffer1);
+            gl.bufferSubData(srcTarget, offset, data);
+        }
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            out vec3 vColor;
+            void main() {
+                vColor = position * 0.5 + 0.5;
+                gl_Position = vec4(position, 1.0);
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            in vec3 vColor;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(vColor, 1.0);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const vertices = new Float32Array([
+            -0.8, -0.8, 0.0,
+             0.8, -0.8, 0.0,
+             0.0,  0.8, 0.0,
+            -0.5, -0.5, 0.5,
+             0.5, -0.5, 0.5,
+             0.0,  0.5, 0.5,
+            -0.3, -0.3, 1.0,
+             0.3, -0.3, 1.0,
+             0.0,  0.3, 1.0,
+            -0.1, -0.1, 0.3,
+             0.1, -0.1, 0.3,
+             0.0,  0.1, 0.3
+        ]);
+        const vbo = gl.createBuffer();
+        gl.bindBuffer(arrayTarget, vbo);
+        gl.bufferData(arrayTarget, vertices, gl.STATIC_DRAW);
+        const posLoc = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.bindBuffer(dstTarget, dstBuffer1);
+        gl.bindBuffer(arrayTarget, dstBuffer1);
+        gl.copyBufferSubData(srcTarget, arrayTarget, 0, 0, copySize);
+    } catch(e) {}
+
+    try {
+        gl.drawArrays(primitiveMode, 0, 3);
+        gl.bindBuffer(srcTarget, srcBuffer2);
+        gl.bindBuffer(dstTarget, dstBuffer2);
+        gl.copyBufferSubData(srcTarget, dstTarget, 0, 0, copySize);
+        gl.drawArrays(gl.TRIANGLES, 3, 3);
+        gl.drawArrays(gl.TRIANGLES, 6, vertexCount - 6);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.bindBuffer(dstTarget, dstBuffer1);
+        gl.bindBuffer(srcTarget, null);
+        gl.bindBuffer(dstTarget, null);
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.bindBuffer(dstTarget, dstBuffer1);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.deleteBuffer(srcBuffer1);
+        gl.bindBuffer(srcTarget, srcBuffer1);
+        gl.copyBufferSubData(srcTarget, dstTarget, 0, 0, copySize);
+        gl.bindBuffer(dstTarget, dstBuffer1);
+        gl.deleteBuffer(dstBuffer1);
+        gl.bindBuffer(dstTarget, dstBuffer1);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

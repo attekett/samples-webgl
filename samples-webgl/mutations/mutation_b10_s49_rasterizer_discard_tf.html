@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const vertexCount = 24;
+    const tfBufferSize = vertexCount * 32;
+    const passCount = 3;
+    const inputSize = vertexCount * 12;
+    const outputComponents = 8;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+    const tfMode = gl.INTERLEAVED_ATTRIBS;
+    const primitiveMode = gl.TRIANGLES;
+
+    try {
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        const vertices = new Float32Array(vertexCount * 3);
+        for (let i = 0; i < vertexCount; i++) {
+            vertices[i * 3 + 0] = (i % 6) * 0.3 - 0.75;
+            vertices[i * 3 + 1] = Math.floor(i / 6) * 0.3 - 0.45;
+            vertices[i * 3 + 2] = i / vertexCount;
+        }
+        gl.bufferData(bufferTarget, vertices, bufferUsage);
+        gl.bufferSubData(bufferTarget, 0, new Float32Array([0.0, 0.0, 0.0]));
+    } catch(e) {}
+
+    try {
+        const tfBuffer1 = gl.createBuffer();
+        const tfBuffer2 = gl.createBuffer();
+        const tfBuffer3 = gl.createBuffer();
+        gl.bindBuffer(tfTarget, tfBuffer1);
+        gl.bindBuffer(tfTarget, tfBuffer2);
+        gl.bindBuffer(tfTarget, tfBuffer1);
+        gl.bufferData(tfTarget, tfBufferSize, bufferUsage);
+        gl.bufferSubData(tfTarget, 64, new Float32Array(32));
+    } catch(e) {}
+
+    try {
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(vertexShader, `#version 300 es
+            in vec3 position;
+            out vec3 tfPosition;
+            out vec3 tfNormal;
+            out vec2 tfTexCoord;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                tfPosition = position * 2.0;
+                tfNormal = normalize(vec3(position.xy, 1.0));
+                tfTexCoord = position.xy * 0.5 + 0.5;
+            }
+        `);
+        gl.shaderSource(fragmentShader, `#version 300 es
+            precision highp float;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            }
+        `);
+        gl.compileShader(vertexShader);
+        gl.compileShader(fragmentShader);
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.transformFeedbackVaryings(program, ['tfPosition', 'tfNormal', 'tfTexCoord'], tfMode);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const tf1 = gl.createTransformFeedback();
+        const tf2 = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf1);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf2);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf1);
+        const tfBuffer = gl.createBuffer();
+        gl.bindBuffer(tfTarget, tfBuffer);
+        gl.bindBufferBase(tfTarget, 0, tfBuffer);
+        gl.bindBufferRange(tfTarget, 0, tfBuffer, 0, 512);
+    } catch(e) {}
+
+    try {
+        const vao1 = gl.createVertexArray();
+        const vao2 = gl.createVertexArray();
+        gl.bindVertexArray(vao1);
+        gl.bindVertexArray(vao2);
+        gl.bindVertexArray(vao1);
+        gl.enableVertexAttribArray(0);
+        gl.disableVertexAttribArray(0);
+        gl.enableVertexAttribArray(0);
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    } catch(e) {}
+
+    try {
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.enable(gl.RASTERIZER_DISCARD);
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.2, 0.2, 0.2, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.clearColor(0.1, 0.1, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+
+    try {
+        gl.beginTransformFeedback(primitiveMode);
+        gl.drawArrays(primitiveMode, 0, vertexCount);
+        gl.endTransformFeedback();
+        gl.beginTransformFeedback(primitiveMode);
+        gl.drawArrays(primitiveMode, 0, 12);
+        gl.endTransformFeedback();
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.drawArrays(primitiveMode, 0, vertexCount);
+        gl.drawArrays(primitiveMode, 0, 18);
+    } catch(e) {}
+
+    try {
+        const tfBuffer = gl.createBuffer();
+        gl.bindBuffer(tfTarget, tfBuffer);
+        const readback = new Float32Array(64);
+        gl.getBufferSubData(tfTarget, 0, readback);
+        gl.deleteBuffer(tfBuffer);
+        gl.bindBuffer(tfTarget, tfBuffer);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

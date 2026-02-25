@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const baseBinds = 16;
+const rangeBinds = 16;
+const offsetStride = 256;
+const rangeSize = 1024;
+const bufferSize = 8192;
+const vertexCount = 6;
+
+const tfBufferTarget = 35982;
+const uboTarget = 35345;
+const bindingPoint0 = 0;
+const bindingPoint1 = 1;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            out vec3 vData;
+            uniform DataBlock {
+                vec4 uData1;
+                vec4 uData2;
+            };
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                vData = position + uData1.xyz;
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            in vec3 vData;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(vData * 0.5 + 0.5, 1.0);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.transformFeedbackVaryings(program, ['vData'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) { console.log(e); }
+
+    try {
+        const tfBuf1 = gl.createBuffer();
+        const tfBuf2 = gl.createBuffer();
+        const tfBuf3 = gl.createBuffer();
+        gl.bindBuffer(tfBufferTarget, tfBuf1);
+        gl.bufferData(tfBufferTarget, bufferSize, gl.DYNAMIC_COPY);
+        gl.bindBuffer(tfBufferTarget, tfBuf2);
+        gl.bufferData(tfBufferTarget, 16384, gl.STREAM_COPY);
+        gl.bindBuffer(tfBufferTarget, tfBuf3);
+        gl.bufferData(tfBufferTarget, bufferSize, gl.STATIC_READ);
+    } catch(e) { console.log(e); }
+
+    try {
+        const ubo1 = gl.createBuffer();
+        const ubo2 = gl.createBuffer();
+        gl.bindBuffer(uboTarget, ubo1);
+        gl.bufferData(uboTarget, bufferSize, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(uboTarget, ubo2);
+        gl.bufferData(uboTarget, 4096, gl.STATIC_DRAW);
+
+        const uboData = new Float32Array([
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0
+        ]);
+        gl.bindBuffer(uboTarget, ubo1);
+        gl.bufferSubData(uboTarget, 0, uboData);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < baseBinds; i++) {
+            const buf = i % 3 === 0 ? tfBuf1 : i % 3 === 1 ? tfBuf2 : tfBuf3;
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, bindingPoint0, buf);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, bindingPoint1, buf);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, bindingPoint0, buf);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < rangeBinds; i++) {
+            const offset = i * offsetStride;
+            const size = rangeSize;
+            const buf = i % 2 === 0 ? tfBuf1 : tfBuf2;
+            gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, bindingPoint0, buf, offset, size);
+            gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, bindingPoint0, buf, 0, rangeSize);
+            gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, bindingPoint1, buf, offset, 2048);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < 8; i++) {
+            const ubo = i % 2 === 0 ? ubo1 : ubo2;
+            gl.bindBufferBase(uboTarget, bindingPoint0, ubo);
+            gl.bindBufferRange(uboTarget, bindingPoint0, ubo, 0, rangeSize);
+            gl.bindBufferBase(uboTarget, bindingPoint1, ubo);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        const posBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        const positions = new Float32Array([
+            -0.7, -0.7, 0.0,
+             0.7, -0.7, 0.0,
+             0.0,  0.7, 0.0,
+            -0.5, -0.5, 0.0,
+             0.5, -0.5, 0.0,
+             0.0,  0.5, 0.0
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        const posLoc = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf1);
+        gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf2, 0, rangeSize);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf1);
+
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf1, offsetStride, rangeSize);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.drawArrays(gl.TRIANGLES, 0, 18);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, 12);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindBuffer(tfBufferTarget, tfBuf1);
+        gl.deleteBuffer(tfBuf1);
+        gl.bindBuffer(tfBufferTarget, tfBuf1);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf1);
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

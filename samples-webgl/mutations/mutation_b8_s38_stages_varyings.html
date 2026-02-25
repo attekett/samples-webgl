@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const varyingCount = 12;
+    const matrixSize = 3;
+    const vertexCount = 6;
+    const bufferSize = vertexCount * 64;
+    const dataCount = varyingCount * 4;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+    const primitiveType = gl.TRIANGLES;
+
+    const vertexShader = `#version 300 es
+    in vec2 position;
+    in vec3 color;
+    in vec2 texCoord;
+    in vec3 normal;
+    out vec3 vColor1;
+    out vec3 vColor2;
+    out vec2 vTexCoord1;
+    out vec2 vTexCoord2;
+    out vec3 vNormal;
+    out mat3 vMatrix;
+    out vec4 vPosition;
+    out float vData[4];
+    void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+        vColor1 = color;
+        vColor2 = color * 0.5;
+        vTexCoord1 = texCoord;
+        vTexCoord2 = texCoord * 2.0;
+        vNormal = normal;
+        vMatrix = mat3(
+            color.r, color.g, color.b,
+            normal.x, normal.y, normal.z,
+            texCoord.x, texCoord.y, 1.0
+        );
+        vPosition = gl_Position;
+        vData[0] = position.x;
+        vData[1] = position.y;
+        vData[2] = color.r;
+        vData[3] = normal.x;
+    }`;
+
+    const fragmentShader = `#version 300 es
+    precision highp float;
+    in vec3 vColor1;
+    in vec3 vColor2;
+    in vec2 vTexCoord1;
+    in vec2 vTexCoord2;
+    in vec3 vNormal;
+    in mat3 vMatrix;
+    in vec4 vPosition;
+    in float vData[4];
+    out vec4 fragColor;
+    void main() {
+        vec3 matColor = vMatrix[0] + vMatrix[1] * 0.5 + vMatrix[2] * 0.3;
+        vec3 texColor = vec3(vTexCoord1, vTexCoord2.x);
+        vec3 dataColor = vec3(vData[0], vData[1], vData[2]);
+        vec3 combined = vColor1 * 0.3 + vColor2 * 0.2 + matColor * 0.2 + texColor * 0.2 + dataColor * 0.1;
+        fragColor = vec4(combined, 1.0);
+    }`;
+
+    let buffer1, buffer2, buffer3, colorBuffer, texBuffer, normalBuffer, program, vao;
+
+    try {
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
+        buffer3 = gl.createBuffer();
+        colorBuffer = gl.createBuffer();
+        texBuffer = gl.createBuffer();
+        normalBuffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, bufferSize, bufferUsage);
+    } catch(e) {}
+
+    try {
+        const positions = new Float32Array([
+            -1.0, -1.0,
+             1.0, -1.0,
+            -1.0,  1.0,
+            -1.0,  1.0,
+             1.0, -1.0,
+             1.0,  1.0
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, positions);
+    } catch(e) {}
+
+    try {
+        const colors = new Float32Array([
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0,
+            1.0, 1.0, 0.0,
+            1.0, 0.0, 1.0,
+            0.0, 1.0, 1.0
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, 128, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, colors);
+    } catch(e) {}
+
+    try {
+        const texCoords = new Float32Array([
+            0.0, 0.0,
+            1.0, 0.0,
+            0.0, 1.0,
+            0.0, 1.0,
+            1.0, 0.0,
+            1.0, 1.0
+        ]);
+        const normals = new Float32Array([
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 1.0
+        ]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, texBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, 64, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, texCoords);
+        gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, 96, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, normals);
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(vs, vertexShader);
+        gl.shaderSource(fs, fragmentShader);
+        gl.compileShader(vs);
+        gl.compileShader(fs);
+
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        const posLoc = gl.getAttribLocation(program, 'position');
+        const colorLoc = gl.getAttribLocation(program, 'color');
+        const texLoc = gl.getAttribLocation(program, 'texCoord');
+        const normalLoc = gl.getAttribLocation(program, 'normal');
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 8, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.enableVertexAttribArray(colorLoc);
+        gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 12, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, texBuffer);
+        gl.enableVertexAttribArray(texLoc);
+        gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 8, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+        gl.enableVertexAttribArray(normalLoc);
+        gl.vertexAttribPointer(normalLoc, 3, gl.FLOAT, false, 12, 0);
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.1, 0.1, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+        gl.drawArrays(primitiveType, 0, vertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.drawArrays(primitiveType, 0, vertexCount);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.deleteBuffer(buffer1);
+        gl.bindBuffer(bufferTarget, colorBuffer);
+        gl.deleteBuffer(colorBuffer);
+        gl.deleteBuffer(texBuffer);
+        gl.deleteBuffer(normalBuffer);
+        gl.deleteBuffer(buffer2);
+        gl.deleteBuffer(buffer3);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

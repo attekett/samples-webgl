@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: Define required extensions here (none needed for this WebGL2 core test)
+const REQUIRED_EXTENSIONS = [
+ // No extensions required - using WebGL2 core features
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ // ALWAYS use WebGL2 context - do not fall back to WebGL1
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+   throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // WebGL2 context already verified above
+ const missingExtensions = [];
+ const availableAsCore = [];
+
+ // Check each required extension (none in this case)
+ REQUIRED_EXTENSIONS.forEach(ext => {
+   const extension = gl.getExtension(ext);
+   if (!extension) {
+     // WebGL2 has many WebGL1 extensions as core features
+     let availableInCore = false;
+
+     switch(ext) {
+       case 'OES_vertex_array_object':
+       case 'WEBGL_draw_buffers':
+       case 'ANGLE_instanced_arrays':
+         availableInCore = true; // These are core in WebGL2
+         break;
+       case 'WEBGL_color_buffer_float':
+         availableInCore = !!gl.getExtension('EXT_color_buffer_float');
+         break;
+       case 'OES_texture_float':
+         // OES_texture_float may be blocked by fingerprinting
+         availableInCore = !!gl.getExtension('EXT_color_buffer_float'); // Often available as EXT
+         break;
+       default:
+         availableInCore = false;
+     }
+
+     if (availableInCore) {
+       availableAsCore.push(ext);
+     } else {
+       missingExtensions.push(ext);
+     }
+   }
+ });
+
+ if (missingExtensions.length > 0) {
+   // Check if this is Playwright Firefox (limited extensions)
+   const isPlaywrightFirefox = typeof window.playwright !== 'undefined' ||
+                             navigator.userAgent.includes('Headless') ||
+                             !window.chrome;
+
+   if (isPlaywrightFirefox) {
+     throw new Error(`PLAYWRIGHT_FIREFOX_LIMITATION: Extensions ${missingExtensions.join(', ')} not available in Playwright Firefox.`);
+   } else {
+     throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+   }
+ }
+
+ if (availableAsCore.length > 0) {
+   console.log(`Note: Extensions ${availableAsCore.join(', ')} available as core WebGL2 features`);
+ }
+
+ // ==========================================
+ // FUZZING VARIABLES - Mix of inline literals and parameters
+ // ==========================================
+ const TEXTURE_SIZE = 256;
+ const ITERATION_COUNT = 64;
+ const DIFFUSION_RATE_A = 0.5;
+ const DIFFUSION_RATE_B = 0.25;
+ const FEED_RATE = 0.055;
+ const KILL_RATE = 0.062;
+ const DELTA_TIME = 1.0;
+ const STATE_CHANGE_COUNT = 25;
+ const TEXTURE_BINDING_CYCLES = 8;
+ const SHADER_COMPLEXITY = 4;
+ const RESOURCE_REBIND_COUNT = 4;
+
+ // ==========================================
+ // REACTION-DIFFUSION IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // Create two textures for ping-pong rendering
+ const createTexture = (size) => {
+   const texture = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, texture);
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+   gl.bindTexture(gl.TEXTURE_2D, null);
+   return texture;
+ };
+
+ const textureA = createTexture(TEXTURE_SIZE);
+ const textureB = createTexture(TEXTURE_SIZE);
+
+ // Create framebuffers for render-to-texture
+ const createFramebuffer = (texture) => {
+   const fbo = gl.createFramebuffer();
+   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+   return fbo;
+ };
+
+ const fboA = createFramebuffer(textureA);
+ const fboB = createFramebuffer(textureB);
+
+ // Initialize texture A with random seed pattern
+ gl.bindTexture(gl.TEXTURE_2D, textureA);
+ const initData = new Uint8Array(TEXTURE_SIZE * TEXTURE_SIZE * 4);
+ for (let i = 0; i < initData.length; i += 4) {
+   const x = (i / 4) % TEXTURE_SIZE;
+   const y = Math.floor((i / 4) / TEXTURE_SIZE);
+   const centerX = TEXTURE_SIZE / 2;
+   const centerY = TEXTURE_SIZE / 2;
+   const dist = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+   const seed = Math.random() > 0.95 ? 255 : 0;
+   initData[i] = seed;     // R - chemical A
+   initData[i + 1] = seed; // G - chemical B
+   initData[i + 2] = 0;    // B - unused
+   initData[i + 3] = 255;  // A - alpha
+ }
+ gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEXTURE_SIZE, TEXTURE_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, initData);
+ gl.bindTexture(gl.TEXTURE_2D, null);
+
+ // Initialize texture B with zeros
+ gl.bindTexture(gl.TEXTURE_2D, textureB);
+ const zeroData = new Uint8Array(TEXTURE_SIZE * TEXTURE_SIZE * 4);
+ gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEXTURE_SIZE, TEXTURE_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, zeroData);
+ gl.bindTexture(gl.TEXTURE_2D, null);
+
+ // Vertex shader - simple quad
+ const vertexShaderSource = `#version 300 es
+ in vec2 a_position;
+ in vec2 a_texCoord;
+ out vec2 v_texCoord;
+
+ void main() {
+   gl_Position = vec4(a_position, 0.0, 1.0);
+   v_texCoord = a_texCoord;
+ }
+ `;
+
+ // Fragment shader - reaction-diffusion simulation
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+ in vec2 v_texCoord;
+ out vec4 fragColor;
+
+ uniform sampler2D u_texture;
+ uniform float u_diffusionRateA;
+ uniform float u_diffusionRateB;
+ uniform float u_feedRate;
+ uniform float u_killRate;
+ uniform float u_deltaTime;
+ uniform float u_textureSize;
+ uniform int u_shaderComplexity;
+
+ vec2 getOffset(int dx, int dy) {
+   return vec2(float(dx), float(dy)) / u_textureSize;
+ }
+
+ void main() {
+   vec2 uv = v_texCoord;
+   vec4 center = texture(u_texture, uv);
+
+   float a = center.r;
+   float b = center.g;
+
+   // Sample neighboring cells for diffusion
+   vec4 laplacian = -center;
+   laplacian += texture(u_texture, uv + getOffset(-1, -1));
+   laplacian += texture(u_texture, uv + getOffset(0, -1));
+   laplacian += texture(u_texture, uv + getOffset(1, -1));
+   laplacian += texture(u_texture, uv + getOffset(-1, 0));
+   laplacian += texture(u_texture, uv + getOffset(1, 0));
+   laplacian += texture(u_texture, uv + getOffset(-1, 1));
+   laplacian += texture(u_texture, uv + getOffset(0, 1));
+   laplacian += texture(u_texture, uv + getOffset(1, 1));
+
+   float da = u_diffusionRateA * laplacian.r - a * b * b + u_feedRate * (1.0 - a);
+   float db = u_diffusionRateB * laplacian.g + a * b * b - (u_killRate + u_feedRate) * b;
+
+   // Add complexity loops for shader stress
+   for (int i = 0; i < u_shaderComplexity; i++) {
+     da += sin(float(i) * 0.1) * 0.001;
+     db += cos(float(i) * 0.1) * 0.001;
+   }
+
+   a += da * u_deltaTime;
+   b += db * u_deltaTime;
+
+   a = clamp(a, 0.0, 1.0);
+   b = clamp(b, 0.0, 1.0);
+
+   fragColor = vec4(a, b, 0.0, 1.0);
+ }
+ `;
+
+ // Create shaders
+ const createShader = (type, source) => {
+   const shader = gl.createShader(type);
+   gl.shaderSource(shader, source);
+   gl.compileShader(shader);
+   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+     throw new Error('Shader compilation failed: ' + gl.getShaderInfoLog(shader));
+   }
+   return shader;
+ };
+
+ const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+ const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+ // Create program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+ }
+
+ // Get attribute/uniform locations
+ const positionLoc = gl.getAttribLocation(program, 'a_position');
+ const texCoordLoc = gl.getAttribLocation(program, 'a_texCoord');
+ const textureLoc = gl.getUniformLocation(program, 'u_texture');
+ const diffusionRateALoc = gl.getUniformLocation(program, 'u_diffusionRateA');
+ const diffusionRateBLoc = gl.getUniformLocation(program, 'u_diffusionRateB');
+ const feedRateLoc = gl.getUniformLocation(program, 'u_feedRate');
+ const killRateLoc = gl.getUniformLocation(program, 'u_killRate');
+ const deltaTimeLoc = gl.getUniformLocation(program, 'u_deltaTime');
+ const textureSizeLoc = gl.getUniformLocation(program, 'u_textureSize');
+ const shaderComplexityLoc = gl.getUniformLocation(program, 'u_shaderComplexity');
+
+ // Create quad geometry
+ const positions = new Float32Array([
+   -1.0, -1.0,
+    1.0, -1.0,
+   -1.0,  1.0,
+    1.0,  1.0,
+ ]);
+ const texCoords = new Float32Array([
+   0.0, 0.0,
+   1.0, 0.0,
+   0.0, 1.0,
+   1.0, 1.0,
+ ]);
+
+ // Create buffers
+ const positionBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+ const texCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+
+ // ==========================================
+ // STATE POISONING - Heavy redundant operations for fuzzing
+ // ==========================================
+ for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+   // Capability toggling
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.SCISSOR_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+
+   // Blend state changes
+   gl.blendEquation(gl.FUNC_ADD);
+   gl.blendEquation(gl.FUNC_SUBTRACT);
+   gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendFunc(gl.ONE, gl.ONE);
+   gl.blendFunc(gl.SRC_COLOR, gl.DST_COLOR);
+
+   // Depth state changes
+   gl.depthFunc(gl.LESS);
+   gl.depthFunc(gl.GREATER);
+   gl.depthFunc(gl.ALWAYS);
+   gl.depthMask(true);
+   gl.depthMask(false);
+
+   // Viewport changes
+   gl.viewport(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+   gl.viewport(10, 10, TEXTURE_SIZE - 20, TEXTURE_SIZE - 20);
+   gl.viewport(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+
+   // Scissor changes
+   gl.scissor(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+   gl.scissor(5, 5, TEXTURE_SIZE - 10, TEXTURE_SIZE - 10);
+ }
+
+ // Texture binding/unbinding cycles
+ for (let cycle = 0; cycle < TEXTURE_BINDING_CYCLES; cycle++) {
+   gl.activeTexture(gl.TEXTURE0 + cycle % 8);
+   gl.bindTexture(gl.TEXTURE_2D, textureA);
+   gl.bindTexture(gl.TEXTURE_2D, textureB);
+   gl.bindTexture(gl.TEXTURE_2D, null);
+ }
+
+ // Buffer binding cycles
+ for (let cycle = 0; cycle < RESOURCE_REBIND_COUNT; cycle++) {
+   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+ }
+
+ // Program switching cycles
+ for (let cycle = 0; cycle < RESOURCE_REBIND_COUNT; cycle++) {
+   gl.useProgram(program);
+   gl.useProgram(null);
+   gl.useProgram(program);
+ }
+
+ // FBO binding cycles
+ for (let cycle = 0; cycle < RESOURCE_REBIND_COUNT; cycle++) {
+   gl.bindFramebuffer(gl.FRAMEBUFFER, fboA);
+   gl.bindFramebuffer(gl.FRAMEBUFFER, fboB);
+   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ }
+
+ // ==========================================
+ // MAIN RENDERING LOOP - Reaction-diffusion simulation
+ // ==========================================
+ gl.useProgram(program);
+ gl.uniform1f(diffusionRateALoc, DIFFUSION_RATE_A);
+ gl.uniform1f(diffusionRateBLoc, DIFFUSION_RATE_B);
+ gl.uniform1f(feedRateLoc, FEED_RATE);
+ gl.uniform1f(killRateLoc, KILL_RATE);
+ gl.uniform1f(deltaTimeLoc, DELTA_TIME);
+ gl.uniform1f(textureSizeLoc, TEXTURE_SIZE);
+ gl.uniform1i(shaderComplexityLoc, SHADER_COMPLEXITY);
+
+ // Set up attributes
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.enableVertexAttribArray(texCoordLoc);
+ gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+
+ // Ping-pong rendering for reaction-diffusion
+ let readTexture = textureA;
+ let writeFBO = fboB;
+
+ for (let iteration = 0; iteration < ITERATION_COUNT; iteration++) {
+   // Bind write framebuffer
+   gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
+
+   // Bind read texture
+   gl.activeTexture(gl.TEXTURE0);
+   gl.bindTexture(gl.TEXTURE_2D, readTexture);
+   gl.uniform1i(textureLoc, 0);
+
+   // Clear and draw
+   gl.clearColor(0.0, 0.0, 0.0, 1.0);
+   gl.clear(gl.COLOR_BUFFER_BIT);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+   // Swap textures for next iteration
+   if (readTexture === textureA) {
+     readTexture = textureB;
+     writeFBO = fboA;
+   } else {
+     readTexture = textureA;
+     writeFBO = fboB;
+   }
+
+   // More state poisoning during iterations
+   if (iteration % 4 === 0) {
+     gl.enable(gl.BLEND);
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+     gl.disable(gl.BLEND);
+   }
+ }
+
+ // Final render to screen
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, readTexture);
+ gl.uniform1i(textureLoc, 0);
+
+ gl.clearColor(0.1, 0.1, 0.2, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // ==========================================
+ // FINAL STATE POISONING AND CLEANUP
+ // ==========================================
+ for (let i = 0; i < STATE_CHANGE_COUNT / 2; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.viewport(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+   gl.scissor(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
+ }
+
+ // Cleanup (but leave some resources bound for fuzzing)
+ gl.disableVertexAttribArray(positionLoc);
+ gl.disableVertexAttribArray(texCoordLoc);
+ // Intentionally leave some bindings active for fuzzing surface area
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // Final error check
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

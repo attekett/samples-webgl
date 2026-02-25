@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_compressed_texture_s3tc',
+    'WEBGL_compressed_texture_s3tc_srgb'
+];
+
+const texSize = 256;
+const bufSize = texSize * texSize * 4;
+const compressedCount = 8;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const s3tc = gl.getExtension('WEBGL_compressed_texture_s3tc');
+    const s3tc_srgb = gl.getExtension('WEBGL_compressed_texture_s3tc_srgb');
+
+    const astc = gl.getExtension('WEBGL_compressed_texture_astc');
+    const etc = gl.getExtension('WEBGL_compressed_texture_etc');
+    const etc1 = gl.getExtension('WEBGL_compressed_texture_etc1');
+
+    const textureTarget = gl.TEXTURE_2D;
+    const tex3DTarget = gl.TEXTURE_3D;
+    const texArrayTarget = gl.TEXTURE_2D_ARRAY;
+
+    try {
+        const tex1 = gl.createTexture();
+        const tex2 = gl.createTexture();
+        const tex3 = gl.createTexture();
+        gl.bindTexture(textureTarget, tex1);
+        gl.bindTexture(textureTarget, tex2);
+        gl.bindTexture(textureTarget, tex1);
+        gl.compressedTexImage2D(textureTarget, 0, s3tc.COMPRESSED_RGB_S3TC_DXT1_EXT, 256, 256, 0, new Uint8Array(32768));
+        gl.bindTexture(textureTarget, tex2);
+        gl.compressedTexImage2D(textureTarget, 0, s3tc.COMPRESSED_RGBA_S3TC_DXT1_EXT, 512, 512, 0, new Uint8Array(131072));
+        gl.bindTexture(textureTarget, tex3);
+        gl.compressedTexImage2D(textureTarget, 0, s3tc.COMPRESSED_RGBA_S3TC_DXT3_EXT, 256, 256, 0, new Uint8Array(65536));
+    } catch(e) {}
+
+    try {
+        const tex4 = gl.createTexture();
+        const tex5 = gl.createTexture();
+        gl.bindTexture(textureTarget, tex4);
+        gl.compressedTexImage2D(textureTarget, 0, s3tc.COMPRESSED_RGBA_S3TC_DXT5_EXT, 256, 256, 0, new Uint8Array(65536));
+        gl.bindTexture(textureTarget, tex5);
+        gl.compressedTexImage2D(textureTarget, 0, s3tc_srgb.COMPRESSED_SRGB_S3TC_DXT1_EXT, 512, 512, 0, new Uint8Array(131072));
+    } catch(e) {}
+
+    try {
+        const tex6 = gl.createTexture();
+        const tex7 = gl.createTexture();
+        gl.bindTexture(textureTarget, tex6);
+        gl.compressedTexImage2D(textureTarget, 0, s3tc_srgb.COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT, 256, 256, 0, new Uint8Array(32768));
+        gl.bindTexture(textureTarget, tex7);
+        gl.compressedTexImage2D(textureTarget, 0, s3tc_srgb.COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT, 512, 512, 0, new Uint8Array(262144));
+    } catch(e) {}
+
+    try {
+        const tex8 = gl.createTexture();
+        gl.bindTexture(textureTarget, tex8);
+        gl.compressedTexImage2D(textureTarget, 0, s3tc_srgb.COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT, 256, 256, 0, new Uint8Array(65536));
+    } catch(e) {}
+
+    if (astc) {
+        try {
+            const astcTex1 = gl.createTexture();
+            const astcTex2 = gl.createTexture();
+            const astcTex3 = gl.createTexture();
+            gl.bindTexture(textureTarget, astcTex1);
+            gl.bindTexture(textureTarget, astcTex2);
+            gl.bindTexture(textureTarget, astcTex1);
+            gl.compressedTexImage2D(textureTarget, 0, astc.COMPRESSED_RGBA_ASTC_4x4_KHR, 256, 256, 0, new Uint8Array(65536));
+            gl.bindTexture(textureTarget, astcTex2);
+            gl.compressedTexImage2D(textureTarget, 0, astc.COMPRESSED_RGBA_ASTC_6x6_KHR, 512, 512, 0, new Uint8Array(73728));
+            gl.bindTexture(textureTarget, astcTex3);
+            gl.compressedTexImage2D(textureTarget, 0, astc.COMPRESSED_RGBA_ASTC_8x8_KHR, 256, 256, 0, new Uint8Array(32768));
+        } catch(e) {}
+    }
+
+    if (etc) {
+        try {
+            const etcTex1 = gl.createTexture();
+            const etcTex2 = gl.createTexture();
+            gl.bindTexture(textureTarget, etcTex1);
+            gl.compressedTexImage2D(textureTarget, 0, etc.COMPRESSED_R11_EAC, 256, 256, 0, new Uint8Array(32768));
+            gl.bindTexture(textureTarget, etcTex2);
+            gl.compressedTexImage2D(textureTarget, 0, etc.COMPRESSED_RGB8_ETC2, 512, 512, 0, new Uint8Array(131072));
+        } catch(e) {}
+    }
+
+    if (etc1) {
+        try {
+            const etc1Tex1 = gl.createTexture();
+            gl.bindTexture(textureTarget, etc1Tex1);
+            gl.compressedTexImage2D(textureTarget, 0, etc1.COMPRESSED_RGB_ETC1_WEBGL, 256, 256, 0, new Uint8Array(32768));
+        } catch(e) {}
+    }
+
+    try {
+        const tex3D1 = gl.createTexture();
+        const tex3D2 = gl.createTexture();
+        gl.bindTexture(tex3DTarget, tex3D1);
+        gl.bindTexture(tex3DTarget, tex3D2);
+        gl.bindTexture(tex3DTarget, tex3D1);
+        gl.compressedTexImage3D(tex3DTarget, 0, s3tc.COMPRESSED_RGB_S3TC_DXT1_EXT, 128, 128, 16, 0, new Uint8Array(131072));
+        gl.bindTexture(tex3DTarget, tex3D2);
+        gl.compressedTexImage3D(tex3DTarget, 0, s3tc.COMPRESSED_RGBA_S3TC_DXT5_EXT, 64, 64, 32, 0, new Uint8Array(131072));
+    } catch(e) {}
+
+    try {
+        const texArray1 = gl.createTexture();
+        const texArray2 = gl.createTexture();
+        gl.bindTexture(texArrayTarget, texArray1);
+        gl.bindTexture(texArrayTarget, texArray2);
+        gl.bindTexture(texArrayTarget, texArray1);
+        gl.compressedTexImage3D(texArrayTarget, 0, s3tc.COMPRESSED_RGBA_S3TC_DXT1_EXT, 256, 256, 8, 0, new Uint8Array(262144));
+        gl.bindTexture(texArrayTarget, texArray2);
+        gl.compressedTexImage3D(texArrayTarget, 0, s3tc.COMPRESSED_RGBA_S3TC_DXT3_EXT, 512, 512, 4, 0, new Uint8Array(1048576));
+    } catch(e) {}
+
+    try {
+        gl.bindTexture(textureTarget, tex1);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.bindTexture(textureTarget, tex4);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(textureTarget, tex6);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.5, 0.5, 0.5, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+
+    try {
+        gl.bindTexture(textureTarget, tex1);
+        gl.deleteTexture(tex1);
+        gl.bindTexture(textureTarget, tex1);
+        gl.bindTexture(tex3DTarget, tex3D1);
+        gl.deleteTexture(tex3D1);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

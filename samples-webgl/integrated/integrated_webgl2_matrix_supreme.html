@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: WebGL2-only test combining MRT, 3D Textures, Texture Arrays, UBOs, Sampler Objects, Instanced Rendering, Query Objects
+const REQUIRED_EXTENSIONS = [
+ // All features are WebGL2 core - no extensions needed
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ // WebGL2-only: Direct WebGL2 context request
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+   throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // Extension gating (none needed for WebGL2 core features)
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+   throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // Enable extensions (none needed)
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // THE WEBGL2 MATRIX - SUPREME INTEGRATION
+ // Combining: MRT + 3D Textures + Texture Arrays + UBOs + Sampler Objects + Instanced Rendering + Query Objects
+ // ==========================================
+
+ // FUZZING VARIABLES - Mix inline literals with parameterized variables
+ const texture3DSize = 32; // Parameterized for fuzzing
+ const textureArrayLayers = 4; // Parameterized
+ const instanceCount = 50; // Parameterized - reduced for stability
+ const queryCount = 4; // Parameterized - reduced to avoid conflicts
+ const uboBlockSize = 1024; // Parameterized - increased for proper UBO size
+ const stateChangeCount = 25; // Parameterized - reduced for stability
+
+ // 1. CREATE 3D TEXTURE (32x32x16 volume)
+ const texture3D = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_3D, texture3D);
+ gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, texture3DSize, texture3DSize, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ // Fill with procedural volume data
+ const volumeData = new Uint8Array(texture3DSize * texture3DSize * 16 * 4);
+ for (let i = 0; i < volumeData.length; i += 4) {
+   volumeData[i] = Math.random() * 255;     // R
+   volumeData[i + 1] = Math.random() * 255; // G
+   volumeData[i + 2] = Math.random() * 255; // B
+   volumeData[i + 3] = 255;                  // A
+ }
+ gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, texture3DSize, texture3DSize, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, volumeData);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+ gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE); // 3D wrap mode
+ gl.generateMipmap(gl.TEXTURE_3D);
+
+ // 2. CREATE TEXTURE ARRAY (4 layers)
+ const textureArray = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+ gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 64, 64, textureArrayLayers, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ // Fill each layer with different patterns
+ const arrayData = new Uint8Array(64 * 64 * textureArrayLayers * 4);
+ for (let layer = 0; layer < textureArrayLayers; layer++) {
+   for (let y = 0; y < 64; y++) {
+     for (let x = 0; x < 64; x++) {
+       const idx = (layer * 64 * 64 + y * 64 + x) * 4;
+       arrayData[idx] = (x / 64) * 255;     // R: horizontal gradient
+       arrayData[idx + 1] = (y / 64) * 255; // G: vertical gradient
+       arrayData[idx + 2] = layer * 64;     // B: layer-based
+       arrayData[idx + 3] = 255;            // A
+     }
+   }
+ }
+ gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 64, 64, textureArrayLayers, 0, gl.RGBA, gl.UNSIGNED_BYTE, arrayData);
+ gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+ // 3. CREATE SAMPLER OBJECTS (2 samplers with different settings)
+ const sampler1 = gl.createSampler();
+ gl.samplerParameteri(sampler1, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+ gl.samplerParameteri(sampler1, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+ gl.samplerParameteri(sampler1, gl.TEXTURE_WRAP_S, gl.REPEAT);
+ gl.samplerParameteri(sampler1, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+ const sampler2 = gl.createSampler();
+ gl.samplerParameteri(sampler2, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+ gl.samplerParameteri(sampler2, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.samplerParameteri(sampler2, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+ gl.samplerParameteri(sampler2, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+ // 4. CREATE UBO WITH TRANSFORM DATA
+ const uboBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+ const uboData = new Float32Array(256); // 256 floats for proper UBO size
+ for (let i = 0; i < uboData.length; i++) {
+   uboData[i] = Math.random() * 2 - 1; // Random values
+ }
+ gl.bufferData(gl.UNIFORM_BUFFER, uboData, gl.STATIC_DRAW);
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, uboBuffer);
+
+ // 5. CREATE MRT FBO (4 color attachments)
+ const fbo = gl.createFramebuffer();
+ gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+ const mrtTextures = [];
+ for (let i = 0; i < 4; i++) {
+   const tex = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, tex);
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, tex, 0);
+   mrtTextures.push(tex);
+ }
+
+ // Set draw buffers for MRT
+ gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
+
+ // Check framebuffer completeness
+ if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+   throw new Error("MRT Framebuffer not complete");
+ }
+
+ // 6. CREATE GEOMETRY BUFFERS (instanced cubes)
+ const positions = new Float32Array([
+   -0.5, -0.5, -0.5,  0.5, -0.5, -0.5,  0.5,  0.5, -0.5, -0.5,  0.5, -0.5, // Front
+   -0.5, -0.5,  0.5,  0.5, -0.5,  0.5,  0.5,  0.5,  0.5, -0.5,  0.5,  0.5, // Back
+ ]);
+
+ const indices = new Uint16Array([
+   0, 1, 2, 2, 3, 0, // Front
+   4, 5, 6, 6, 7, 4, // Back
+   0, 1, 5, 5, 4, 0, // Bottom
+   2, 3, 7, 7, 6, 2, // Top
+   0, 3, 7, 7, 4, 0, // Left
+   1, 2, 6, 6, 5, 1, // Right
+ ]);
+
+ // Instance data (position, scale, rotation)
+ const instanceData = new Float32Array(instanceCount * 4); // vec4 per instance
+ for (let i = 0; i < instanceCount; i++) {
+   instanceData[i * 4] = Math.random() * 2 - 1;     // x position
+   instanceData[i * 4 + 1] = Math.random() * 2 - 1; // y position
+   instanceData[i * 4 + 2] = Math.random() * 0.1 + 0.05; // scale
+   instanceData[i * 4 + 3] = Math.random() * Math.PI * 2; // rotation
+ }
+
+ const positionBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+ const instanceBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.STATIC_DRAW);
+
+ // 7. CREATE QUERY OBJECTS (8 occlusion queries)
+ const queries = [];
+ for (let i = 0; i < queryCount; i++) {
+   queries.push(gl.createQuery());
+ }
+
+ // 8. CREATE SHADERS (GLSL ES 3.00)
+ const vertexShaderSource = `#version 300 es
+ layout(location = 0) in vec3 aPosition;
+ layout(location = 1) in vec4 aInstanceData; // position, scale, rotation
+
+ layout(std140) uniform TransformBlock {
+   mat4 uProjection;
+   mat4 uView;
+   vec4 uTime;
+   vec4 uParams[16]; // Extra parameters for fuzzing
+ };
+
+ out vec3 vPosition;
+ out vec4 vInstanceData;
+ out vec3 vNormal;
+
+ void main() {
+   vec3 pos = aPosition;
+   float scale = aInstanceData.z;
+   float rotation = aInstanceData.w;
+
+   // Apply instance transformation
+   mat3 rotMat = mat3(
+     cos(rotation), 0.0, sin(rotation),
+     0.0, 1.0, 0.0,
+     -sin(rotation), 0.0, cos(rotation)
+   );
+   pos = rotMat * pos * scale + aInstanceData.xyz;
+
+   gl_Position = uProjection * uView * vec4(pos, 1.0);
+   vPosition = pos;
+   vInstanceData = aInstanceData;
+   vNormal = normalize(aPosition); // Simple normal calculation
+ }
+ `;
+
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+
+ precision highp sampler3D;
+ precision highp sampler2DArray;
+ uniform sampler3D uVolumeTexture;
+ uniform sampler2DArray uArrayTexture;
+
+ in vec3 vPosition;
+ in vec4 vInstanceData;
+ in vec3 vNormal;
+
+ layout(location = 0) out vec4 fragColor0;
+ layout(location = 1) out vec4 fragColor1;
+ layout(location = 2) out vec4 fragColor2;
+ layout(location = 3) out vec4 fragColor3;
+
+ void main() {
+   vec3 texCoord = vPosition * 0.5 + 0.5; // Convert to 0-1 range
+
+   // Sample 3D texture
+   vec4 volumeSample = texture(uVolumeTexture, texCoord);
+
+   // Sample texture array (use instance data for layer selection)
+   float layer = mod(vInstanceData.w * 4.0, 4.0);
+   vec4 arraySample = texture(uArrayTexture, vec3(texCoord.xy, layer));
+
+   // Complex color calculations
+   fragColor0 = volumeSample * vec4(vNormal, 1.0);
+   fragColor1 = arraySample * vec4(vPosition, 1.0);
+   fragColor2 = mix(volumeSample, arraySample, sin(vInstanceData.x * 10.0));
+   fragColor3 = vec4(vNormal * vInstanceData.z, vInstanceData.w);
+ }
+ `;
+
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error("Vertex shader compilation failed: " + gl.getShaderInfoLog(vertexShader));
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error("Fragment shader compilation failed: " + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error("Program linking failed: " + gl.getProgramInfoLog(program));
+ }
+
+ gl.useProgram(program);
+
+ // Bind UBO to program
+ const uboIndex = gl.getUniformBlockIndex(program, "TransformBlock");
+ gl.uniformBlockBinding(program, uboIndex, 0);
+
+ // Set up uniforms
+ const volumeLoc = gl.getUniformLocation(program, "uVolumeTexture");
+ const arrayLoc = gl.getUniformLocation(program, "uArrayTexture");
+ gl.uniform1i(volumeLoc, 0);
+ gl.uniform1i(arrayLoc, 1);
+
+ // Update UBO with projection/view matrices
+ const projectionMatrix = new Float32Array([
+   2.0, 0.0, 0.0, 0.0,
+   0.0, 2.0, 0.0, 0.0,
+   0.0, 0.0, -1.0, -1.0,
+   0.0, 0.0, -0.1, 0.0
+ ]);
+
+ const viewMatrix = new Float32Array([
+   1.0, 0.0, 0.0, 0.0,
+   0.0, 1.0, 0.0, 0.0,
+   0.0, 0.0, 1.0, 0.0,
+   0.0, 0.0, -2.0, 1.0
+ ]);
+
+ gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+ gl.bufferSubData(gl.UNIFORM_BUFFER, 0, projectionMatrix);
+ gl.bufferSubData(gl.UNIFORM_BUFFER, 64, viewMatrix);
+
+ // 9. SET UP VERTEX ATTRIBUTES
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.enableVertexAttribArray(0);
+ gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+ gl.enableVertexAttribArray(1);
+ gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0);
+ gl.vertexAttribDivisor(1, 1); // Instanced attribute
+
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+ // 10. STATE POISONING - 50+ state changes for fuzzing surface area
+ for (let i = 0; i < stateChangeCount; i++) {
+   // Random capability toggling
+   const caps = [gl.BLEND, gl.CULL_FACE, gl.DEPTH_TEST, gl.STENCIL_TEST, gl.SCISSOR_TEST];
+   const cap = caps[Math.floor(Math.random() * caps.length)];
+   if (Math.random() > 0.5) {
+     gl.enable(cap);
+   } else {
+     gl.disable(cap);
+   }
+
+   // Texture binding churn
+   gl.activeTexture(gl.TEXTURE0 + (i % 8));
+   gl.bindTexture(gl.TEXTURE_3D, texture3D);
+   gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+
+   // Sampler binding
+   gl.bindSampler(i % 8, i % 2 === 0 ? sampler1 : sampler2);
+
+   // Buffer binding churn
+   gl.bindBuffer(gl.ARRAY_BUFFER, i % 2 === 0 ? positionBuffer : instanceBuffer);
+   gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+
+   // Blend state changes
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+
+   // Viewport changes
+   gl.viewport(0, 0, 256, 256);
+
+   // Clear state
+   gl.clearColor(Math.random(), Math.random(), Math.random(), 1.0);
+ }
+
+ // 11. RENDER TO MRT FBO
+ gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+ gl.viewport(0, 0, 256, 256);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+ // Draw instanced geometry with individual queries (can't have multiple of same type active)
+ for (let i = 0; i < Math.min(queryCount, instanceCount); i++) {
+   // Begin query for this instance
+   gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, queries[i]);
+
+   // Draw single instance with query
+   gl.drawElementsInstanced(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0, 1);
+
+   // End query
+   gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
+ }
+
+ // Draw remaining instances without queries
+ if (instanceCount > queryCount) {
+   gl.drawElementsInstanced(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0, instanceCount - queryCount);
+ }
+
+ // 12. COPY RESULTS TO SCREEN (resolve MRT to final display)
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.viewport(0, 0, 256, 256);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+
+ // Simple blit shader to display MRT results
+ const blitVertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(blitVertexShader, `#version 300 es
+ layout(location = 0) in vec2 aPosition;
+ out vec2 vTexCoord;
+ void main() {
+   gl_Position = vec4(aPosition, 0.0, 1.0);
+   vTexCoord = aPosition * 0.5 + 0.5;
+ }
+ `);
+ gl.compileShader(blitVertexShader);
+
+ const blitFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(blitFragmentShader, `#version 300 es
+ precision highp float;
+ uniform sampler2D uMRTTexture;
+ in vec2 vTexCoord;
+ out vec4 fragColor;
+ void main() {
+   fragColor = texture(uMRTTexture, vTexCoord);
+ }
+ `);
+ gl.compileShader(blitFragmentShader);
+
+ const blitProgram = gl.createProgram();
+ gl.attachShader(blitProgram, blitVertexShader);
+ gl.attachShader(blitProgram, blitFragmentShader);
+ gl.linkProgram(blitProgram);
+ gl.useProgram(blitProgram);
+
+ // Fullscreen quad
+ const quadVertices = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+ const quadBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+ gl.enableVertexAttribArray(0);
+ gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+ // Bind MRT texture and draw
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, mrtTextures[0]);
+ gl.uniform1i(gl.getUniformLocation(blitProgram, "uMRTTexture"), 0);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // 13. CLEANUP AND FINAL STATE CHECK
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+
+ // Clean up resources (with some intentional leaks for fuzzing)
+ gl.deleteTexture(texture3D);
+ gl.deleteTexture(textureArray);
+ gl.deleteSampler(sampler1);
+ gl.deleteSampler(sampler2);
+ gl.deleteBuffer(uboBuffer);
+ gl.deleteBuffer(positionBuffer);
+ gl.deleteBuffer(indexBuffer);
+ gl.deleteBuffer(instanceBuffer);
+ gl.deleteFramebuffer(fbo);
+ mrtTextures.forEach(tex => gl.deleteTexture(tex));
+ queries.forEach(query => gl.deleteQuery(query));
+ gl.deleteProgram(program);
+ gl.deleteProgram(blitProgram);
+ gl.deleteShader(vertexShader);
+ gl.deleteShader(fragmentShader);
+ gl.deleteShader(blitVertexShader);
+ gl.deleteShader(blitFragmentShader);
+ gl.deleteBuffer(quadBuffer);
+
+ console.log("WebGL2 Matrix integration test completed successfully");
+}
+
+main().catch(err => {
+ throw err;
+});
+</script>
+</body>
+</html>

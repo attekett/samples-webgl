@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: Define required extensions here (WebGL1 fallback)
+const REQUIRED_EXTENSIONS = [
+    'EXT_frag_depth'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) throw new Error("WebGL not supported");
+
+    // Check if WebGL2 is available (required for this test's shader syntax)
+    const isWebGL2 = gl instanceof WebGL2RenderingContext;
+    if (!isWebGL2) {
+        throw new Error("WebGL2 required for EXT_frag_depth test (GLSL ES 3.00 syntax)");
+    }
+
+    // Check if WebGL2 (gl_FragDepth is core in WebGL2)
+    const isWebGL2 = (gl instanceof WebGL2RenderingContext);
+
+    // 1. EXTENSION GATING (only for WebGL1)
+    if (!isWebGL2) {
+        // Check extension availability
+        const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+        if (missingExtensions.length > 0) {
+            // Check if this is Playwright Firefox (limited extensions) vs native Firefox
+            const isPlaywrightFirefox = typeof window.playwright !== 'undefined' ||
+                                       navigator.userAgent.includes('Headless') ||
+                                       !window.chrome; // Playwright Firefox doesn't have window.chrome
+
+            if (isPlaywrightFirefox) {
+                throw new Error(`PLAYWRIGHT_FIREFOX_LIMITATION: Extensions ${missingExtensions.join(', ')} not available in Playwright Firefox. Test requires native Firefox browser.`);
+            } else {
+                throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+            }
+        }
+
+        // 2. ENABLE REQUIRED EXTENSIONS
+        REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    }
+
+    // ==========================================
+    // COMPLEX IMPLEMENTATION STARTS HERE
+    // ==========================================
+
+    // Configuration variables for fuzzing
+    const depthRangeNear = 0.0;
+    const depthRangeFar = 1.0;
+    const depthModificationScale = 0.5;
+    const vertexCount = 256;
+    const stateChangeCount = 25;
+    const bufferSize = 1024;
+
+    // Create vertex shader
+    const vertexShaderSource = isWebGL2 ? `
+        in vec2 a_position;
+        in vec2 a_texCoord;
+        out vec2 v_texCoord;
+
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+            v_texCoord = a_texCoord;
+        }
+    ` : `
+        attribute vec2 a_position;
+        attribute vec2 a_texCoord;
+        varying vec2 v_texCoord;
+
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+            v_texCoord = a_texCoord;
+        }
+    `;
+
+    // Create fragment shader with gl_FragDepth manipulation
+    const fragmentShaderSource = isWebGL2 ? `
+        precision mediump float;
+        in vec2 v_texCoord;
+        uniform float u_depthScale;
+        uniform float u_time;
+        out vec4 fragColor;
+
+        void main() {
+            // Create depth modification based on texture coordinates and time
+            float depthValue = (v_texCoord.x + v_texCoord.y) * u_depthScale + sin(u_time) * 0.1;
+
+            // Clamp depth to valid range
+            gl_FragDepth = clamp(depthValue, 0.0, 1.0);
+
+            // Create visual output based on depth modification
+            vec3 color = vec3(gl_FragDepth, 1.0 - gl_FragDepth, sin(u_time + v_texCoord.x));
+            fragColor = vec4(color, 1.0);
+        }
+    ` : `
+        #extension GL_EXT_frag_depth : enable
+        precision mediump float;
+        varying vec2 v_texCoord;
+        uniform float u_depthScale;
+        uniform float u_time;
+
+        void main() {
+            // Create depth modification based on texture coordinates and time
+            float depthValue = (v_texCoord.x + v_texCoord.y) * u_depthScale + sin(u_time) * 0.1;
+
+            // Clamp depth to valid range
+            gl_FragDepthEXT = clamp(depthValue, 0.0, 1.0);
+
+            // Create visual output based on depth modification
+            vec3 color = vec3(gl_FragDepthEXT, 1.0 - gl_FragDepthEXT, sin(u_time + v_texCoord.x));
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    // Compile shaders
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, vertexShaderSource);
+    gl.compileShader(vertexShader);
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, fragmentShaderSource);
+    gl.compileShader(fragmentShader);
+
+    // Create program
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    // Create vertex data - grid of points
+    const vertices = new Float32Array(vertexCount * 4); // x, y, u, v
+    const indices = new Uint16Array(vertexCount);
+
+    for (let i = 0; i < vertexCount; i++) {
+        const x = (i % 16) / 15.0 * 2.0 - 1.0;
+        const y = Math.floor(i / 16) / 15.0 * 2.0 - 1.0;
+        vertices[i * 4] = x;
+        vertices[i * 4 + 1] = y;
+        vertices[i * 4 + 2] = (i % 16) / 15.0; // u
+        vertices[i * 4 + 3] = Math.floor(i / 16) / 15.0; // v
+        indices[i] = i;
+    }
+
+    // Create buffers
+    const vertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+    // Set up attributes
+    const positionLocation = gl.getAttribLocation(program, 'a_position');
+    const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 16, 0);
+
+    gl.enableVertexAttribArray(texCoordLocation);
+    gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 16, 8);
+
+    // Get uniform locations
+    const depthScaleLocation = gl.getUniformLocation(program, 'u_depthScale');
+    const timeLocation = gl.getUniformLocation(program, 'u_time');
+
+    // State poisoning - 50+ redundant operations
+    for (let i = 0; i < stateChangeCount; i++) {
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.depthFunc(gl.LESS);
+        gl.depthMask(true);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.useProgram(program);
+    }
+
+    // Set depth range for testing
+    gl.depthRange(depthRangeNear, depthRangeFar);
+
+    // Animation loop
+    let time = 0.0;
+    function render() {
+        time += 0.1;
+
+        // More state poisoning
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // Update uniforms
+        gl.uniform1f(depthScaleLocation, depthModificationScale);
+        gl.uniform1f(timeLocation, time);
+
+        // Draw points
+        gl.drawElements(gl.POINTS, vertexCount, gl.UNSIGNED_SHORT, 0);
+
+        // Request next frame
+        requestAnimationFrame(render);
+    }
+
+    render();
+
+    // ==========================================
+    // COMPLEX IMPLEMENTATION ENDS HERE
+    // ==========================================
+
+    // 3. ERROR CHECKING
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+        throw new Error(`WebGL Error: ${error}`);
+    }
+}
+
+main().catch(err => {
+    // If the error string contains "PLAYWRIGHT_FIREFOX_LIMITATION" or "UNSUPPORTED_EXTENSIONS", 
+    // the Python runner knows to log it as an environmental limitation, not a test failure.
+    // Otherwise, it counts as a test failure/crash.
+    console.log(err.message); // Log the detailed error message for test runner detection
+    console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

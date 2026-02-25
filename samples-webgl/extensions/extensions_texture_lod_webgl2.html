@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: WebGL2 textureLod() is a core feature, no extensions needed
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+ throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // 1. EXTENSION GATING (none needed for WebGL2 core feature)
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS (none needed)
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // WEBGL2 TEXTURE LOD CONTROL IMPLEMENTATION
+ // ==========================================
+
+ // Create shader program with textureLod() usage
+ const vertexShaderSource = `#version 300 es
+ in vec2 a_position;
+ in vec2 a_texCoord;
+ out vec2 v_texCoord;
+
+ void main() {
+   gl_Position = vec4(a_position, 0.0, 1.0);
+   v_texCoord = a_texCoord;
+ }
+ `;
+
+ const fragmentShaderSource = `#version 300 es
+ precision highp float;
+ in vec2 v_texCoord;
+ out vec4 fragColor;
+ uniform sampler2D u_texture;
+ uniform float u_lodLevel;
+ uniform float u_mipCount;
+
+ void main() {
+   // Use textureLod() for explicit LOD control
+   vec4 color = textureLod(u_texture, v_texCoord, u_lodLevel);
+
+   // Visualize LOD level with color modulation
+   float lodFactor = u_lodLevel / u_mipCount;
+   fragColor = color * vec4(1.0 - lodFactor, 1.0, lodFactor + 0.5, 1.0);
+ }
+ `;
+
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error('Vertex shader compilation failed: ' + gl.getShaderInfoLog(vertexShader));
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error('Fragment shader compilation failed: ' + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+ }
+ gl.useProgram(program);
+
+ // Create geometry (full-screen quad)
+ const positions = new Float32Array([
+   -1.0, -1.0,
+    1.0, -1.0,
+   -1.0,  1.0,
+    1.0,  1.0,
+ ]);
+ const texCoords = new Float32Array([
+   0.0, 1.0,
+   1.0, 1.0,
+   0.0, 0.0,
+   1.0, 0.0,
+ ]);
+
+ const positionBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+ const positionLocation = gl.getAttribLocation(program, 'a_position');
+ gl.enableVertexAttribArray(positionLocation);
+ gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+ const texCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+ const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+ gl.enableVertexAttribArray(texCoordLocation);
+ gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+ // Create texture with multiple mipmap levels for LOD testing
+ const textureSize = 256;
+ const texture = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, texture);
+
+ // Generate mipmap levels with different patterns
+ const mipLevels = 8;
+ for (let level = 0; level < mipLevels; level++) {
+   const size = textureSize >> level;
+   const data = new Uint8Array(size * size * 4);
+
+   // Create checkerboard pattern at each mipmap level
+   for (let y = 0; y < size; y++) {
+     for (let x = 0; x < size; x++) {
+       const index = (y * size + x) * 4;
+       const checker = ((x >> level) + (y >> level)) % 2;
+       data[index] = checker * 255;     // R
+       data[index + 1] = (level * 32) % 256; // G (level indicator)
+       data[index + 2] = (1 - checker) * 255; // B
+       data[index + 3] = 255;            // A
+     }
+   }
+
+   gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+ }
+
+ gl.generateMipmap(gl.TEXTURE_2D);
+
+ // Set texture parameters
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+ // Get uniform locations
+ const textureLocation = gl.getUniformLocation(program, 'u_texture');
+ const lodLevelLocation = gl.getUniformLocation(program, 'u_lodLevel');
+ const mipCountLocation = gl.getUniformLocation(program, 'u_mipCount');
+
+ // Set uniforms
+ gl.uniform1i(textureLocation, 0);
+ gl.uniform1f(lodLevelLocation, 2.5); // Sample from LOD level 2.5
+ gl.uniform1f(mipCountLocation, mipLevels);
+
+ // STATE POISONING: 50+ redundant state changes for fuzzing surface area
+ const stateChangeCount = 50;
+ for (let i = 0; i < stateChangeCount; i++) {
+   // Capability toggling
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+
+   // Blend state changes
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+
+   // Depth state changes
+   gl.depthFunc(gl.LESS);
+   gl.depthMask(true);
+
+   // Viewport changes
+   gl.viewport(0, 0, 256, 256);
+
+   // Texture binding churn
+   gl.activeTexture(gl.TEXTURE0 + (i % 8));
+   gl.bindTexture(gl.TEXTURE_2D, texture);
+
+   // Buffer binding changes
+   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ }
+
+ // Render the scene
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // Additional LOD sampling variations for fuzzing
+ const additionalLodLevels = [0.0, 1.0, 3.0, 4.5, 7.0];
+ additionalLodLevels.forEach(lodLevel => {
+   gl.uniform1f(lodLevelLocation, lodLevel);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+ });
+
+ // Final render with animated LOD
+ const finalLodLevel = (Date.now() * 0.001) % mipLevels;
+ gl.uniform1f(lodLevelLocation, finalLodLevel);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // ==========================================
+ // IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+ throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // Let test runner capture the error through exception
+ throw err;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: Define required extensions here (only for WebGL1)
+const REQUIRED_EXTENSIONS = [
+ 'OES_vertex_array_object'  // VAO extension for WebGL1 state management
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+ if (!gl) throw new Error("WebGL not supported");
+
+ const isWebGL2 = !!canvas.getContext('webgl2');
+
+ // 1. EXTENSION GATING (only for WebGL1)
+ let vaoExt = null;
+ if (!isWebGL2) {
+   const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+   if (missingExtensions.length > 0) {
+   // Signal to the Test Runner that this is an environment limit, not a code bug
+   throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+   }
+
+   // 2. ENABLE REQUIRED EXTENSIONS
+   vaoExt = gl.getExtension('OES_vertex_array_object');
+   if (!vaoExt) {
+     throw new Error(`UNSUPPORTED_EXTENSIONS: OES_vertex_array_object not available`);
+   }
+ } else {
+   // WebGL2 has native VAO support
+   vaoExt = {
+     createVertexArrayOES: gl.createVertexArray.bind(gl),
+     bindVertexArrayOES: gl.bindVertexArray.bind(gl),
+     deleteVertexArrayOES: gl.deleteVertexArray ? gl.deleteVertexArray.bind(gl) : null
+   };
+ }
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // FUZZING VARIABLES: Expose parameters for mutation testing
+ const vaoCount = 4;  // Number of VAOs to create and manage
+ const attributeConfigs = 3;  // Different attribute configuration patterns
+ const stateSwitchCount = 8;  // How many times to switch VAO states
+ const bindingPattern = 2;  // VAO binding/unbinding pattern type
+ const vertexDensity = 32;  // Grid density for complex geometry
+ const stateChangeCount = 25;  // State poisoning iterations
+
+ // CREATE SHADERS: Complex shader for VAO demonstration
+ const vertexShaderSource = `
+   attribute vec3 a_position;
+   attribute vec3 a_normal;
+   attribute vec2 a_texCoord;
+   attribute vec4 a_color;
+   uniform mat4 u_modelViewProjection;
+   uniform float u_time;
+   varying vec3 v_normal;
+   varying vec2 v_texCoord;
+   varying vec4 v_color;
+   varying float v_intensity;
+
+   void main() {
+     vec4 pos = vec4(a_position, 1.0);
+     // Add some animation based on time and vertex attributes
+     pos.x += sin(u_time + a_position.y * 3.0) * 0.1;
+     pos.y += cos(u_time + a_position.x * 2.0) * 0.1;
+
+     gl_Position = u_modelViewProjection * pos;
+     v_normal = a_normal;
+     v_texCoord = a_texCoord;
+     v_color = a_color;
+     v_intensity = dot(a_normal, normalize(vec3(1.0, 1.0, 1.0)));
+   }
+ `;
+
+ const fragmentShaderSource = `
+   precision mediump float;
+   varying vec3 v_normal;
+   varying vec2 v_texCoord;
+   varying vec4 v_color;
+   varying float v_intensity;
+
+   void main() {
+     // Complex fragment calculation using all varyings
+     vec3 baseColor = v_color.rgb;
+     float lighting = max(0.2, v_intensity);
+     vec3 finalColor = baseColor * lighting;
+
+     // Add texture coordinate influence for visual complexity
+     finalColor += vec3(v_texCoord.x * 0.1, v_texCoord.y * 0.1, 0.0);
+
+     gl_FragColor = vec4(finalColor, v_color.a);
+   }
+ `;
+
+ // COMPILE SHADERS
+ function createShader(gl, type, source) {
+   const shader = gl.createShader(type);
+   gl.shaderSource(shader, source);
+   gl.compileShader(shader);
+   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+     throw new Error(`Shader compile error: ${gl.getShaderInfoLog(shader)}`);
+   }
+   return shader;
+ }
+
+ const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+ const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+ // CREATE PROGRAM
+ function createProgram(gl, vertexShader, fragmentShader) {
+   const program = gl.createProgram();
+   gl.attachShader(program, vertexShader);
+   gl.attachShader(program, fragmentShader);
+   gl.linkProgram(program);
+   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+     throw new Error(`Program link error: ${gl.getProgramInfoLog(program)}`);
+   }
+   return program;
+ }
+
+ const program = createProgram(gl, vertexShader, fragmentShader);
+
+ // GET ATTRIBUTE LOCATIONS
+ const positionLocation = gl.getAttribLocation(program, 'a_position');
+ const normalLocation = gl.getAttribLocation(program, 'a_normal');
+ const texCoordLocation = gl.getAttribLocation(program, 'a_texCoord');
+ const colorLocation = gl.getAttribLocation(program, 'a_color');
+
+ // GET UNIFORM LOCATIONS
+ const mvpLocation = gl.getUniformLocation(program, 'u_modelViewProjection');
+ const timeLocation = gl.getUniformLocation(program, 'u_time');
+
+ // CREATE COMPLEX GEOMETRY: Multiple meshes with different topologies
+ function createGridGeometry(rows, cols) {
+   const vertices = [];
+   const normals = [];
+   const texCoords = [];
+   const colors = [];
+   const indices = [];
+
+   for (let i = 0; i <= rows; i++) {
+     for (let j = 0; j <= cols; j++) {
+       const x = (j / cols - 0.5) * 2.0;
+       const y = (i / rows - 0.5) * 2.0;
+       const z = Math.sin(x * 3.0) * Math.cos(y * 2.0) * 0.3;
+
+       vertices.push(x, y, z);
+       normals.push(0, 0, 1); // Simplified normals
+       texCoords.push(j / cols, i / rows);
+       colors.push(Math.abs(Math.sin(x * 5.0)), Math.abs(Math.cos(y * 4.0)), 0.5, 1.0);
+     }
+   }
+
+   // Create triangle indices
+   for (let i = 0; i < rows; i++) {
+     for (let j = 0; j < cols; j++) {
+       const topLeft = i * (cols + 1) + j;
+       const topRight = topLeft + 1;
+       const bottomLeft = (i + 1) * (cols + 1) + j;
+       const bottomRight = bottomLeft + 1;
+
+       indices.push(topLeft, bottomLeft, topRight);
+       indices.push(topRight, bottomLeft, bottomRight);
+     }
+   }
+
+   return {
+     vertices: new Float32Array(vertices),
+     normals: new Float32Array(normals),
+     texCoords: new Float32Array(texCoords),
+     colors: new Float32Array(colors),
+     indices: new Uint16Array(indices)
+   };
+ }
+
+ // CREATE MULTIPLE GEOMETRIES
+ const geometries = [];
+ for (let i = 0; i < vaoCount; i++) {
+   const density = vertexDensity + i * 4; // Vary density per VAO
+   geometries.push(createGridGeometry(density, density));
+ }
+
+ // CREATE BUFFERS AND VAOs: Complex VAO management
+ const vaos = [];
+ const buffers = [];
+
+ // Create multiple VAOs with different attribute configurations
+ for (let vaoIndex = 0; vaoIndex < vaoCount; vaoIndex++) {
+   const vao = vaoExt.createVertexArrayOES();
+   vaos.push(vao); // Store immediately for error handling
+   vaoExt.bindVertexArrayOES(vao);
+
+   const geom = geometries[vaoIndex];
+
+   // Create vertex buffer
+   const vertexBuffer = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bufferData(gl.ARRAY_BUFFER, geom.vertices, gl.STATIC_DRAW);
+   gl.enableVertexAttribArray(positionLocation);
+   gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+
+   // Create normal buffer (different configurations per VAO)
+   const normalBuffer = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+   gl.bufferData(gl.ARRAY_BUFFER, geom.normals, gl.STATIC_DRAW);
+   if (vaoIndex % attributeConfigs === 0) { // Config 0: Enable normals
+     gl.enableVertexAttribArray(normalLocation);
+     gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 0, 0);
+   } else if (vaoIndex % attributeConfigs === 1) { // Config 1: Disable normals
+     gl.disableVertexAttribArray(normalLocation);
+   } // Config 2: Leave as-is (mixed state)
+
+   // Create texCoord buffer
+   const texCoordBuffer = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+   gl.bufferData(gl.ARRAY_BUFFER, geom.texCoords, gl.STATIC_DRAW);
+   gl.enableVertexAttribArray(texCoordLocation);
+   gl.vertexAttribPointer(texCoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+   // Create color buffer
+   const colorBuffer = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+   gl.bufferData(gl.ARRAY_BUFFER, geom.colors, gl.STATIC_DRAW);
+   if ((vaoIndex + 1) % attributeConfigs === 0) { // Alternate color enablement
+     gl.enableVertexAttribArray(colorLocation);
+     gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, 0, 0);
+   } else {
+     gl.disableVertexAttribArray(colorLocation);
+   }
+
+   // Create index buffer
+   const indexBuffer = gl.createBuffer();
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geom.indices, gl.STATIC_DRAW);
+
+   // Store VAO and buffers for later management
+   buffers.push({
+     vertex: vertexBuffer,
+     normal: normalBuffer,
+     texCoord: texCoordBuffer,
+     color: colorBuffer,
+     index: indexBuffer
+   });
+
+   // Unbind VAO to test state capture
+   vaoExt.bindVertexArrayOES(null);
+ }
+
+ // STATE POISONING: Heavy VAO and state management (50+ operations)
+ const capabilities = [gl.BLEND, gl.CULL_FACE, gl.DEPTH_TEST, gl.STENCIL_TEST, gl.SCISSOR_TEST];
+
+ // VAO binding churn
+ for (let i = 0; i < stateChangeCount; i++) {
+   const vaoIndex = i % vaos.length;
+   vaoExt.bindVertexArrayOES(vaos[vaoIndex]);
+
+   // Capability toggling during VAO operations
+   capabilities.forEach(cap => {
+     gl.enable(cap);
+     gl.disable(cap);
+   });
+
+   // Buffer binding churn within VAO context
+   gl.bindBuffer(gl.ARRAY_BUFFER, buffers[vaoIndex].vertex);
+   gl.bindBuffer(gl.ARRAY_BUFFER, buffers[vaoIndex].normal);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+   vaoExt.bindVertexArrayOES(null);
+ }
+
+ // REDUNDANT VAO OPERATIONS: Stress VAO state management
+ for (let i = 0; i < bindingPattern; i++) {
+   vaos.forEach(vao => {
+     vaoExt.bindVertexArrayOES(vao);
+     // Modify state while VAO is bound
+     gl.enable(gl.BLEND);
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+     gl.disable(gl.CULL_FACE);
+     vaoExt.bindVertexArrayOES(null);
+   });
+ }
+
+ // VIEWPORT CHANGES: Add rendering state variation
+ gl.viewport(0, 0, 128, 128);
+ gl.viewport(0, 0, 256, 256);
+ gl.viewport(0, 0, 512, 512);  // Larger than canvas - test clipping
+ gl.viewport(0, 0, 256, 256);  // Reset to correct size
+
+ // CLEAR AND SETUP
+ gl.clearColor(0.1, 0.1, 0.1, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.enable(gl.DEPTH_TEST);
+ gl.useProgram(program);
+
+ // MVP MATRIX: Simple orthographic projection
+ const mvpMatrix = new Float32Array([
+   1.0, 0.0, 0.0, 0.0,
+   0.0, 1.0, 0.0, 0.0,
+   0.0, 0.0, 1.0, 0.0,
+   0.0, 0.0, 0.0, 1.0
+ ]);
+ gl.uniformMatrix4fv(mvpLocation, false, mvpMatrix);
+
+ // TIME UNIFORM: For animation
+ const time = Date.now() * 0.001;
+ gl.uniform1f(timeLocation, time);
+
+ // RENDER WITH VAO SWITCHING: Demonstrate VAO state capture and switching
+ const baseIndices = [6, 18, 12, 24]; // Different triangle counts per VAO
+ for (let renderPass = 0; renderPass < stateSwitchCount; renderPass++) {
+   const vaoIndex = renderPass % vaos.length;
+   const vao = vaos[vaoIndex];
+
+   // Bind VAO (should restore all attribute state)
+   vaoExt.bindVertexArrayOES(vao);
+
+   // Additional state changes between VAO switches
+   if (renderPass % 2 === 0) {
+     gl.enable(gl.BLEND);
+     gl.blendFunc(gl.ONE, gl.ONE);
+   } else {
+     gl.disable(gl.BLEND);
+   }
+
+   // Translate each VAO to different position
+   const translateX = (vaoIndex - 1.5) * 0.8;
+   const translateY = (renderPass % 2 - 0.5) * 0.8;
+   const modelMatrix = new Float32Array([
+     1.0, 0.0, 0.0, 0.0,
+     0.0, 1.0, 0.0, 0.0,
+     0.0, 0.0, 1.0, 0.0,
+     translateX, translateY, 0.0, 1.0
+   ]);
+   gl.uniformMatrix4fv(mvpLocation, false, modelMatrix);
+
+   // Draw using the VAO's captured state
+   const indexCount = baseIndices[vaoIndex] || 6;
+   gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_SHORT, 0);
+ }
+
+ // FINAL STATE POISONING: More VAO operations and cleanup stress
+ for (let i = 0; i < 5; i++) {
+   vaos.forEach(vao => {
+     vaoExt.bindVertexArrayOES(vao);
+     // Quick state changes
+     gl.enable(gl.DEPTH_TEST);
+     gl.disable(gl.DEPTH_TEST);
+     vaoExt.bindVertexArrayOES(null);
+   });
+ }
+
+ // REDUNDANT BUFFER BINDING: Stress buffer state after VAO operations
+ buffers.forEach(buf => {
+   gl.bindBuffer(gl.ARRAY_BUFFER, buf.vertex);
+   gl.bindBuffer(gl.ARRAY_BUFFER, buf.normal);
+   gl.bindBuffer(gl.ARRAY_BUFFER, buf.texCoord);
+   gl.bindBuffer(gl.ARRAY_BUFFER, buf.color);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.index);
+ });
+ gl.bindBuffer(gl.ARRAY_BUFFER, null);
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+ throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

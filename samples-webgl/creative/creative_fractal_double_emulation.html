@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        /**
+         * WEBGL-CREATIVE-015: The Fractal Zoomer
+         * --------------------------------------
+         * Focus: Double Precision Emulation (DS - Double-Single)
+         * 
+         * This test emulates 64-bit precision using pairs of 32-bit floats.
+         * This is extremely ALU intensive and stresses the shader compiler's ability
+         * to optimize complex arithmetic chains.
+         */
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 required for UBOs");
+
+            // DS (Double-Single) arithmetic functions in GLSL
+            const dsGlsl = `
+                // Emulates 64-bit double using two 32-bit floats
+                struct dfloat {
+                    float hi;
+                    float lo;
+                };
+
+                dfloat ds_set(float a) {
+                    return dfloat(a, 0.0);
+                }
+
+                dfloat ds_add(dfloat a, dfloat b) {
+                    float s = a.hi + b.hi;
+                    float v = s - a.hi;
+                    float e = (a.hi - (s - v)) + (b.hi - v);
+                    float g = e + a.lo + b.lo;
+                    float zh = s + g;
+                    float zl = g - (zh - s);
+                    return dfloat(zh, zl);
+                }
+
+                dfloat ds_mul(dfloat a, dfloat b) {
+                    float c11 = a.hi * b.hi;
+                    float c21 = a.lo * b.hi + a.hi * b.lo;
+                    float zh = c11 + c21;
+                    float zl = c21 - (zh - c11);
+                    return dfloat(zh, zl);
+                }
+
+                dfloat ds_sub(dfloat a, dfloat b) {
+                    return ds_add(a, dfloat(-b.hi, -b.lo));
+                }
+            `;
+
+            const vsSource = `#version 300 es
+                layout(location=0) in vec2 a_pos;
+                out vec2 v_uv;
+                void main() {
+                    v_uv = a_pos * 0.5 + 0.5;
+                    gl_Position = vec4(a_pos, 0.0, 1.0);
+                }`;
+
+            const fsSource = `#version 300 es
+                precision highp float;
+                ${dsGlsl}
+                
+                in vec2 v_uv;
+                out vec4 outColor;
+                
+                layout(std140) uniform CameraBlock {
+                    float u_centerX_hi;
+                    float u_centerX_lo;
+                    float u_centerY_hi;
+                    float u_centerY_lo;
+                    float u_zoom_hi;
+                    float u_zoom_lo;
+                };
+
+                void main() {
+                    dfloat cx = dfloat(u_centerX_hi, u_centerX_lo);
+                    dfloat cy = dfloat(u_centerY_hi, u_centerY_lo);
+                    dfloat zoom = dfloat(u_zoom_hi, u_zoom_lo);
+
+                    // Map UV to Complex plane (DS)
+                    dfloat x = ds_add(cx, ds_mul(ds_set(v_uv.x - 0.5), zoom));
+                    dfloat y = ds_add(cy, ds_mul(ds_set(v_uv.y - 0.5), zoom));
+
+                    dfloat zx = x;
+                    dfloat zy = y;
+                    
+                    int iter = 0;
+                    const int MAX_ITER = 64;
+                    
+                    for(int i=0; i < MAX_ITER; i++) {
+                        // z = z^2 + c
+                        // zx_new = zx*zx - zy*zy + x
+                        // zy_new = 2*zx*zy + y
+                        dfloat zx2 = ds_mul(zx, zx);
+                        dfloat zy2 = ds_mul(zy, zy);
+                        dfloat zxzy = ds_mul(zx, zy);
+                        
+                        zx = ds_add(ds_sub(zx2, zy2), x);
+                        zy = ds_add(ds_add(zxzy, zxzy), y);
+                        
+                        if(zx.hi*zx.hi + zy.hi*zy.hi > 4.0) break;
+                        iter++;
+                    }
+                    
+                    float f = float(iter) / float(MAX_ITER);
+                    outColor = vec4(f, f*f, f*0.5, 1.0);
+                }`;
+
+            function createProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc); gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(vs));
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc); gl.compileShader(fs);
+                if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(fs));
+
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                return prog;
+            }
+
+            const program = createProgram(vsSource, fsSource);
+
+            // UBO
+            const uboBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+            // 6 floats * 4 bytes + padding for alignment? std140: floats are 4 bytes, but and array of floats is 16 centered?
+            // "Each element in an array has a base alignment of 16" - wait, these are members of a struct/block.
+            // float is 4, vec2 is 8, vec3/4 is 16.
+            // Alignment rules: u_centerX_hi(0), lo(4), centerY_hi(8), lo(12), zoom_hi(16), lo(20)
+            const uboData = new Float32Array(8); // 8 to be safe with alignment (32 bytes)
+            uboData.set([
+                -0.7436438870371587, 0.0, // Center X (Targeting Seashore area)
+                0.1318259042053119, 0.0,  // Center Y
+                0.0000001, 0.0            // Zoom
+            ]);
+            gl.bufferData(gl.UNIFORM_BUFFER, uboData, gl.DYNAMIC_DRAW);
+
+            const blockIndex = gl.getUniformBlockIndex(program, "CameraBlock");
+            gl.uniformBlockBinding(program, blockIndex, 0);
+            gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, uboBuffer);
+
+            // Quad
+            const quadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+            const vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            // Draw
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.useProgram(program);
+            gl.bindVertexArray(vao);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

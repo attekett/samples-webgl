@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const vsSource = `#version 300 es
+    in vec4 position;
+    in vec2 texCoord;
+    out vec2 vTexCoord;
+    out float vLayer;
+    uniform float uLayer;
+    void main() {
+        vTexCoord = texCoord;
+        vLayer = uLayer;
+        gl_Position = position;
+    }`;
+
+    const fsSource = `#version 300 es
+    precision highp float;
+    precision highp sampler2DArray;
+    in vec2 vTexCoord;
+    in float vLayer;
+    out vec4 fragColor;
+    uniform sampler2DArray uTexArray;
+    uniform vec4 uColor;
+    uniform float uBlendFactor;
+    void main() {
+        vec4 texColor = texture(uTexArray, vec3(vTexCoord, vLayer));
+        fragColor = mix(texColor, uColor, uBlendFactor);
+    }`;
+
+    try {
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vsSource);
+        gl.compileShader(vertexShader);
+        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(vertexShader));
+        }
+
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fsSource);
+        gl.compileShader(fragmentShader);
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(fragmentShader));
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program));
+        }
+        gl.useProgram(program);
+
+        const positionLoc = gl.getAttribLocation(program, 'position');
+        const texCoordLoc = gl.getAttribLocation(program, 'texCoord');
+        const uLayerLoc = gl.getUniformLocation(program, 'uLayer');
+        const uColorLoc = gl.getUniformLocation(program, 'uColor');
+        const uBlendFactorLoc = gl.getUniformLocation(program, 'uBlendFactor');
+        const uTexArrayLoc = gl.getUniformLocation(program, 'uTexArray');
+
+        const positions = new Float32Array([
+            -1, -1, 0, 1,
+            1, -1, 0, 1,
+            -1, 1, 0, 1,
+            1, 1, 0, 1
+        ]);
+
+        const texCoords = new Float32Array([
+            0, 0,
+            1, 0,
+            0, 1,
+            1, 1
+        ]);
+
+        let positionBuffer, texCoordBuffer, vao;
+
+        try {
+            positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        } catch (e) {
+            throw e;
+        }
+
+        try {
+            texCoordBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+        } catch (e) {
+            throw e;
+        }
+
+        try {
+            vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+        } catch (e) {
+            throw e;
+        }
+
+        try {
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.enableVertexAttribArray(positionLoc);
+            gl.vertexAttribPointer(positionLoc, 4, gl.FLOAT, false, 0, 0);
+        } catch (e) {
+            throw e;
+        }
+
+        try {
+            gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+            gl.enableVertexAttribArray(texCoordLoc);
+            gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+        } catch (e) {
+            throw e;
+        }
+
+        let arrayTexture;
+        try {
+            arrayTexture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D_ARRAY, arrayTexture);
+            gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 256, 256, 128);
+        } catch (e) {
+            throw e;
+        }
+
+        const layerData = new Uint8Array(256 * 256 * 4);
+        for (let layer = 0; layer < 128; layer++) {
+            try {
+                for (let i = 0; i < layerData.length; i += 4) {
+                    layerData[i] = (layer * 2) % 256;
+                    layerData[i + 1] = (layer * 3) % 256;
+                    layerData[i + 2] = (layer * 5) % 256;
+                    layerData[i + 3] = 255;
+                }
+                gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 256, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, layerData);
+            } catch (e) {
+                continue;
+            }
+        }
+
+        try {
+            gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        } catch (e) {
+            throw e;
+        }
+
+        try {
+            gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        } catch (e) {
+            throw e;
+        }
+
+        const renderbuffers = [];
+        const fbos = [];
+        for (let i = 0; i < 8; i++) {
+            try {
+                const rb = gl.createRenderbuffer();
+                gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 256, 256);
+                renderbuffers.push(rb);
+            } catch (e) {
+                throw e;
+            }
+
+            try {
+                const fbo = gl.createFramebuffer();
+                gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+                gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, renderbuffers[i]);
+                fbos.push(fbo);
+            } catch (e) {
+                throw e;
+            }
+        }
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, arrayTexture);
+        gl.uniform1i(uTexArrayLoc, 0);
+
+        gl.enable(gl.BLEND);
+
+        for (let layer = 0; layer < 128; layer++) {
+            try {
+                const fboIndex = layer % 8;
+                gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[fboIndex]);
+
+                const blendMode = layer % 6;
+                switch (blendMode) {
+                    case 0:
+                        gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+                        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
+                        break;
+                    case 1:
+                        gl.blendEquationSeparate(gl.FUNC_SUBTRACT, gl.FUNC_ADD);
+                        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.SRC_ALPHA, gl.DST_ALPHA);
+                        break;
+                    case 2:
+                        gl.blendEquationSeparate(gl.FUNC_REVERSE_SUBTRACT, gl.FUNC_ADD);
+                        gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ONE, gl.ONE);
+                        break;
+                    case 3:
+                        gl.blendEquationSeparate(gl.MIN, gl.MAX);
+                        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+                        break;
+                    case 4:
+                        gl.blendEquationSeparate(gl.MAX, gl.MIN);
+                        gl.blendFuncSeparate(gl.SRC_COLOR, gl.DST_COLOR, gl.SRC_ALPHA, gl.DST_ALPHA);
+                        break;
+                    case 5:
+                        gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_SUBTRACT);
+                        gl.blendFuncSeparate(gl.ONE_MINUS_DST_COLOR, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE);
+                        break;
+                }
+
+                gl.uniform1f(uLayerLoc, layer);
+                gl.uniform4f(uColorLoc,
+                    Math.sin(layer * 0.05),
+                    Math.cos(layer * 0.07),
+                    Math.sin(layer * 0.11),
+                    1.0);
+                gl.uniform1f(uBlendFactorLoc, (layer % 10) / 10.0);
+
+                gl.clearColor(0.1, 0.1, 0.1, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                if (layer % 16 === 0) {
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                    gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+                    gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                }
+
+                gl.disable(gl.BLEND);
+                gl.enable(gl.BLEND);
+
+            } catch (e) {
+                gl.disable(gl.BLEND);
+                gl.enable(gl.BLEND);
+            }
+        }
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
+
+        for (let i = 0; i < 8; i++) {
+            try {
+                gl.uniform1f(uLayerLoc, i * 16);
+                gl.uniform4f(uColorLoc, 0.5, 0.5, 0.5, 1.0);
+                gl.uniform1f(uBlendFactorLoc, 0.3);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            } catch (e) {
+                continue;
+            }
+        }
+
+        gl.disable(gl.BLEND);
+        gl.flush();
+
+    } catch (e) {
+        throw e;
+    }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

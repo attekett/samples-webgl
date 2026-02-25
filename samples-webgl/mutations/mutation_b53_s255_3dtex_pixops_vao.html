@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_color_buffer_float'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const vsSource = `#version 300 es
+    in vec3 aPosition;
+    in vec4 aColor;
+    in vec2 aTexCoord;
+    in float aSliceId;
+    out vec4 vColor;
+    out vec2 vTexCoord;
+    out float vSliceId;
+
+    void main() {
+        vColor = aColor;
+        vTexCoord = aTexCoord;
+        vSliceId = aSliceId;
+        gl_Position = vec4(aPosition, 1.0);
+    }`;
+
+    const fsSource = `#version 300 es
+    precision highp float;
+    in vec4 vColor;
+    in vec2 vTexCoord;
+    in float vSliceId;
+    out vec4 fragColor;
+
+    void main() {
+        fragColor = vColor * vec4(vTexCoord, vSliceId * 0.01, 1.0);
+    }`;
+
+    let vs, fs, program;
+    try {
+        vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vsSource);
+        gl.compileShader(vs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+            throw new Error("VS compile failed: " + gl.getShaderInfoLog(vs));
+        }
+    } catch (e) {
+        throw new Error("Vertex shader creation failed: " + e.message);
+    }
+
+    try {
+        fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fsSource);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+            throw new Error("FS compile failed: " + gl.getShaderInfoLog(fs));
+        }
+    } catch (e) {
+        throw new Error("Fragment shader creation failed: " + e.message);
+    }
+
+    try {
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error("Program link failed: " + gl.getProgramInfoLog(program));
+        }
+    } catch (e) {
+        throw new Error("Program creation failed: " + e.message);
+    }
+
+    gl.useProgram(program);
+
+    let texture3D;
+    try {
+        texture3D = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, texture3D);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA16F, 128, 128, 128, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    } catch (e) {
+        throw new Error("3D texture creation failed: " + e.message);
+    }
+
+    const vaos = [];
+    const vbos = [];
+    const vaoConfigs = [
+        { posStride: 12, colorStride: 16, texStride: 8, sliceStride: 4 },
+        { posStride: 16, colorStride: 16, texStride: 12, sliceStride: 8 },
+        { posStride: 12, colorStride: 20, texStride: 8, sliceStride: 4 },
+        { posStride: 20, colorStride: 16, texStride: 8, sliceStride: 4 },
+        { posStride: 12, colorStride: 16, texStride: 16, sliceStride: 4 },
+        { posStride: 12, colorStride: 16, texStride: 8, sliceStride: 8 },
+        { posStride: 16, colorStride: 20, texStride: 8, sliceStride: 4 },
+        { posStride: 12, colorStride: 16, texStride: 12, sliceStride: 8 }
+    ];
+
+    const vertexCount = 6;
+    const posData = new Float32Array([-1, -1, 0, 1, -1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0]);
+    const colorData = new Float32Array([1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1]);
+    const texData = new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
+    const sliceData = new Float32Array([0, 1, 2, 3, 4, 5]);
+
+    for (let i = 0; i < 8; i++) {
+        try {
+            const vao = gl.createVertexArray();
+            vaos.push(vao);
+            gl.bindVertexArray(vao);
+
+            const posVbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, posVbo);
+            gl.bufferData(gl.ARRAY_BUFFER, posData, gl.STATIC_DRAW);
+            const posLoc = gl.getAttribLocation(program, 'aPosition');
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+
+            const colorVbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, colorVbo);
+            gl.bufferData(gl.ARRAY_BUFFER, colorData, gl.STATIC_DRAW);
+            const colorLoc = gl.getAttribLocation(program, 'aColor');
+            gl.enableVertexAttribArray(colorLoc);
+            gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, 0, 0);
+
+            const texVbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, texVbo);
+            gl.bufferData(gl.ARRAY_BUFFER, texData, gl.STATIC_DRAW);
+            const texLoc = gl.getAttribLocation(program, 'aTexCoord');
+            gl.enableVertexAttribArray(texLoc);
+            gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 0, 0);
+
+            const sliceVbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, sliceVbo);
+            gl.bufferData(gl.ARRAY_BUFFER, sliceData, gl.STATIC_DRAW);
+            const sliceLoc = gl.getAttribLocation(program, 'aSliceId');
+            gl.enableVertexAttribArray(sliceLoc);
+            gl.vertexAttribPointer(sliceLoc, 1, gl.FLOAT, false, 0, 0);
+
+            vbos.push({ pos: posVbo, color: colorVbo, tex: texVbo, slice: sliceVbo });
+        } catch (e) {
+            throw new Error("VAO creation failed: " + e.message);
+        }
+    }
+
+    let fbo, fboTex;
+    try {
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        fboTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, fboTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 128, 128, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fboTex, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+            throw new Error("Framebuffer incomplete");
+        }
+    } catch (e) {
+        throw new Error("FBO creation failed: " + e.message);
+    }
+
+    const sliceCount = 128;
+    const slicesPerBatch = 16;
+    const batchCount = sliceCount / slicesPerBatch;
+    const pixelBuffer = new Uint16Array(128 * 128 * 4);
+
+    for (let batch = 0; batch < batchCount; batch++) {
+        const vaoIndex = batch % 8;
+
+        try {
+            gl.bindVertexArray(vaos[vaoIndex]);
+        } catch (e) {
+            throw new Error("VAO binding failed: " + e.message);
+        }
+
+        try {
+            gl.pixelStorei(gl.PACK_ALIGNMENT, (batch % 4) + 1);
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, ((batch + 1) % 4) + 1);
+        } catch (e) {
+            throw new Error("Pixel alignment setup failed: " + e.message);
+        }
+
+        try {
+            gl.pixelStorei(gl.PACK_ROW_LENGTH, batch % 2 === 0 ? 128 : 0);
+            gl.pixelStorei(gl.UNPACK_ROW_LENGTH, batch % 3 === 0 ? 128 : 0);
+        } catch (e) {
+            throw new Error("Row length setup failed: " + e.message);
+        }
+
+        for (let s = 0; s < slicesPerBatch; s++) {
+            const sliceZ = batch * slicesPerBatch + s;
+
+            try {
+                gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+                gl.viewport(0, 0, 128, 128);
+                gl.clearColor(sliceZ * 0.007, 1.0 - sliceZ * 0.007, 0.5, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+            } catch (e) {
+                throw new Error("FBO clear failed: " + e.message);
+            }
+
+            try {
+                gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+            } catch (e) {
+                throw new Error("Draw call failed: " + e.message);
+            }
+
+            try {
+                gl.bindTexture(gl.TEXTURE_3D, texture3D);
+                gl.copyTexSubImage3D(gl.TEXTURE_3D, 0, 0, 0, sliceZ, 0, 0, 128, 128);
+            } catch (e) {
+                throw new Error("copyTexSubImage3D failed: " + e.message);
+            }
+
+            try {
+                gl.pixelStorei(gl.PACK_ALIGNMENT, 2);
+                gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
+                gl.readPixels(0, 0, 128, 128, gl.RGBA, gl.HALF_FLOAT, pixelBuffer);
+            } catch (e) {
+                throw new Error("readPixels failed: " + e.message);
+            }
+
+            try {
+                if (pixelBuffer[0] > 65535 || pixelBuffer[1023] > 65535) {
+                    throw new Error("Invalid pixel data");
+                }
+            } catch (e) {
+                throw new Error("Pixel validation failed: " + e.message);
+            }
+        }
+
+        try {
+            const posLoc = gl.getAttribLocation(program, 'aPosition');
+            const colorLoc = gl.getAttribLocation(program, 'aColor');
+            if (batch % 2 === 0) {
+                gl.disableVertexAttribArray(colorLoc);
+                gl.vertexAttrib4f(colorLoc, 0.5, 0.5, 0.5, 1.0);
+                gl.enableVertexAttribArray(colorLoc);
+            }
+        } catch (e) {
+            throw new Error("Attribute state churn failed: " + e.message);
+        }
+
+        try {
+            gl.bindTexture(gl.TEXTURE_3D, texture3D);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, batch % 2 ? gl.LINEAR : gl.NEAREST);
+        } catch (e) {
+            throw new Error("Texture parameter update failed: " + e.message);
+        }
+    }
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindVertexArray(vaos[0]);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.3, 0.5, 0.7, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    } catch (e) {
+        throw new Error("Final rendering failed: " + e.message);
+    }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

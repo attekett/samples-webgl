@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const copyCount = 16;
+const srcOffset = 0;
+const dstOffset = 128;
+const blitIterations = 12;
+const texSize = 256;
+const pixelCount = texSize * texSize;
+const bufferSize = pixelCount * 4;
+
+const format_RGBA32I = 0x8D82;
+const format_RGBA32UI = 0x8D70;
+const format_R32I = 0x8235;
+const textureTarget = 0x0DE1;
+const framebufferTarget = 0x8D40;
+const readFramebuffer = 0x8CA8;
+const drawFramebuffer = 0x8CA9;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const tex1 = gl.createTexture();
+        const tex2 = gl.createTexture();
+        const tex3 = gl.createTexture();
+        gl.bindTexture(textureTarget, tex1);
+        gl.bindTexture(textureTarget, tex2);
+        gl.bindTexture(textureTarget, tex1);
+        gl.texStorage2D(textureTarget, 1, format_RGBA32I, texSize, texSize);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(textureTarget, tex2);
+        gl.texStorage2D(textureTarget, 1, format_RGBA32UI, 256, 256);
+        gl.bindTexture(textureTarget, tex3);
+        gl.texStorage2D(textureTarget, 1, format_R32I, 512, 512);
+    } catch(e) {}
+
+    try {
+        const fbo1 = gl.createFramebuffer();
+        const fbo2 = gl.createFramebuffer();
+        const fbo3 = gl.createFramebuffer();
+        gl.bindFramebuffer(framebufferTarget, fbo1);
+        gl.framebufferTexture2D(framebufferTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex1, 0);
+        gl.bindFramebuffer(framebufferTarget, fbo2);
+        gl.framebufferTexture2D(framebufferTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex2, 0);
+        gl.bindFramebuffer(framebufferTarget, fbo3);
+        gl.framebufferTexture2D(framebufferTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex3, 0);
+        gl.bindFramebuffer(framebufferTarget, fbo1);
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            out ivec4 fragColor;
+            void main() {
+                fragColor = ivec4(999999, -888888, 777777, -666666);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.bufferData(gl.ARRAY_BUFFER, bufferSize, gl.STATIC_DRAW);
+        const vertices = new Float32Array([-1, -1, 0, 1, -1, 0, 0, 1, 0]);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(framebufferTarget, fbo1);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearBufferiv(gl.COLOR, 0, [12345, -54321, 98765, -56789]);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindFramebuffer(framebufferTarget, fbo2);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearBufferuiv(gl.COLOR, 0, [4294967295, 0, 2147483648, 1073741824]);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(readFramebuffer, fbo1);
+        gl.bindTexture(textureTarget, tex2);
+        gl.copyTexSubImage2D(textureTarget, 0, srcOffset, srcOffset, 0, 0, 128, 128);
+        gl.bindFramebuffer(readFramebuffer, fbo2);
+        gl.bindTexture(textureTarget, tex3);
+        gl.copyTexSubImage2D(textureTarget, 0, dstOffset, dstOffset, 0, 0, 256, 256);
+        gl.bindFramebuffer(readFramebuffer, fbo1);
+        gl.bindTexture(textureTarget, tex1);
+        gl.copyTexSubImage2D(textureTarget, 0, 64, 64, 0, 0, 192, 192);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(readFramebuffer, fbo1);
+        gl.bindFramebuffer(drawFramebuffer, fbo2);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(readFramebuffer, fbo2);
+        gl.bindFramebuffer(drawFramebuffer, fbo3);
+        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 512, 512, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(readFramebuffer, fbo3);
+        gl.bindFramebuffer(drawFramebuffer, fbo1);
+        gl.blitFramebuffer(0, 0, 512, 512, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(readFramebuffer, fbo1);
+        gl.bindFramebuffer(drawFramebuffer, fbo2);
+        gl.blitFramebuffer(32, 32, 224, 224, 16, 16, 240, 240, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(readFramebuffer, fbo2);
+        gl.bindFramebuffer(drawFramebuffer, fbo1);
+        gl.blitFramebuffer(16, 16, 240, 240, 32, 32, 224, 224, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(readFramebuffer, fbo1);
+        gl.bindTexture(textureTarget, tex3);
+        gl.copyTexSubImage2D(textureTarget, 0, 0, 0, 0, 0, texSize, texSize);
+        gl.bindTexture(textureTarget, tex2);
+        gl.copyTexSubImage2D(textureTarget, 0, 128, 128, 64, 64, 128, 128);
+        gl.bindTexture(textureTarget, tex1);
+        gl.copyTexSubImage2D(textureTarget, 0, 0, 0, 0, 0, 256, 256);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(framebufferTarget, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.4, 0.4, 0.4, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+    } catch(e) {}
+
+    try {
+        gl.bindTexture(textureTarget, tex1);
+        gl.deleteTexture(tex1);
+        gl.bindTexture(textureTarget, tex1);
+        gl.copyTexSubImage2D(textureTarget, 0, 0, 0, 0, 0, 64, 64);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(framebufferTarget, fbo1);
+        gl.deleteFramebuffer(fbo1);
+        gl.bindFramebuffer(framebufferTarget, fbo1);
+        gl.blitFramebuffer(0, 0, 128, 128, 0, 0, 128, 128, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

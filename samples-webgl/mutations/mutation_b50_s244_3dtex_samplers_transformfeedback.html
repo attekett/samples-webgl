@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const sliceCount = 256;
+    const samplerCount = 16;
+    const batchSize = 32;
+    const vertexCount = 6;
+    const tfStride = 7;
+
+    const vsSource = `#version 300 es
+    in vec3 aPosition;
+    in vec3 aTexCoord3D;
+    out vec3 vPosition3D;
+    out vec3 vTexCoord;
+    out float vSamplerID;
+    out float vSliceIndex;
+    uniform float uSliceOffset;
+    uniform float uSamplerOffset;
+    void main() {
+        gl_Position = vec4(aPosition.xy, 0.0, 1.0);
+        vPosition3D = aPosition * 0.5 + 0.5;
+        vTexCoord = aTexCoord3D;
+        float vertID = float(gl_VertexID);
+        vSamplerID = uSamplerOffset + mod(vertID, float(${samplerCount}));
+        vSliceIndex = uSliceOffset + mod(vertID, float(${batchSize}));
+    }`;
+
+    const fsSource = `#version 300 es
+    precision highp float;
+    precision highp sampler3D;
+    in vec3 vPosition3D;
+    in vec3 vTexCoord;
+    in float vSamplerID;
+    in float vSliceIndex;
+    uniform sampler3D uTex3D;
+    out vec4 fragColor;
+    void main() {
+        float depth = vSliceIndex / float(${sliceCount});
+        vec3 coord = vec3(vTexCoord.xy, depth);
+        vec4 texColor = texture(uTex3D, coord);
+        float samplerMod = mod(vSamplerID, float(${samplerCount})) / float(${samplerCount});
+        fragColor = texColor * vec4(samplerMod, 1.0 - samplerMod, depth, 1.0);
+    }`;
+
+    try {
+        const program = gl.createProgram();
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vsSource);
+        gl.compileShader(vs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(vs));
+        }
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fsSource);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(fs));
+        }
+
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.transformFeedbackVaryings(program, ['vPosition3D', 'vTexCoord', 'vSamplerID', 'vSliceIndex'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program));
+        }
+        gl.useProgram(program);
+    } catch (e) {
+        throw e;
+    }
+
+    const aPosition = gl.getAttribLocation(gl.getParameter(gl.CURRENT_PROGRAM), 'aPosition');
+    const aTexCoord3D = gl.getAttribLocation(gl.getParameter(gl.CURRENT_PROGRAM), 'aTexCoord3D');
+    const uSliceOffset = gl.getUniformLocation(gl.getParameter(gl.CURRENT_PROGRAM), 'uSliceOffset');
+    const uSamplerOffset = gl.getUniformLocation(gl.getParameter(gl.CURRENT_PROGRAM), 'uSamplerOffset');
+    const uTex3D = gl.getUniformLocation(gl.getParameter(gl.CURRENT_PROGRAM), 'uTex3D');
+
+    const vertices = new Float32Array([
+        -0.8, -0.8, 0.0, 0.0, 0.0, 0.0,
+         0.8, -0.8, 0.0, 1.0, 0.0, 0.0,
+         0.8,  0.8, 0.0, 1.0, 1.0, 1.0,
+        -0.8, -0.8, 0.0, 0.0, 0.0, 0.0,
+         0.8,  0.8, 0.0, 1.0, 1.0, 1.0,
+        -0.8,  0.8, 0.0, 0.0, 1.0, 1.0
+    ]);
+
+    try {
+        const vbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        gl.enableVertexAttribArray(aPosition);
+        gl.vertexAttribPointer(aPosition, 3, gl.FLOAT, false, 24, 0);
+        gl.enableVertexAttribArray(aTexCoord3D);
+        gl.vertexAttribPointer(aTexCoord3D, 3, gl.FLOAT, false, 24, 12);
+    } catch (e) {
+        throw e;
+    }
+
+    const tex3D = gl.createTexture();
+    try {
+        gl.bindTexture(gl.TEXTURE_3D, tex3D);
+        gl.texStorage3D(gl.TEXTURE_3D, 1, gl.RGBA8, texSize, texSize, sliceCount);
+
+        for (let slice = 0; slice < sliceCount; slice++) {
+            const data = new Uint8Array(texSize * texSize * 4);
+            for (let i = 0; i < data.length; i += 4) {
+                const x = (i / 4) % texSize;
+                const y = Math.floor((i / 4) / texSize);
+                data[i] = ((x + slice * 2) % 256);
+                data[i + 1] = ((y + slice * 3) % 256);
+                data[i + 2] = slice;
+                data[i + 3] = 255;
+            }
+            gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, slice, texSize, texSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        }
+    } catch (e) {
+        throw e;
+    }
+
+    const samplers = [];
+    const filterModes = [
+        [gl.NEAREST, gl.NEAREST],
+        [gl.LINEAR, gl.LINEAR],
+        [gl.NEAREST, gl.LINEAR],
+        [gl.LINEAR, gl.NEAREST],
+        [gl.NEAREST, gl.NEAREST],
+        [gl.LINEAR, gl.LINEAR],
+        [gl.NEAREST, gl.LINEAR],
+        [gl.LINEAR, gl.NEAREST],
+        [gl.NEAREST, gl.NEAREST],
+        [gl.LINEAR, gl.LINEAR],
+        [gl.NEAREST, gl.LINEAR],
+        [gl.LINEAR, gl.NEAREST],
+        [gl.NEAREST, gl.NEAREST],
+        [gl.LINEAR, gl.LINEAR],
+        [gl.NEAREST, gl.LINEAR],
+        [gl.LINEAR, gl.NEAREST]
+    ];
+
+    const wrapModes = [
+        [gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE],
+        [gl.REPEAT, gl.REPEAT, gl.REPEAT],
+        [gl.MIRRORED_REPEAT, gl.MIRRORED_REPEAT, gl.MIRRORED_REPEAT],
+        [gl.CLAMP_TO_EDGE, gl.REPEAT, gl.MIRRORED_REPEAT],
+        [gl.REPEAT, gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE],
+        [gl.MIRRORED_REPEAT, gl.REPEAT, gl.CLAMP_TO_EDGE],
+        [gl.CLAMP_TO_EDGE, gl.MIRRORED_REPEAT, gl.REPEAT],
+        [gl.REPEAT, gl.MIRRORED_REPEAT, gl.CLAMP_TO_EDGE],
+        [gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE, gl.REPEAT],
+        [gl.REPEAT, gl.REPEAT, gl.MIRRORED_REPEAT],
+        [gl.MIRRORED_REPEAT, gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE],
+        [gl.CLAMP_TO_EDGE, gl.REPEAT, gl.REPEAT],
+        [gl.REPEAT, gl.MIRRORED_REPEAT, gl.MIRRORED_REPEAT],
+        [gl.MIRRORED_REPEAT, gl.MIRRORED_REPEAT, gl.REPEAT],
+        [gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE, gl.MIRRORED_REPEAT],
+        [gl.REPEAT, gl.CLAMP_TO_EDGE, gl.REPEAT]
+    ];
+
+    for (let i = 0; i < samplerCount; i++) {
+        try {
+            const sampler = gl.createSampler();
+            gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, filterModes[i][0]);
+            gl.samplerParameteri(sampler, gl.TEXTURE_MAG_FILTER, filterModes[i][1]);
+            gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_S, wrapModes[i][0]);
+            gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_T, wrapModes[i][1]);
+            gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_R, wrapModes[i][2]);
+            samplers.push(sampler);
+        } catch (e) {
+            throw e;
+        }
+    }
+
+    const tfBuffer = gl.createBuffer();
+    try {
+        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, vertexCount * tfStride * 4, gl.STATIC_READ);
+    } catch (e) {
+        throw e;
+    }
+
+    const tf = gl.createTransformFeedback();
+    try {
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer);
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, tex3D);
+        gl.uniform1i(uTex3D, 0);
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch (e) {
+        throw e;
+    }
+
+    for (let sliceBatch = 0; sliceBatch < 8; sliceBatch++) {
+        for (let samplerIdx = 0; samplerIdx < samplerCount; samplerIdx++) {
+            try {
+                gl.bindSampler(0, samplers[samplerIdx]);
+                gl.uniform1f(uSliceOffset, sliceBatch * batchSize);
+                gl.uniform1f(uSamplerOffset, samplerIdx * 1.0);
+            } catch (e) {
+                throw e;
+            }
+
+            try {
+                gl.enable(gl.RASTERIZER_DISCARD);
+                gl.beginTransformFeedback(gl.TRIANGLES);
+                gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+                gl.endTransformFeedback();
+                gl.disable(gl.RASTERIZER_DISCARD);
+            } catch (e) {
+                throw e;
+            }
+
+            try {
+                gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+            } catch (e) {
+                throw e;
+            }
+
+            try {
+                gl.bindSampler(0, null);
+                gl.bindSampler(0, samplers[(samplerIdx + 1) % samplerCount]);
+            } catch (e) {
+                throw e;
+            }
+        }
+    }
+
+    for (let i = 0; i < samplerCount; i++) {
+        try {
+            gl.bindSampler(0, samplers[i]);
+            gl.samplerParameteri(samplers[i], gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.samplerParameteri(samplers[i], gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.samplerParameteri(samplers[i], gl.TEXTURE_WRAP_S, gl.REPEAT);
+            gl.samplerParameteri(samplers[i], gl.TEXTURE_WRAP_T, gl.REPEAT);
+            gl.samplerParameteri(samplers[i], gl.TEXTURE_WRAP_R, gl.REPEAT);
+        } catch (e) {
+            throw e;
+        }
+    }
+
+    try {
+        gl.bindSampler(0, null);
+        gl.uniform1f(uSliceOffset, 0.0);
+        gl.uniform1f(uSamplerOffset, 0.0);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    } catch (e) {
+        throw e;
+    }
+
+    try {
+        gl.finish();
+    } catch (e) {
+        throw e;
+    }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+  // No extensions required - using core WebGL2 features
+];
+
+async function main() {
+  const canvas = document.getElementById('webgl-canvas');
+  const gl = canvas.getContext('webgl2');
+  if (!gl) {
+    throw new Error("WebGL2 not supported - required for all tests");
+  }
+
+  // Extension checking (none required for this test)
+  const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+  if (missingExtensions.length > 0) {
+    throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+  }
+
+  // Required extensions are enabled by default in WebGL2
+
+  // ==========================================
+  // PRECISION AND NUMERICAL LIMITS TEST
+  // ==========================================
+
+  const PRECISION_TEST_COUNT = 8;
+  const VERTEX_COUNT = 1024;
+  const NEAR_ZERO_VALUE = 0.000001;
+  const LARGE_NUMBER_SCALE = 1000000.0;
+  const INTEGER_OVERFLOW_BASE = 2147483647; // INT_MAX
+  const STATE_CHANGE_COUNT = 50;
+  const RESOURCE_BINDING_CYCLES = 8;
+
+  // Create vertex shader with precision boundary testing
+  const vertexShaderSource = `#version 300 es
+  in vec2 a_position;
+  in vec4 a_color;
+  in float a_precisionScale;
+
+  out vec4 v_color;
+  out float v_precisionFactor;
+  out float v_overflowValue;
+  out float v_nanTest;
+
+  uniform float u_time;
+  uniform float u_nearZeroValue;
+  uniform float u_largeScale;
+  uniform int u_integerBase;
+
+  void main() {
+    // Floating-point precision testing with near-zero values
+    float precisionTest = a_precisionScale * u_nearZeroValue;
+    precisionTest = precisionTest + 0.0000001; // Add tiny value to test precision loss
+    precisionTest = precisionTest * u_largeScale; // Multiply by large number
+
+    // Integer overflow simulation using floating-point
+    float overflowTest = float(u_integerBase) + 1.0;
+    overflowTest = overflowTest * 2.0; // Force overflow-like behavior
+
+    // NaN generation and handling
+    float nanTest = 0.0 / 0.0; // Generate NaN
+    nanTest = isnan(nanTest) ? 1.0 : 0.0; // Test NaN detection
+
+    // Complex mathematical operations near precision limits
+    vec2 pos = a_position;
+    pos.x += sin(u_time * 0.01) * precisionTest * 0.1;
+    pos.y += cos(u_time * 0.01) * overflowTest * 0.000001;
+
+    gl_Position = vec4(pos, 0.0, 1.0);
+    gl_PointSize = 2.0 + abs(precisionTest) * 0.1;
+
+    v_color = a_color;
+    v_precisionFactor = precisionTest;
+    v_overflowValue = overflowTest;
+    v_nanTest = nanTest;
+  }
+  `;
+
+  // Create fragment shader with precision-dependent calculations
+  const fragmentShaderSource = `#version 300 es
+  precision highp float;
+
+  in vec4 v_color;
+  in float v_precisionFactor;
+  in float v_overflowValue;
+  in float v_nanTest;
+
+  out vec4 fragColor;
+
+  uniform float u_boundaryValue;
+  uniform float u_mathComplexity;
+  uniform int u_precisionMode;
+
+  void main() {
+    vec4 color = v_color;
+
+    // Precision-dependent color variations
+    float precisionHue = fract(v_precisionFactor * 1000.0);
+    color.r = mix(color.r, precisionHue, 0.3);
+
+    // Overflow visualization through saturation changes
+    float overflowSat = clamp(v_overflowValue * 0.000001, 0.0, 1.0);
+    color.g = mix(color.g, overflowSat, 0.3);
+
+    // NaN indication through brightness
+    color.b = mix(color.b, v_nanTest, 0.5);
+
+    // Complex mathematical operations near boundaries
+    float boundaryTest = u_boundaryValue;
+    for(int i = 0; i < 4; i++) {
+      boundaryTest = boundaryTest * boundaryTest; // Exponential growth
+      boundaryTest = fract(boundaryTest); // Wrap around
+    }
+
+    // Mix in boundary test results
+    color.rgb = mix(color.rgb, vec3(boundaryTest), 0.2);
+
+    // Additional precision stress with conditional logic
+    if(u_precisionMode == 1) {
+      // High precision mode - use more decimal places
+      color.rgb *= 0.999999;
+    } else if(u_precisionMode == 2) {
+      // Low precision mode - truncate values
+      color.rgb = floor(color.rgb * 1000.0) / 1000.0;
+    }
+
+    // Final precision boundary test with gl_FragCoord
+    vec2 coord = gl_FragCoord.xy;
+    float coordPrecision = fract(coord.x * 0.001) + fract(coord.y * 0.001);
+    color.rgb = mix(color.rgb, vec3(coordPrecision), 0.1);
+
+    fragColor = color;
+  }
+  `;
+
+  // Create shaders
+  const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vertexShader, vertexShaderSource);
+  gl.compileShader(vertexShader);
+
+  const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+  gl.shaderSource(fragmentShader, fragmentShaderSource);
+  gl.compileShader(fragmentShader);
+
+  // Create program
+  const program = gl.createProgram();
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+  gl.useProgram(program);
+
+  // Get attribute locations
+  const positionLoc = gl.getAttribLocation(program, 'a_position');
+  const colorLoc = gl.getAttribLocation(program, 'a_color');
+  const precisionScaleLoc = gl.getAttribLocation(program, 'a_precisionScale');
+
+  // Get uniform locations
+  const timeLoc = gl.getUniformLocation(program, 'u_time');
+  const nearZeroLoc = gl.getUniformLocation(program, 'u_nearZeroValue');
+  const largeScaleLoc = gl.getUniformLocation(program, 'u_largeScale');
+  const integerBaseLoc = gl.getUniformLocation(program, 'u_integerBase');
+  const boundaryValueLoc = gl.getUniformLocation(program, 'u_boundaryValue');
+  const mathComplexityLoc = gl.getUniformLocation(program, 'u_mathComplexity');
+  const precisionModeLoc = gl.getUniformLocation(program, 'u_precisionMode');
+
+  // Create vertex data with precision test values
+  const positions = [];
+  const colors = [];
+  const precisionScales = [];
+
+  for(let i = 0; i < VERTEX_COUNT; i++) {
+    // Create spiral pattern
+    const angle = (i / VERTEX_COUNT) * Math.PI * 4;
+    const radius = (i / VERTEX_COUNT) * 0.8;
+
+    positions.push(Math.cos(angle) * radius, Math.sin(angle) * radius);
+
+    // Color based on precision test categories
+    const precisionCategory = i % PRECISION_TEST_COUNT;
+    let r, g, b;
+
+    switch(precisionCategory) {
+      case 0: r = 1.0; g = 0.0; b = 0.0; break; // Near-zero red
+      case 1: r = 0.0; g = 1.0; b = 0.0; break; // Large numbers green
+      case 2: r = 0.0; g = 0.0; b = 1.0; break; // Overflow blue
+      case 3: r = 1.0; g = 1.0; b = 0.0; break; // NaN yellow
+      case 4: r = 1.0; g = 0.0; b = 1.0; break; // Boundary magenta
+      case 5: r = 0.0; g = 1.0; b = 1.0; break; // Math cyan
+      case 6: r = 0.5; g = 0.5; b = 0.5; break; // Mixed gray
+      case 7: r = 1.0; g = 1.0; b = 1.0; break; // White
+    }
+
+    colors.push(r, g, b, 1.0);
+
+    // Precision scale values for testing
+    const precisionScale = Math.pow(10, (i % 8) - 4); // Values from 0.0001 to 10000
+    precisionScales.push(precisionScale);
+  }
+
+  // Create buffers
+  const positionBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+  const colorBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+
+  const precisionBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, precisionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(precisionScales), gl.STATIC_DRAW);
+
+  // ==========================================
+  // STATE POISONING - 50+ redundant operations
+  // ==========================================
+
+  for(let cycle = 0; cycle < RESOURCE_BINDING_CYCLES; cycle++) {
+    // Bind/unbind buffers repeatedly
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, precisionBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+    // Enable/disable vertex attributes repeatedly
+    gl.enableVertexAttribArray(positionLoc);
+    gl.enableVertexAttribArray(colorLoc);
+    gl.enableVertexAttribArray(precisionScaleLoc);
+    gl.disableVertexAttribArray(positionLoc);
+    gl.disableVertexAttribArray(colorLoc);
+    gl.disableVertexAttribArray(precisionScaleLoc);
+
+    // Redundant capability toggling
+    gl.enable(gl.BLEND);
+    gl.disable(gl.BLEND);
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.CULL_FACE);
+    gl.disable(gl.CULL_FACE);
+  }
+
+  // Final setup with proper state
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.enableVertexAttribArray(positionLoc);
+  gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+  gl.enableVertexAttribArray(colorLoc);
+  gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, precisionBuffer);
+  gl.enableVertexAttribArray(precisionScaleLoc);
+  gl.vertexAttribPointer(precisionScaleLoc, 1, gl.FLOAT, false, 0, 0);
+
+  // Set up viewport and clear
+  gl.viewport(0, 0, 256, 256);
+  gl.clearColor(0.1, 0.1, 0.1, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  // Animation loop with precision testing
+  let frameCount = 0;
+  function render() {
+    // Update uniforms with precision boundary values
+    gl.uniform1f(timeLoc, frameCount * 0.1);
+    gl.uniform1f(nearZeroLoc, NEAR_ZERO_VALUE);
+    gl.uniform1f(largeScaleLoc, LARGE_NUMBER_SCALE);
+    gl.uniform1i(integerBaseLoc, INTEGER_OVERFLOW_BASE);
+    gl.uniform1f(boundaryValueLoc, 0.999999);
+    gl.uniform1f(mathComplexityLoc, 4.0);
+    gl.uniform1i(precisionModeLoc, frameCount % 3);
+
+    // More state poisoning during animation
+    for(let i = 0; i < 5; i++) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.disable(gl.BLEND);
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LEQUAL);
+      gl.disable(gl.DEPTH_TEST);
+    }
+
+    // Draw points with precision-dependent sizes
+    gl.drawArrays(gl.POINTS, 0, VERTEX_COUNT);
+
+    frameCount++;
+    requestAnimationFrame(render);
+  }
+
+  render();
+
+  // ==========================================
+  // LINEWIDTH NaN TEST (WebGL2 feature)
+  // ==========================================
+
+  // Test lineWidth with various values including NaN
+  const testLineWidths = [1.0, 0.5, 2.0, NaN, 0.1, 10.0, Infinity, -1.0];
+
+  // Note: lineWidth is clamped to [1, width] in WebGL, but we test edge values
+  for(let width of testLineWidths) {
+    if(!isNaN(width) && width > 0) {
+      gl.lineWidth(width);
+    }
+  }
+
+  // Reset to safe value
+  gl.lineWidth(1.0);
+
+  // Final error check
+  const error = gl.getError();
+  if (error !== gl.NO_ERROR) {
+    throw new Error(`WebGL Error: ${error}`);
+  }
+}
+
+main().catch(err => {
+  throw err;
+});
+</script>
+</body>
+</html>

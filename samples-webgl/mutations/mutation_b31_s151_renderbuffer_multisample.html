@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const rbCount = 3;
+const samples4 = 4;
+const samples8 = 8;
+const samples16 = 16;
+const rbSize = 256;
+const halfSize = 128;
+const quarterSize = 64;
+const bindCycles = 8;
+const formatRGBA8 = 0x8058;
+const formatDepth24 = 0x81A6;
+const formatDepthStencil = 0x88F0;
+const rbTarget = 0x8D41;
+const fboTarget = 0x8D40;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const rb1 = gl.createRenderbuffer();
+        const rb2 = gl.createRenderbuffer();
+        const rb3 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, rb1);
+        gl.bindRenderbuffer(rbTarget, rb2);
+        gl.bindRenderbuffer(rbTarget, rb1);
+        gl.renderbufferStorageMultisample(rbTarget, samples4, formatRGBA8, rbSize, rbSize);
+        gl.bindRenderbuffer(rbTarget, rb2);
+        gl.renderbufferStorageMultisample(rbTarget, samples8, formatRGBA8, rbSize, rbSize);
+        gl.bindRenderbuffer(rbTarget, rb3);
+        gl.renderbufferStorageMultisample(rbTarget, samples16, formatRGBA8, halfSize, halfSize);
+    } catch(e) {}
+
+    try {
+        const rbDepth1 = gl.createRenderbuffer();
+        const rbDepth2 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, rbDepth1);
+        gl.renderbufferStorageMultisample(rbTarget, samples4, formatDepth24, rbSize, rbSize);
+        gl.bindRenderbuffer(rbTarget, rbDepth2);
+        gl.renderbufferStorageMultisample(rbTarget, samples8, formatDepthStencil, rbSize, rbSize);
+        gl.bindRenderbuffer(rbTarget, rbDepth1);
+        gl.bindRenderbuffer(rbTarget, rbDepth2);
+    } catch(e) {}
+
+    try {
+        const fbo1 = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rb1);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_ATTACHMENT, rbTarget, rbDepth1);
+        const status1 = gl.checkFramebufferStatus(fboTarget);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rb2);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, rbTarget, rbDepth2);
+        const status2 = gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        for (let i = 0; i < bindCycles; i++) {
+            gl.bindRenderbuffer(rbTarget, rb1);
+            gl.bindRenderbuffer(rbTarget, rb2);
+            gl.bindRenderbuffer(rbTarget, rb3);
+            gl.bindRenderbuffer(rbTarget, rb1);
+        }
+    } catch(e) {}
+
+    try {
+        const fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rb3);
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rb1);
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.bindFramebuffer(fboTarget, fbo1);
+    } catch(e) {}
+
+    try {
+        gl.bindRenderbuffer(rbTarget, rb1);
+        const width1 = gl.getRenderbufferParameter(rbTarget, gl.RENDERBUFFER_WIDTH);
+        const samples1 = gl.getRenderbufferParameter(rbTarget, gl.RENDERBUFFER_SAMPLES);
+        gl.bindRenderbuffer(rbTarget, rb2);
+        const width2 = gl.getRenderbufferParameter(rbTarget, gl.RENDERBUFFER_WIDTH);
+        const samples2 = gl.getRenderbufferParameter(rbTarget, gl.RENDERBUFFER_SAMPLES);
+        gl.bindRenderbuffer(rbTarget, rb3);
+        const samples3 = gl.getRenderbufferParameter(rbTarget, gl.RENDERBUFFER_SAMPLES);
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const posBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 0, 1, -1, 0, 1, 1, 0,
+            -1, -1, 0, 1, 1, 0, -1, 1, 0
+        ]), gl.STATIC_DRAW);
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.viewport(0, 0, rbSize, rbSize);
+        gl.clearColor(0.0, 1.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.viewport(0, 0, halfSize, halfSize);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.5, 0.5, 0.5, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.flush();
+        gl.finish();
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

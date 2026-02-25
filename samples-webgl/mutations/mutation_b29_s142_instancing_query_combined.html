@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const instanceCount = 256;
+const queryCount = 8;
+const cullCycles = 16;
+const vertexCount = 6;
+const bufferSize = instanceCount * 16;
+const queryTarget1 = 35887;
+const queryTarget2 = 35976;
+const queryResult = 34918;
+const queryAvailable = 34919;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const query1 = gl.createQuery();
+        const query2 = gl.createQuery();
+        const query3 = gl.createQuery();
+        const query4 = gl.createQuery();
+        const query5 = gl.createQuery();
+        const query6 = gl.createQuery();
+        const query7 = gl.createQuery();
+        const query8 = gl.createQuery();
+    } catch(e) { console.log(e); }
+
+    try {
+        const posBuffer = gl.createBuffer();
+        const instBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, instBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -0.5, -0.5, 0.0,
+            0.5, -0.5, 0.0,
+            0.5, 0.5, 0.0,
+            -0.5, -0.5, 0.0,
+            0.5, 0.5, 0.0,
+            -0.5, 0.5, 0.0
+        ]), gl.STATIC_DRAW);
+    } catch(e) { console.log(e); }
+
+    try {
+        const instData = new Float32Array(bufferSize);
+        for (let i = 0; i < instanceCount; i++) {
+            const idx = i * 4;
+            instData[idx] = (i % 16) / 16.0 - 0.5;
+            instData[idx + 1] = Math.floor(i / 16) / 16.0 - 0.5;
+            instData[idx + 2] = Math.sin(i * 0.1);
+            instData[idx + 3] = Math.cos(i * 0.1);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, instBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, instData, gl.DYNAMIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, instData.subarray(0, 512));
+    } catch(e) { console.log(e); }
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 aPosition;
+            in vec4 aInstanceData;
+            out vec4 vColor;
+            void main() {
+                vec2 offset = aInstanceData.xy;
+                vec2 scale = vec2(0.03, 0.03);
+                gl_Position = vec4(aPosition.xy * scale + offset, aInstanceData.z * 0.5, 1.0);
+                vColor = vec4(aInstanceData.zw * 0.5 + 0.5, 0.8, 1.0);
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            in vec4 vColor;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vColor;
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) { console.log(e); }
+
+    try {
+        const posLoc = gl.getAttribLocation(program, 'aPosition');
+        const instLoc = gl.getAttribLocation(program, 'aInstanceData');
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 12, 0);
+        gl.vertexAttribDivisor(posLoc, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, instBuffer);
+        gl.enableVertexAttribArray(instLoc);
+        gl.vertexAttribPointer(instLoc, 4, gl.FLOAT, false, 16, 0);
+        gl.vertexAttribDivisor(instLoc, 1);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthMask(true);
+        gl.depthMask(false);
+        gl.depthMask(true);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.viewport(0, 0, 256, 256);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.beginQuery(queryTarget1, query1);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, vertexCount, 64);
+        gl.endQuery(queryTarget1);
+
+        gl.beginQuery(queryTarget1, query2);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, vertexCount, 64);
+        gl.endQuery(queryTarget1);
+
+        gl.beginQuery(queryTarget1, query3);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, vertexCount, 64);
+        gl.endQuery(queryTarget1);
+
+        gl.beginQuery(queryTarget1, query4);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, vertexCount, 64);
+        gl.endQuery(queryTarget1);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < cullCycles; i++) {
+            gl.beginQuery(gl.ANY_SAMPLES_PASSED, query5);
+            gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 32);
+            gl.endQuery(gl.ANY_SAMPLES_PASSED);
+
+            gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, query6);
+            gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 16);
+            gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        const available1 = gl.getQueryParameter(query1, queryAvailable);
+        const available2 = gl.getQueryParameter(query2, queryAvailable);
+        const available3 = gl.getQueryParameter(query3, queryAvailable);
+        const available4 = gl.getQueryParameter(query4, queryAvailable);
+        const available5 = gl.getQueryParameter(query5, queryAvailable);
+        const available6 = gl.getQueryParameter(query6, queryAvailable);
+    } catch(e) { console.log(e); }
+
+    try {
+        const result1 = gl.getQueryParameter(query1, queryResult);
+        const result2 = gl.getQueryParameter(query2, queryResult);
+        const result3 = gl.getQueryParameter(query3, queryResult);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.deleteQuery(query1);
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED, query1);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.deleteQuery(query2);
+        gl.deleteQuery(query2);
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

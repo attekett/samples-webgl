@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION
+        const REQUIRED_EXTENSIONS = [];
+
+        async function main() {
+            console.log("Starting Main...");
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 not supported");
+
+            // Fuzzing Variables
+            const PARTICLE_COUNT = 1000;
+            const STATE_CHANGE_COUNT = 25;
+
+            // Helper: Create Shader
+            function createShader(gl, type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    const log = gl.getShaderInfoLog(shader);
+                    console.error("Shader Compile Error:", log);
+                    console.error("Source:", source);
+                    throw new Error("Shader Compile Error: " + log);
+                }
+                return shader;
+            }
+
+            function createProgram(gl, vsSrc, fsSrc, varyings) {
+                const program = gl.createProgram();
+                gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vsSrc));
+                gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsSrc));
+
+                if (varyings) {
+                    gl.transformFeedbackVaryings(program, varyings, gl.SEPARATE_ATTRIBS);
+                }
+
+                gl.linkProgram(program);
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    const log = gl.getProgramInfoLog(program);
+                    console.error("Program Link Error:", log);
+                    throw new Error("Program Link Error: " + log);
+                }
+                return program;
+            }
+
+            // --- Shaders ---
+
+            // 1. Force Field Generation (Render to Texture)
+            // Renders noise/swirls to RGBA texture
+            const forceVS = `#version 300 es
+    layout(location=0) in vec2 a_pos;
+    out vec2 v_uv;
+    void main() {
+        v_uv = a_pos * 0.5 + 0.5;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+    }
+    `;
+
+            const forceFS = `#version 300 es
+    precision highp float;
+    in vec2 v_uv;
+    uniform float u_time;
+    out vec4 outColor;
+    void main() {
+        // Swirling force field
+        vec2 p = v_uv * 2.0 - 1.0;
+        float len = length(p);
+        float angle = atan(p.y, p.x) + u_time;
+        vec2 force = vec2(cos(angle), sin(angle)) * (1.0 - len);
+        outColor = vec4(force * 0.5 + 0.5, 0.0, 1.0); // Map -1..1 to 0..1
+    }
+    `;
+
+            // 2. Physics Compute Shader (Vertex Shader + Transform Feedback)
+            // Update Position and Velocity
+            const physicsVS = `#version 300 es
+    precision highp float;
+    precision highp sampler2D; // VTF needs precision
+
+    layout(location=0) in vec2 a_pos;
+    layout(location=1) in vec2 a_vel;
+
+    uniform sampler2D u_forceField;
+    uniform float u_dt;
+    
+    out vec2 v_outPos;
+    out vec2 v_outVel;
+
+    void main() {
+        vec2 pos = a_pos;
+        vec2 vel = a_vel;
+
+        // VTF: Read Force Field
+        vec2 uv = pos * 0.5 + 0.5;
+        vec3 forceData = texture(u_forceField, uv).rgb;
+        vec2 force = (forceData.xy * 2.0 - 1.0); // Map 0..1 back to -1..1
+        
+        // Physics update
+        vel += force * u_dt * 2.0;
+        vel *= 0.98; // Drag
+        pos += vel * u_dt;
+
+        // Boundary bounce
+        if (pos.x < -1.0 || pos.x > 1.0) { vel.x *= -1.0; pos.x = clamp(pos.x, -1.0, 1.0); }
+        if (pos.y < -1.0 || pos.y > 1.0) { vel.y *= -1.0; pos.y = clamp(pos.y, -1.0, 1.0); }
+
+        v_outPos = pos;
+        v_outVel = vel;
+    }
+    `;
+
+            const physicsFS = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    void main() { outColor = vec4(1.0); } // Dummy
+    `;
+
+            // 3. Render Shader (Instanced Billboards)
+            const renderVS = `#version 300 es
+    layout(location=0) in vec2 a_pos; // Particle Position
+    layout(location=1) in vec2 a_vel; // Particle Velocity
+    
+    // Should pass a Uniform or Attribute for Quad vertex? 
+    // Let's use gl_VertexID to generate a point or simple quad
+    // Or just render POINTS for simplicity in this complexity
+    
+    out vec3 v_color;
+
+    void main() {
+        gl_PointSize = 4.0;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+        
+        float speed = length(a_vel);
+        v_color = vec3(speed * 20.0, 0.5 - speed*5.0, 1.0 - speed*10.0);
+    }
+    `;
+
+            const renderFS = `#version 300 es
+    precision highp float;
+    in vec3 v_color;
+    out vec4 outColor;
+    void main() {
+        // Soft point
+        vec2 coord = gl_PointCoord * 2.0 - 1.0;
+        float d = length(coord);
+        if (d > 1.0) discard;
+        outColor = vec4(v_color, 1.0);
+    }
+    `;
+
+            console.log("Compiling Shaders...");
+            const forceProg = createProgram(gl, forceVS, forceFS);
+            const physicsProg = createProgram(gl, physicsVS, physicsFS, ["v_outPos", "v_outVel"]);
+            const renderProg = createProgram(gl, renderVS, renderFS);
+            console.log("Shaders Compiled.");
+
+            // --- Resources ---
+
+            // 1. Force Field Texture
+            const forceTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, forceTex);
+            gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 128, 128); // 128x128 force field
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+            // 2. FBO for Force Field
+            const forceFBO = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, forceFBO);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, forceTex, 0);
+
+            // 3. Particles Buffers (Positions and Velocities)
+            // We need 2 sets (Current, Next)
+            // Structure: [pos.x, pos.y, vel.x, vel.y] ... wait, SEPARATE_ATTRIBS?
+            // Let's use separate buffers for Pos and Vel to match SEPARATE_ATTRIBS TF.
+            // Set A and Set B
+            const posA = gl.createBuffer();
+            const velA = gl.createBuffer();
+            const posB = gl.createBuffer();
+            const velB = gl.createBuffer();
+
+            const initialPos = new Float32Array(PARTICLE_COUNT * 2);
+            const initialVel = new Float32Array(PARTICLE_COUNT * 2);
+            for (let i = 0; i < PARTICLE_COUNT * 2; i++) {
+                initialPos[i] = (Math.random() * 2.0 - 1.0);
+                initialVel[i] = 0.0;
+            }
+
+            [posA, posB].forEach(buf => {
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, initialPos, gl.DYNAMIC_COPY);
+            });
+            [velA, velB].forEach(buf => {
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, initialVel, gl.DYNAMIC_COPY);
+            });
+
+            // 4. VAOs
+            // Set A VAO (Read from A)
+            const vaoA = gl.createVertexArray();
+            gl.bindVertexArray(vaoA);
+            gl.bindBuffer(gl.ARRAY_BUFFER, posA);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, velA);
+            gl.enableVertexAttribArray(1);
+            gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+
+            // Set B VAO (Read from B)
+            const vaoB = gl.createVertexArray();
+            gl.bindVertexArray(vaoB);
+            gl.bindBuffer(gl.ARRAY_BUFFER, posB);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, velB);
+            gl.enableVertexAttribArray(1);
+            gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+
+            // Quad VAO for Force Field
+            const quadVerts = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+            const quadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+            const quadVAO = gl.createVertexArray();
+            gl.bindVertexArray(quadVAO);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            // Transform Feedback Objects
+            const tfA = gl.createTransformFeedback();
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfA);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, posA);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, velA);
+
+            const tfB = gl.createTransformFeedback();
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfB);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, posB);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, velB);
+
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+
+            // --- Logic ---
+
+            // 1. Generate Force Field (Once, or dynamic?) Dynamic for fun.
+
+            const TOTAL_FRAMES = 10;
+
+            // We start Reading from A, Writing to B
+            let readVAO = vaoA;
+            let writeTF = tfB;
+            let currentPos = posA; // just for verify if needed
+
+            console.log("Starting Loop...");
+            for (let f = 0; f < TOTAL_FRAMES; f++) {
+                // Toggle A/B
+                const isEven = (f % 2 == 0);
+                readVAO = isEven ? vaoA : vaoB;
+                writeTF = isEven ? tfB : tfA;
+
+                // Pass 1: Update Force Field
+                gl.bindFramebuffer(gl.FRAMEBUFFER, forceFBO);
+                gl.viewport(0, 0, 128, 128);
+                gl.useProgram(forceProg);
+                gl.uniform1f(gl.getUniformLocation(forceProg, "u_time"), f * 0.1);
+                gl.bindVertexArray(quadVAO);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                // Pass 2: Physics (Transform Feedback)
+                // No Fragment Shader needed, Disable Rasterizer
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null); // or keep bound, doesn't matter if rasterizer off
+                gl.enable(gl.RASTERIZER_DISCARD);
+
+                gl.useProgram(physicsProg);
+                gl.uniform1f(gl.getUniformLocation(physicsProg, "u_dt"), 0.016);
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, forceTex);
+                gl.uniform1i(gl.getUniformLocation(physicsProg, "u_forceField"), 0);
+
+                gl.bindVertexArray(readVAO);
+                gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, writeTF);
+                gl.beginTransformFeedback(gl.POINTS);
+                gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+                gl.endTransformFeedback();
+                gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+                gl.disable(gl.RASTERIZER_DISCARD);
+
+                // Pass 3: Render
+                // We render what we just wrote to!
+                // So we need a VAO that reads from force write buffers (which are 'tfA' or 'tfB' bound buffers)
+                // If we wrote to B, we want to render B.
+                // So writeTF target buffers are posB/velB or posA/velA.
+                // We have vaoB and vaoA wrapping them.
+                const renderVAO = isEven ? vaoB : vaoA;
+
+                gl.viewport(0, 0, 512, 512);
+                gl.clearColor(0, 0, 0, 1);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                gl.useProgram(renderProg);
+                gl.bindVertexArray(renderVAO);
+                gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+            }
+
+            // Check Error
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                console.error("WebGL Error Code:", error);
+                throw new Error("WebGL Error: " + error);
+            }
+            console.log("Success");
+        }
+
+        main().catch(e => {
+            console.error("Exception:", e.message);
+            console.error(e.stack);
+        });
+    </script>
+</body>
+
+</html>

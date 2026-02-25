@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) throw new Error("WebGL2 not supported - required for all tests");
+
+ // Check required extensions
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // Enable required extensions
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // DEFERRED RENDERING IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // Fuzzing variables for biomass exposure
+ const instanceCount = 1000;
+ const lightCount = 8;
+ const gbufferTargets = 4;
+ const stateChangeCount = 50;
+ const geometryComplexity = 32;
+ const lightingPasses = 4;
+
+ // Create G-buffer framebuffer with MRT
+ const gbuffer = gl.createFramebuffer();
+ gl.bindFramebuffer(gl.FRAMEBUFFER, gbuffer);
+
+ // Create G-buffer textures (position, normal, albedo, depth) - use RGBA for maximum compatibility
+ const gbufferTextures = [];
+ for (let i = 0; i < gbufferTargets; i++) {
+   const texture = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, texture);
+   // Use RGBA format for guaranteed renderability - encode position/normal data in RGBA channels
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, texture, 0);
+   gbufferTextures.push(texture);
+ }
+
+ // Create depth renderbuffer for G-buffer
+ const depthRenderbuffer = gl.createRenderbuffer();
+ gl.bindRenderbuffer(gl.RENDERBUFFER, depthRenderbuffer);
+ gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, 256, 256);
+ gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRenderbuffer);
+
+ // Set MRT draw buffers
+ gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
+
+ // Verify framebuffer completeness
+ if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+   throw new Error('G-buffer framebuffer incomplete');
+ }
+
+ // Create lighting accumulation texture
+ const lightingTexture = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, lightingTexture);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+ // Create lighting framebuffer
+ const lightingFbo = gl.createFramebuffer();
+ gl.bindFramebuffer(gl.FRAMEBUFFER, lightingFbo);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, lightingTexture, 0);
+
+ // Create final composite texture
+ const finalTexture = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, finalTexture);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+ // Create final composite framebuffer
+ const finalFbo = gl.createFramebuffer();
+ gl.bindFramebuffer(gl.FRAMEBUFFER, finalFbo);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, finalTexture, 0);
+
+ // Create geometry (spheres)
+ const sphereVertices = [];
+ const sphereIndices = [];
+ const stacks = geometryComplexity;
+ const slices = geometryComplexity;
+
+ for (let i = 0; i <= stacks; i++) {
+   const phi = (i / stacks) * Math.PI;
+   for (let j = 0; j <= slices; j++) {
+     const theta = (j / slices) * 2 * Math.PI;
+     const x = Math.sin(phi) * Math.cos(theta);
+     const y = Math.cos(phi);
+     const z = Math.sin(phi) * Math.sin(theta);
+     const nx = x;
+     const ny = y;
+     const nz = z;
+     sphereVertices.push(x, y, z, nx, ny, nz, Math.random(), Math.random(), Math.random());
+   }
+ }
+
+ for (let i = 0; i < stacks; i++) {
+   for (let j = 0; j < slices; j++) {
+     const first = i * (slices + 1) + j;
+     const second = first + slices + 1;
+     sphereIndices.push(first, second, first + 1, second, second + 1, first + 1);
+   }
+ }
+
+ // Create vertex buffer for geometry
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(sphereVertices), gl.STATIC_DRAW);
+
+ // Create index buffer
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(sphereIndices), gl.STATIC_DRAW);
+
+ // Create instance data buffer (positions, colors, scales)
+ const instanceData = [];
+ for (let i = 0; i < instanceCount; i++) {
+   instanceData.push(
+     (Math.random() - 0.5) * 4, // x
+     (Math.random() - 0.5) * 4, // y
+     (Math.random() - 0.5) * 4, // z
+     Math.random(), Math.random(), Math.random(), // color
+     Math.random() * 0.1 + 0.05 // scale
+   );
+ }
+
+ const instanceBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(instanceData), gl.STATIC_DRAW);
+
+ // Create VAO for geometry pass
+ const geometryVao = gl.createVertexArray();
+ gl.bindVertexArray(geometryVao);
+
+ // Vertex attributes
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.enableVertexAttribArray(0); // position
+ gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 9 * 4, 0);
+ gl.enableVertexAttribArray(1); // normal
+ gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 9 * 4, 3 * 4);
+ gl.enableVertexAttribArray(2); // albedo
+ gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 9 * 4, 6 * 4);
+
+ // Instance attributes
+ gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+ gl.enableVertexAttribArray(3); // instance position
+ gl.vertexAttribPointer(3, 3, gl.FLOAT, false, 7 * 4, 0);
+ gl.vertexAttribDivisor(3, 1);
+ gl.enableVertexAttribArray(4); // instance color
+ gl.vertexAttribPointer(4, 3, gl.FLOAT, false, 7 * 4, 3 * 4);
+ gl.vertexAttribDivisor(4, 1);
+ gl.enableVertexAttribArray(5); // instance scale
+ gl.vertexAttribPointer(5, 1, gl.FLOAT, false, 7 * 4, 6 * 4);
+ gl.vertexAttribDivisor(5, 1);
+
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+ // Create VAO for lighting pass (full screen quad)
+ const quadVertices = new Float32Array([
+   -1, -1, 0, 0, 0,
+    1, -1, 0, 1, 0,
+   -1,  1, 0, 0, 1,
+    1,  1, 0, 1, 1
+ ]);
+
+ const quadBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+
+ const lightingVao = gl.createVertexArray();
+ gl.bindVertexArray(lightingVao);
+ gl.enableVertexAttribArray(0);
+ gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 5 * 4, 0);
+ gl.enableVertexAttribArray(1);
+ gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 5 * 4, 3 * 4);
+
+ // Geometry pass shader
+ const geometryVertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(geometryVertexShader, `#version 300 es
+   layout(location = 0) in vec3 aPosition;
+   layout(location = 1) in vec3 aNormal;
+   layout(location = 2) in vec3 aAlbedo;
+   layout(location = 3) in vec3 aInstancePosition;
+   layout(location = 4) in vec3 aInstanceColor;
+   layout(location = 5) in float aInstanceScale;
+
+   out vec3 vPosition;
+   out vec3 vNormal;
+   out vec3 vAlbedo;
+
+   uniform mat4 uProjection;
+   uniform mat4 uView;
+   uniform mat4 uModel;
+
+   void main() {
+     vec4 worldPosition = uModel * vec4(aPosition * aInstanceScale + aInstancePosition, 1.0);
+     gl_Position = uProjection * uView * worldPosition;
+     vPosition = worldPosition.xyz;
+     vNormal = normalize(mat3(uModel) * aNormal);
+     vAlbedo = aAlbedo * aInstanceColor;
+   }
+ `);
+ gl.compileShader(geometryVertexShader);
+
+ const geometryFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(geometryFragmentShader, `#version 300 es
+   precision highp float;
+
+   in vec3 vPosition;
+   in vec3 vNormal;
+   in vec3 vAlbedo;
+
+   layout(location = 0) out vec4 gPosition;
+   layout(location = 1) out vec4 gNormal;
+   layout(location = 2) out vec4 gAlbedo;
+   layout(location = 3) out vec4 gDepth;
+
+   void main() {
+     // Encode position in RGBA (range -1 to 1 -> 0 to 1)
+     gPosition = vec4((vPosition + 1.0) * 0.5, 1.0);
+     // Encode normal in RGBA (range -1 to 1 -> 0 to 1)
+     gNormal = vec4((normalize(vNormal) + 1.0) * 0.5, 1.0);
+     // Albedo is already in 0-1 range
+     gAlbedo = vec4(vAlbedo, 1.0);
+     // Encode depth in alpha channel
+     gDepth = vec4(0.0, 0.0, 0.0, gl_FragCoord.z);
+   }
+ `);
+ gl.compileShader(geometryFragmentShader);
+
+ const geometryProgram = gl.createProgram();
+ gl.attachShader(geometryProgram, geometryVertexShader);
+ gl.attachShader(geometryProgram, geometryFragmentShader);
+ gl.linkProgram(geometryProgram);
+
+ // Lighting pass shader
+ const lightingVertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(lightingVertexShader, `#version 300 es
+   layout(location = 0) in vec3 aPosition;
+   layout(location = 1) in vec2 aTexCoord;
+
+   out vec2 vTexCoord;
+
+   void main() {
+     gl_Position = vec4(aPosition, 1.0);
+     vTexCoord = aTexCoord;
+   }
+ `);
+ gl.compileShader(lightingVertexShader);
+
+ const lightingFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(lightingFragmentShader, `#version 300 es
+   precision highp float;
+
+   in vec2 vTexCoord;
+
+   uniform sampler2D uGPosition;
+   uniform sampler2D uGNormal;
+   uniform sampler2D uGAlbedo;
+   uniform vec3 uLightPosition;
+   uniform vec3 uLightColor;
+   uniform float uLightIntensity;
+
+   out vec4 fragColor;
+
+   void main() {
+     // Decode position from RGBA (0 to 1 -> -1 to 1)
+     vec4 posSample = texture(uGPosition, vTexCoord);
+     vec3 position = posSample.xyz * 2.0 - 1.0;
+
+     // Decode normal from RGBA (0 to 1 -> -1 to 1)
+     vec4 normalSample = texture(uGNormal, vTexCoord);
+     vec3 normal = normalize(normalSample.xyz * 2.0 - 1.0);
+
+     vec3 albedo = texture(uGAlbedo, vTexCoord).xyz;
+
+     vec3 lightDir = normalize(uLightPosition - position);
+     float diffuse = max(dot(normal, lightDir), 0.0);
+     float distance = length(uLightPosition - position);
+     float attenuation = 1.0 / (1.0 + distance * distance);
+
+     fragColor = vec4(albedo * uLightColor * diffuse * uLightIntensity * attenuation, 1.0);
+   }
+ `);
+ gl.compileShader(lightingFragmentShader);
+
+ const lightingProgram = gl.createProgram();
+ gl.attachShader(lightingProgram, lightingVertexShader);
+ gl.attachShader(lightingProgram, lightingFragmentShader);
+ gl.linkProgram(lightingProgram);
+
+ // Composite pass shader
+ const compositeVertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(compositeVertexShader, `#version 300 es
+   layout(location = 0) in vec3 aPosition;
+   layout(location = 1) in vec2 aTexCoord;
+
+   out vec2 vTexCoord;
+
+   void main() {
+     gl_Position = vec4(aPosition, 1.0);
+     vTexCoord = aTexCoord;
+   }
+ `);
+ gl.compileShader(compositeVertexShader);
+
+ const compositeFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(compositeFragmentShader, `#version 300 es
+   precision highp float;
+
+   in vec2 vTexCoord;
+
+   uniform sampler2D uLighting;
+   uniform sampler2D uGAlbedo;
+
+   out vec4 fragColor;
+
+   void main() {
+     vec3 lighting = texture(uLighting, vTexCoord).xyz;
+     vec3 albedo = texture(uGAlbedo, vTexCoord).xyz;
+     fragColor = vec4(lighting + albedo * 0.1, 1.0); // Add ambient
+   }
+ `);
+ gl.compileShader(compositeFragmentShader);
+
+ const compositeProgram = gl.createProgram();
+ gl.attachShader(compositeProgram, compositeVertexShader);
+ gl.attachShader(compositeProgram, compositeFragmentShader);
+ gl.linkProgram(compositeProgram);
+
+ // State poisoning - heavy capability toggling and binding churn
+ for (let i = 0; i < stateChangeCount; i++) {
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.depthFunc(gl.LESS);
+   gl.cullFace(gl.BACK);
+
+   // Texture binding churn
+   gl.activeTexture(gl.TEXTURE0 + (i % 8));
+   gl.bindTexture(gl.TEXTURE_2D, gbufferTextures[i % gbufferTextures.length]);
+
+   // Buffer binding churn
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+
+   // VAO binding churn
+   gl.bindVertexArray(geometryVao);
+   gl.bindVertexArray(lightingVao);
+ }
+
+ // Setup matrices
+ const projection = new Float32Array(16);
+ const view = new Float32Array(16);
+ const model = new Float32Array(16);
+
+ // Perspective projection
+ const fov = Math.PI / 3;
+ const aspect = 1.0;
+ const near = 0.1;
+ const far = 10.0;
+ const f = 1.0 / Math.tan(fov / 2);
+ projection.set([
+   f / aspect, 0, 0, 0,
+   0, f, 0, 0,
+   0, 0, (far + near) / (near - far), -1,
+   0, 0, (2 * far * near) / (near - far), 0
+ ]);
+
+ // View matrix (look at origin from distance)
+ const eye = [0, 0, 3];
+ const center = [0, 0, 0];
+ const up = [0, 1, 0];
+ const z = [eye[0] - center[0], eye[1] - center[1], eye[2] - center[2]];
+ let len = Math.sqrt(z[0]*z[0] + z[1]*z[1] + z[2]*z[2]);
+ z[0] /= len; z[1] /= len; z[2] /= len;
+
+ const x = [up[1]*z[2] - up[2]*z[1], up[2]*z[0] - up[0]*z[2], up[0]*z[1] - up[1]*z[0]];
+ len = Math.sqrt(x[0]*x[0] + x[1]*x[1] + x[2]*x[2]);
+ x[0] /= len; x[1] /= len; x[2] /= len;
+
+ const y = [z[1]*x[2] - z[2]*x[1], z[2]*x[0] - z[0]*x[2], z[0]*x[1] - z[1]*x[0]];
+
+ view.set([
+   x[0], y[0], z[0], 0,
+   x[1], y[1], z[1], 0,
+   x[2], y[2], z[2], 0,
+   -(x[0]*eye[0] + x[1]*eye[1] + x[2]*eye[2]), -(y[0]*eye[0] + y[1]*eye[1] + y[2]*eye[2]), -(z[0]*eye[0] + z[1]*eye[1] + z[2]*eye[2]), 1
+ ]);
+
+ // Identity model matrix
+ model.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+ // Geometry pass
+ gl.bindFramebuffer(gl.FRAMEBUFFER, gbuffer);
+ gl.viewport(0, 0, 256, 256);
+ gl.clearColor(0, 0, 0, 1);
+ gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+ gl.enable(gl.DEPTH_TEST);
+
+ gl.useProgram(geometryProgram);
+ gl.uniformMatrix4fv(gl.getUniformLocation(geometryProgram, 'uProjection'), false, projection);
+ gl.uniformMatrix4fv(gl.getUniformLocation(geometryProgram, 'uView'), false, view);
+ gl.uniformMatrix4fv(gl.getUniformLocation(geometryProgram, 'uModel'), false, model);
+
+ gl.bindVertexArray(geometryVao);
+ gl.drawElementsInstanced(gl.TRIANGLES, sphereIndices.length, gl.UNSIGNED_INT, 0, instanceCount);
+
+ // Lighting passes
+ gl.bindFramebuffer(gl.FRAMEBUFFER, lightingFbo);
+ gl.viewport(0, 0, 256, 256);
+ gl.clearColor(0, 0, 0, 1);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.disable(gl.DEPTH_TEST);
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.ONE, gl.ONE); // Additive blending for multiple lights
+
+ gl.useProgram(lightingProgram);
+
+ // Bind G-buffer textures
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, gbufferTextures[0]);
+ gl.uniform1i(gl.getUniformLocation(lightingProgram, 'uGPosition'), 0);
+ gl.activeTexture(gl.TEXTURE1);
+ gl.bindTexture(gl.TEXTURE_2D, gbufferTextures[1]);
+ gl.uniform1i(gl.getUniformLocation(lightingProgram, 'uGNormal'), 1);
+ gl.activeTexture(gl.TEXTURE2);
+ gl.bindTexture(gl.TEXTURE_2D, gbufferTextures[2]);
+ gl.uniform1i(gl.getUniformLocation(lightingProgram, 'uGAlbedo'), 2);
+
+ for (let pass = 0; pass < lightingPasses; pass++) {
+   // Different lights for each pass
+   const lightPositions = [
+     [2, 2, 2], [-2, 2, 2], [2, -2, 2], [-2, -2, 2],
+     [0, 3, 0], [3, 0, 0], [0, 0, 3], [-3, 0, 0]
+   ];
+   const lightColors = [
+     [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0],
+     [1, 0, 1], [0, 1, 1], [1, 0.5, 0], [0.5, 0.5, 1]
+   ];
+
+   gl.uniform3fv(gl.getUniformLocation(lightingProgram, 'uLightPosition'), lightPositions[pass % lightCount]);
+   gl.uniform3fv(gl.getUniformLocation(lightingProgram, 'uLightColor'), lightColors[pass % lightCount]);
+   gl.uniform1f(gl.getUniformLocation(lightingProgram, 'uLightIntensity'), 2.0);
+
+   gl.bindVertexArray(lightingVao);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+ }
+
+ // Composite pass
+ gl.bindFramebuffer(gl.FRAMEBUFFER, finalFbo);
+ gl.viewport(0, 0, 256, 256);
+ gl.clearColor(0, 0, 0, 1);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.disable(gl.BLEND);
+
+ gl.useProgram(compositeProgram);
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, lightingTexture);
+ gl.uniform1i(gl.getUniformLocation(compositeProgram, 'uLighting'), 0);
+ gl.activeTexture(gl.TEXTURE1);
+ gl.bindTexture(gl.TEXTURE_2D, gbufferTextures[2]); // Albedo
+ gl.uniform1i(gl.getUniformLocation(compositeProgram, 'uGAlbedo'), 1);
+
+ gl.bindVertexArray(lightingVao);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // Final render to canvas
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.viewport(0, 0, 256, 256);
+ gl.clearColor(0.1, 0.1, 0.1, 1);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+
+ // Simple quad shader for final display
+ const displayVertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(displayVertexShader, `#version 300 es
+   layout(location = 0) in vec3 aPosition;
+   layout(location = 1) in vec2 aTexCoord;
+
+   out vec2 vTexCoord;
+
+   void main() {
+     gl_Position = vec4(aPosition, 1.0);
+     vTexCoord = aTexCoord;
+   }
+ `);
+ gl.compileShader(displayVertexShader);
+
+ const displayFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(displayFragmentShader, `#version 300 es
+   precision highp float;
+
+   in vec2 vTexCoord;
+
+   uniform sampler2D uFinal;
+
+   out vec4 fragColor;
+
+   void main() {
+     fragColor = texture(uFinal, vTexCoord);
+   }
+ `);
+ gl.compileShader(displayFragmentShader);
+
+ const displayProgram = gl.createProgram();
+ gl.attachShader(displayProgram, displayVertexShader);
+ gl.attachShader(displayProgram, displayFragmentShader);
+ gl.linkProgram(displayProgram);
+
+ gl.useProgram(displayProgram);
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, finalTexture);
+ gl.uniform1i(gl.getUniformLocation(displayProgram, 'uFinal'), 0);
+
+ gl.bindVertexArray(lightingVao);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // ==========================================
+ // DEFERRED RENDERING IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+ throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

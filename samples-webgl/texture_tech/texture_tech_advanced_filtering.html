@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+ throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ const FILTERING_TEXTURE_SIZE = 64;
+ const VERTEX_COUNT = 1024;
+ const FILTER_KERNEL_SIZE = 8;
+ const LOD_BIAS_MAX = 2.0;
+ const STATE_CHANGE_COUNT = 25;
+ const TEXTURE_BINDING_CYCLES = 8;
+ const RESOURCE_REBIND_COUNT = 4;
+ const SHADER_COMPLEXITY = 4;
+
+ const vertexShaderSource = `#version 300 es
+in vec2 aPosition;
+in vec2 aTexCoord;
+out vec2 vTexCoord;
+out vec2 vScreenPos;
+
+void main() {
+    vTexCoord = aTexCoord;
+    vScreenPos = aPosition;
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+}
+`;
+
+ const fragmentShaderSource = `#version 300 es
+precision highp float;
+in vec2 vTexCoord;
+in vec2 vScreenPos;
+out vec4 fragColor;
+
+uniform sampler2D uTexture;
+uniform vec2 uTextureSize;
+uniform int uFilteringMode;
+uniform float uLodBias;
+uniform float uFilterStrength;
+uniform vec4 uFilterParams;
+
+vec4 sampleNearest(sampler2D tex, vec2 uv) {
+    return textureLod(tex, uv, 0.0);
+}
+
+vec4 sampleBilinear(sampler2D tex, vec2 uv) {
+    return texture(tex, uv);
+}
+
+vec4 sampleLodExplicit(sampler2D tex, vec2 uv, float lod) {
+    return textureLod(tex, uv, lod);
+}
+
+vec4 sampleCustomKernel(sampler2D tex, vec2 uv, vec2 texSize, float kernelSize) {
+    vec4 sum = vec4(0.0);
+    float weightSum = 0.0;
+    vec2 pixelSize = 1.0 / texSize;
+
+    for(float y = -kernelSize; y <= kernelSize; y += 1.0) {
+        for(float x = -kernelSize; x <= kernelSize; x += 1.0) {
+            vec2 offset = vec2(x, y) * pixelSize;
+            float weight = 1.0 / (1.0 + length(vec2(x, y)));
+            sum += texture(tex, uv + offset) * weight;
+            weightSum += weight;
+        }
+    }
+
+    return sum / weightSum;
+}
+
+vec4 sampleGradientFilter(sampler2D tex, vec2 uv) {
+    vec2 ddx = dFdx(uv);
+    vec2 ddy = dFdy(uv);
+    return textureGrad(tex, uv, ddx, ddy);
+}
+
+vec4 sampleAnisotropicLike(sampler2D tex, vec2 uv, float anisotropy) {
+    vec2 ddx = dFdx(uv) * anisotropy;
+    vec2 ddy = dFdy(uv) * anisotropy;
+    return textureGrad(tex, uv, ddx, ddy);
+}
+
+void main() {
+    vec2 uv = vTexCoord;
+    vec4 color = vec4(0.0);
+
+    // Multi-pass filtering demonstration
+    if (uFilteringMode == 0) {
+        // Nearest neighbor
+        color = sampleNearest(uTexture, uv);
+    } else if (uFilteringMode == 1) {
+        // Bilinear
+        color = sampleBilinear(uTexture, uv);
+    } else if (uFilteringMode == 2) {
+        // Explicit LOD control
+        float lod = length(vScreenPos) * uLodBias;
+        color = sampleLodExplicit(uTexture, uv, lod);
+    } else if (uFilteringMode == 3) {
+        // Custom kernel filter
+        color = sampleCustomKernel(uTexture, uv, uTextureSize, uFilterStrength);
+    } else if (uFilteringMode == 4) {
+        // Gradient-based filtering
+        color = sampleGradientFilter(uTexture, uv);
+    } else if (uFilteringMode == 5) {
+        // Anisotropic-like filtering
+        color = sampleAnisotropicLike(uTexture, uv, uFilterParams.x);
+    }
+
+    // Apply complex mathematical transformations for visual complexity
+    float dist = length(vScreenPos);
+    color.rgb *= sin(dist * 8.0 + uFilterParams.y) * 0.5 + 0.5;
+    color.rgb += cos(uv.x * 16.0 + uFilterParams.z) * 0.1;
+    color.rgb += sin(uv.y * 12.0 + uFilterParams.w) * 0.1;
+
+    fragColor = color;
+}
+`;
+
+ // Create shaders
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+     throw new Error('Vertex shader compilation failed: ' + gl.getShaderInfoLog(vertexShader));
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+     throw new Error('Fragment shader compilation failed: ' + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+     throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+ }
+ gl.useProgram(program);
+
+ // Create procedural texture data
+ const textureData = new Uint8Array(FILTERING_TEXTURE_SIZE * FILTERING_TEXTURE_SIZE * 4);
+ for (let i = 0; i < textureData.length; i += 4) {
+     const x = (i / 4) % FILTERING_TEXTURE_SIZE;
+     const y = Math.floor((i / 4) / FILTERING_TEXTURE_SIZE);
+     const u = x / FILTERING_TEXTURE_SIZE;
+     const v = y / FILTERING_TEXTURE_SIZE;
+
+     // Create checkerboard pattern with high frequency details
+     const check = ((x >> 2) + (y >> 2)) % 2;
+     const noise = Math.sin(u * 32.0) * Math.cos(v * 24.0);
+
+     textureData[i] = (check * 255 + noise * 127) & 255;     // R
+     textureData[i + 1] = ((1 - check) * 255 + noise * 127) & 255; // G
+     textureData[i + 2] = (noise * 255) & 255;               // B
+     textureData[i + 3] = 255;                               // A
+ }
+
+ // Create and setup texture
+ const texture = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, texture);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, FILTERING_TEXTURE_SIZE, FILTERING_TEXTURE_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+ gl.generateMipmap(gl.TEXTURE_2D);
+
+ // Create vertex data
+ const vertices = new Float32Array(VERTEX_COUNT * 4); // position + texcoord
+ for (let i = 0; i < VERTEX_COUNT; i++) {
+     const angle = (i / VERTEX_COUNT) * Math.PI * 2;
+     const radius = Math.random() * 0.8 + 0.1;
+     const x = Math.cos(angle) * radius;
+     const y = Math.sin(angle) * radius;
+
+     vertices[i * 4] = x;     // position x
+     vertices[i * 4 + 1] = y; // position y
+     vertices[i * 4 + 2] = (x + 1.0) * 0.5; // texcoord u
+     vertices[i * 4 + 3] = (y + 1.0) * 0.5; // texcoord v
+ }
+
+ // Create buffers
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+ const positionLoc = gl.getAttribLocation(program, 'aPosition');
+ const texCoordLoc = gl.getAttribLocation(program, 'aTexCoord');
+
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 16, 8);
+ gl.enableVertexAttribArray(texCoordLoc);
+
+ // Get uniform locations
+ const textureLoc = gl.getUniformLocation(program, 'uTexture');
+ const textureSizeLoc = gl.getUniformLocation(program, 'uTextureSize');
+ const filteringModeLoc = gl.getUniformLocation(program, 'uFilteringMode');
+ const lodBiasLoc = gl.getUniformLocation(program, 'uLodBias');
+ const filterStrengthLoc = gl.getUniformLocation(program, 'uFilterStrength');
+ const filterParamsLoc = gl.getUniformLocation(program, 'uFilterParams');
+
+ // State poisoning - heavy capability and parameter changes
+ for (let cycle = 0; cycle < STATE_CHANGE_COUNT; cycle++) {
+     // Random capability toggling
+     gl.enable(gl.BLEND);
+     gl.disable(gl.BLEND);
+     gl.enable(gl.CULL_FACE);
+     gl.disable(gl.CULL_FACE);
+     gl.enable(gl.DEPTH_TEST);
+     gl.disable(gl.DEPTH_TEST);
+     gl.enable(gl.SCISSOR_TEST);
+     gl.disable(gl.SCISSOR_TEST);
+
+     // Blend state changes
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+     gl.blendFunc(gl.ONE, gl.ONE);
+     gl.blendEquation(gl.FUNC_ADD);
+     gl.blendEquation(gl.FUNC_SUBTRACT);
+
+     // Texture binding churn
+     for (let bindCycle = 0; bindCycle < TEXTURE_BINDING_CYCLES; bindCycle++) {
+         gl.activeTexture(gl.TEXTURE0 + (bindCycle % 8));
+         gl.bindTexture(gl.TEXTURE_2D, texture);
+         gl.bindTexture(gl.TEXTURE_2D, null);
+     }
+
+     // Viewport changes
+     gl.viewport(0, 0, 256, 256);
+     gl.viewport(cycle % 16, cycle % 16, 256 - cycle % 16, 256 - cycle % 16);
+
+     // Buffer binding churn
+     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+     gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+     // Scissor changes
+     gl.scissor(0, 0, 256, 256);
+     gl.scissor(cycle % 32, cycle % 32, 256 - cycle % 32, 256 - cycle % 32);
+ }
+
+ // Final setup
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, texture);
+ gl.uniform1i(textureLoc, 0);
+ gl.uniform2f(textureSizeLoc, FILTERING_TEXTURE_SIZE, FILTERING_TEXTURE_SIZE);
+ gl.uniform1i(filteringModeLoc, 2); // Start with explicit LOD
+ gl.uniform1f(lodBiasLoc, 1.0);
+ gl.uniform1f(filterStrengthLoc, FILTER_KERNEL_SIZE);
+ gl.uniform4f(filterParamsLoc, 2.0, Math.PI * 0.5, Math.PI, Math.PI * 1.5);
+
+ // Render multiple filtering modes in sequence
+ for (let mode = 0; mode < 6; mode++) {
+     gl.uniform1i(filteringModeLoc, mode);
+     gl.uniform1f(lodBiasLoc, (mode + 1) * 0.3);
+     gl.uniform4f(filterParamsLoc, 1.0 + mode * 0.5, Math.PI * mode * 0.2, Math.PI * mode * 0.3, Math.PI * mode * 0.4);
+
+     // More state poisoning between renders
+     for (let i = 0; i < RESOURCE_REBIND_COUNT; i++) {
+         gl.bindTexture(gl.TEXTURE_2D, texture);
+         gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+         gl.useProgram(program);
+     }
+
+     gl.drawArrays(gl.TRIANGLE_FAN, 0, VERTEX_COUNT);
+
+     // Additional state changes
+     gl.enable(gl.BLEND);
+     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+     gl.disable(gl.BLEND);
+ }
+
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+     throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ console.error(err);
+});
+</script>
+</body>
+</html>

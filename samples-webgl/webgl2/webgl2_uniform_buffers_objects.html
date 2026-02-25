@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: No extensions needed for core WebGL2 UBO feature
+const REQUIRED_EXTENSIONS = [
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2');
+ if (!gl) throw new Error("WebGL2 not supported - UBOs require WebGL2");
+
+ // 1. EXTENSION GATING (none needed for this core WebGL2 feature)
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS (none needed)
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // UBO IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // FUZZING VARIABLES: Mix inline literals with parameterized variables
+ const bufferSize = 1024; // Parameterized buffer size
+ const blockIndex = 0; // Block index for binding
+ const bindingPoint = 0; // Binding point for UBO
+ const uniformBlockOffset = 0; // Offset within uniform block
+
+ // Create shared UBO with uniform data structure
+ const uboData = new Float32Array(64); // 64 floats = 256 bytes
+ for (let i = 0; i < 64; i++) {
+   uboData[i] = Math.sin(i * 0.1) * Math.cos(i * 0.05) + 0.5; // Complex mathematical data
+ }
+
+ // Create UBO buffer
+ const uboBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+ gl.bufferData(gl.UNIFORM_BUFFER, uboData, gl.STATIC_DRAW);
+ gl.bindBufferBase(gl.UNIFORM_BUFFER, bindingPoint, uboBuffer);
+
+ // Simple vertex and fragment shaders using UBO
+ const vertexShaderSource = `#version 300 es
+layout(std140) uniform SharedData {
+  vec4 colorPrimary;
+  vec4 colorSecondary;
+  vec2 offset;
+  float scale;
+  float rotation;
+  vec4 params[4];
+};
+
+in vec2 a_position;
+in vec2 a_texCoord;
+out vec2 v_texCoord;
+out vec4 v_color;
+
+void main() {
+  vec2 pos = a_position * scale + offset;
+  float cosR = cos(rotation);
+  float sinR = sin(rotation);
+  pos = vec2(pos.x * cosR - pos.y * sinR, pos.x * sinR + pos.y * cosR);
+
+  gl_Position = vec4(pos, 0.0, 1.0);
+  v_texCoord = a_texCoord;
+  v_color = mix(colorPrimary, colorSecondary, a_position.x * 0.5 + 0.5);
+}
+`;
+
+ const fragmentShaderSource = `#version 300 es
+precision highp float;
+
+layout(std140) uniform SharedData {
+  vec4 colorPrimary;
+  vec4 colorSecondary;
+  vec2 offset;
+  float scale;
+  float rotation;
+  vec4 params[4];
+};
+
+in vec2 v_texCoord;
+in vec4 v_color;
+out vec4 fragColor;
+
+void main() {
+  float intensity = sin(v_texCoord.x * params[0].x + params[0].y) *
+                   cos(v_texCoord.y * params[0].z + params[0].w);
+  fragColor = v_color * intensity;
+}
+`;
+
+ // Create and compile shaders
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   const info = gl.getShaderInfoLog(vertexShader);
+   throw new Error(`Vertex shader compilation failed: ${info}`);
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   const info = gl.getShaderInfoLog(fragmentShader);
+   throw new Error(`Fragment shader compilation failed: ${info}`);
+ }
+
+ // Create program
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   const info = gl.getProgramInfoLog(program);
+   throw new Error(`Program linking failed: ${info}`);
+ }
+
+ // Bind uniform block
+ const blockIndexFound = gl.getUniformBlockIndex(program, 'SharedData');
+ if (blockIndexFound === gl.INVALID_INDEX) {
+   throw new Error(`Uniform block 'SharedData' not found in program`);
+ }
+ gl.uniformBlockBinding(program, blockIndexFound, bindingPoint);
+
+ // Create geometry (simple quad)
+ const positions = new Float32Array([
+   -0.8, -0.8,
+    0.8, -0.8,
+   -0.8,  0.8,
+    0.8,  0.8
+ ]);
+ const texCoords = new Float32Array([
+   0.0, 0.0,
+   1.0, 0.0,
+   0.0, 1.0,
+   1.0, 1.0
+ ]);
+
+ const positionBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+ const texCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+
+ // STATE POISONING: 50+ state changes for fragile state machine
+ const stateChangeCount = 25;
+ for (let i = 0; i < stateChangeCount; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.SCISSOR_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+
+   // Viewport changes
+   gl.viewport(0, 0, 256, 256);
+   gl.viewport(i % 10, i % 10, 256 - i % 10, 256 - i % 10);
+
+   // Blend state changes
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendFunc(gl.ONE, gl.ONE);
+   gl.blendEquation(gl.FUNC_ADD);
+   gl.blendEquation(gl.FUNC_SUBTRACT);
+
+   // Buffer binding churn
+   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+   gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+ }
+
+ // Use program and set up attributes
+ gl.useProgram(program);
+
+ const positionLoc = gl.getAttribLocation(program, 'a_position');
+ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+ const texCoordLoc = gl.getAttribLocation(program, 'a_texCoord');
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.enableVertexAttribArray(texCoordLoc);
+ gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+
+ // Update UBO data with dynamic values
+ uboData[0] = 0.8; // colorPrimary.r
+ uboData[1] = 0.2; // colorPrimary.g
+ uboData[2] = 0.4; // colorPrimary.b
+ uboData[3] = 1.0; // colorPrimary.a
+
+ uboData[4] = 0.2; // colorSecondary.r
+ uboData[5] = 0.8; // colorSecondary.g
+ uboData[6] = 0.6; // colorSecondary.b
+ uboData[7] = 1.0; // colorSecondary.a
+
+ uboData[8] = 0.0; // offset.x
+ uboData[9] = 0.0; // offset.y
+ uboData[10] = 0.9; // scale
+ uboData[11] = 0.3; // rotation
+
+ // Fill params with interesting values
+ for (let p = 0; p < 4; p++) {
+   uboData[12 + p * 4] = 5.0 + p * 2.0; // params[p].x
+   uboData[13 + p * 4] = 1.0 + p * 0.5; // params[p].y
+   uboData[14 + p * 4] = 3.0 + p * 1.5; // params[p].z
+   uboData[15 + p * 4] = 0.5 + p * 0.3; // params[p].w
+ }
+
+ // Update UBO buffer
+ gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+ gl.bufferSubData(gl.UNIFORM_BUFFER, 0, uboData);
+
+ // Draw the quad
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+ // Final state poisoning
+ for (let i = 0; i < 10; i++) {
+   gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+   gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+   gl.bindBufferBase(gl.UNIFORM_BUFFER, bindingPoint, uboBuffer);
+   gl.bindBufferBase(gl.UNIFORM_BUFFER, bindingPoint, null);
+ }
+
+ // ==========================================
+ // UBO IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+ throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ console.log(err.message); // Log the detailed error message for test runner detection
+ console.error(err); // Allowed for debugging, but DOM update is primary signal
+});
+</script>
+</body>
+</html>

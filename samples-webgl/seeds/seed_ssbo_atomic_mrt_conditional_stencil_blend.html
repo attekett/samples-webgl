@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 required");
+
+    // Biomass constants for dense fuzzing
+    const UBO_SIZE = 1024;
+    const MRT_COUNT = 3;
+    const TEXTURE_ARRAY_LAYERS = 8;
+    const STENCIL_OPS_COUNT = 8;
+    const BLEND_MODES_COUNT = 6;
+
+    // Aggressive state setup - lots of binding/unbinding cycles
+    gl.viewport(0, 0, 256, 256);
+    gl.clearColor(0.1, 0.2, 0.3, 1.0);
+    gl.clearDepth(1.0);
+    gl.clearStencil(0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+    // Enable all the things aggressively
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.STENCIL_TEST);
+    gl.enable(gl.BLEND);
+    gl.depthFunc(gl.LEQUAL);
+    gl.stencilFunc(gl.ALWAYS, 1, 0xFF);
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+
+    // 1. CREATE UBOs - uniform buffer objects (core WebGL2)
+    const uboData = new Float32Array(256 * 4); // 256 vec4s = 1024 floats
+    for (let i = 0; i < uboData.length; i++) uboData[i] = Math.sin(i * 0.01) * Math.cos(i * 0.007);
+
+    const ubo1 = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, ubo1);
+    gl.bufferData(gl.UNIFORM_BUFFER, uboData, gl.DYNAMIC_DRAW);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo1);
+
+    const ubo2 = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, ubo2);
+    gl.bufferData(gl.UNIFORM_BUFFER, new Float32Array(256 * 4), gl.DYNAMIC_DRAW);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, ubo2);
+
+    // 2. CREATE TEXTURE ARRAYS (core WebGL2)
+    const textureArray = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+
+    const texData = new Uint8Array(64 * 64 * TEXTURE_ARRAY_LAYERS * 4);
+    for (let i = 0; i < texData.length; i++) texData[i] = (i * 7) % 256;
+
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 64, 64, TEXTURE_ARRAY_LAYERS, 0, gl.RGBA, gl.UNSIGNED_BYTE, texData);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+
+    // 3. CREATE MRT FRAMEBUFFER with renderable formats
+    const mrtFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFbo);
+
+    const mrtTextures = [];
+    const mrtFormats = [gl.RGBA8, gl.RGBA8, gl.RGBA8];
+
+    for (let i = 0; i < MRT_COUNT; i++) {
+        const tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1 + i);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, mrtFormats[i], 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, tex, 0);
+        mrtTextures.push(tex);
+    }
+
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+
+    // 4. CREATE OCCLUSION QUERIES
+    const occlusionQuery = gl.createQuery();
+
+    // 5. CREATE STENCIL BUFFER
+    const stencilTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, stencilTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH24_STENCIL8, 256, 256, 0, gl.DEPTH_STENCIL, gl.UNSIGNED_INT_24_8, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, stencilTex, 0);
+
+    // 6. SETUP COMPLEX BLEND MODES
+    const blendEquations = [gl.FUNC_ADD, gl.FUNC_SUBTRACT, gl.FUNC_REVERSE_SUBTRACT];
+    const blendFuncs = [
+        [gl.ONE, gl.ZERO], [gl.SRC_COLOR, gl.DST_COLOR], [gl.ONE_MINUS_SRC_COLOR, gl.ONE],
+        [gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA], [gl.DST_ALPHA, gl.ONE_MINUS_DST_ALPHA]
+    ];
+
+    // 7. CREATE SHADERS with UBO and texture array access
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, `#version 300 es
+    layout(location=0) in vec2 position;
+    layout(location=1) in vec3 color;
+
+    layout(std140) uniform UBO1 { vec4 data[256]; };
+    layout(std140) uniform UBO2 { vec4 floatData[256]; };
+
+    uniform float time;
+    uniform int instanceId;
+
+    out vec3 vColor;
+    out vec2 vTexCoord;
+    out vec3 vData;
+    flat out int vInstanceId;
+
+    void main() {
+        int idx = (instanceId + gl_InstanceID) % 256;
+
+        // Complex UBO interactions
+        vec4 val = data[idx] + floatData[idx];
+        vData = val.xyz;
+        vInstanceId = instanceId;
+
+        vColor = color + val.xyz * 0.1;
+        vTexCoord = position * 0.5 + 0.5;
+        gl_Position = vec4(position + sin(time + float(instanceId)) * 0.1, 0.0, 1.0);
+    }`);
+
+    gl.compileShader(vertexShader);
+    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+        throw new Error("Vertex shader compilation failed: " + gl.getShaderInfoLog(vertexShader));
+    }
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, `#version 300 es
+    precision highp float;
+
+    layout(std140) uniform UBO1 { vec4 data[256]; };
+    layout(std140) uniform UBO2 { vec4 floatData[256]; };
+
+    uniform highp sampler2DArray texArray;
+    uniform float time;
+    flat in int vInstanceId;
+
+    in vec3 vColor;
+    in vec2 vTexCoord;
+    in vec3 vData;
+
+    layout(location=0) out vec4 color0;
+    layout(location=1) out vec4 color1;
+    layout(location=2) out vec4 color2;
+
+    void main() {
+        int idx = (vInstanceId + int(gl_FragCoord.x)) % 256;
+
+        // Complex UBO and texture interactions
+        vec4 uboVal = data[idx] * floatData[idx];
+        vec4 texVal = texture(texArray, vec3(vTexCoord, float(idx % ${TEXTURE_ARRAY_LAYERS})));
+
+        // MRT outputs with different computations
+        color0 = vec4(vColor + uboVal.xyz, 1.0);
+        color1 = texVal * vec4(sin(time), cos(time), sin(time * 1.3), 1.0);
+        color2 = vec4(vData + texVal.xyz, uboVal.w);
+    }`);
+
+    gl.compileShader(fragmentShader);
+    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+        throw new Error("Fragment shader compilation failed: " + gl.getShaderInfoLog(fragmentShader));
+    }
+
+    // 8. CREATE PROGRAM and link
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        throw new Error("Program linking failed: " + gl.getProgramInfoLog(program));
+    }
+
+    gl.useProgram(program);
+
+    // Bind UBO blocks AFTER linking
+    const ubo1Index = gl.getUniformBlockIndex(program, "UBO1");
+    const ubo2Index = gl.getUniformBlockIndex(program, "UBO2");
+    if (ubo1Index !== gl.INVALID_INDEX) gl.uniformBlockBinding(program, ubo1Index, 0);
+    if (ubo2Index !== gl.INVALID_INDEX) gl.uniformBlockBinding(program, ubo2Index, 1);
+
+    // Set uniforms
+    gl.uniform1i(gl.getUniformLocation(program, "texArray"), 0);
+    gl.uniform1f(gl.getUniformLocation(program, "time"), 0.0);
+
+    // 9. CREATE VERTEX DATA with instancing
+    const vertices = new Float32Array([
+        -0.8, -0.8, 1.0, 0.0, 0.0,
+         0.8, -0.8, 0.0, 1.0, 0.0,
+         0.0,  0.8, 0.0, 0.0, 1.0
+    ]);
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 20, 0);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 20, 8);
+    gl.enableVertexAttribArray(0);
+    gl.enableVertexAttribArray(1);
+
+    // 10. AGGRESSIVE STATE CHANGES - biomass generation
+    for (let cycle = 0; cycle < 5; cycle++) {
+        // UBO binding churn
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo1);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, ubo2);
+
+        // Texture binding changes
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+
+        // MRT binding changes
+        gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+
+        // Stencil operations cycle
+        const stencilOps = [gl.KEEP, gl.ZERO, gl.REPLACE, gl.INCR, gl.DECR, gl.INVERT, gl.INCR_WRAP, gl.DECR_WRAP];
+        gl.stencilOp(stencilOps[cycle % STENCIL_OPS_COUNT], gl.KEEP, gl.REPLACE);
+        gl.stencilFunc(gl.EQUAL, cycle % 8, 0xFF);
+
+        // Blend mode cycling
+        gl.blendEquation(blendEquations[cycle % blendEquations.length]);
+        const funcs = blendFuncs[cycle % blendFuncs.length];
+        gl.blendFunc(funcs[0], funcs[1]);
+
+        // Query operations
+        if (cycle === 0) {
+            gl.beginQuery(gl.ANY_SAMPLES_PASSED, occlusionQuery);
+        }
+
+        // Update uniform
+        gl.uniform1f(gl.getUniformLocation(program, "time"), cycle * 0.1);
+        gl.uniform1i(gl.getUniformLocation(program, "instanceId"), cycle);
+
+        // Actual draw with instancing
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, 10 + cycle);
+
+        if (cycle === 0) {
+            gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        }
+
+        // More binding churn
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    }
+
+    // 11. READ QUERY RESULT and do second pass
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    // Second pass - read from MRT textures
+    const readbackProgram = gl.createProgram();
+    const readbackVS = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(readbackVS, `#version 300 es
+    layout(location=0) in vec2 position;
+    out vec2 vTexCoord;
+    void main() {
+        vTexCoord = position * 0.5 + 0.5;
+        gl_Position = vec4(position, 0.0, 1.0);
+    }`);
+
+    gl.compileShader(readbackVS);
+    if (!gl.getShaderParameter(readbackVS, gl.COMPILE_STATUS)) {
+        throw new Error("Readback VS compilation failed: " + gl.getShaderInfoLog(readbackVS));
+    }
+
+    const readbackFS = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(readbackFS, `#version 300 es
+    precision highp float;
+    uniform sampler2D tex0;
+    uniform sampler2D tex1;
+    uniform sampler2D tex2;
+    in vec2 vTexCoord;
+    out vec4 fragColor;
+    void main() {
+        vec4 c0 = texture(tex0, vTexCoord);
+        vec4 c1 = texture(tex1, vTexCoord);
+        vec4 c2 = texture(tex2, vTexCoord);
+        fragColor = (c0 + c1 + c2) * 0.33;
+    }`);
+
+    gl.compileShader(readbackFS);
+    if (!gl.getShaderParameter(readbackFS, gl.COMPILE_STATUS)) {
+        throw new Error("Readback FS compilation failed: " + gl.getShaderInfoLog(readbackFS));
+    }
+
+    gl.attachShader(readbackProgram, readbackVS);
+    gl.attachShader(readbackProgram, readbackFS);
+    gl.linkProgram(readbackProgram);
+
+    if (!gl.getProgramParameter(readbackProgram, gl.LINK_STATUS)) {
+        throw new Error("Readback program linking failed: " + gl.getProgramInfoLog(readbackProgram));
+    }
+
+    gl.useProgram(readbackProgram);
+
+    // Bind MRT textures for reading
+    for (let i = 0; i < MRT_COUNT; i++) {
+        gl.activeTexture(gl.TEXTURE0 + i);
+        gl.bindTexture(gl.TEXTURE_2D, mrtTextures[i]);
+        gl.uniform1i(gl.getUniformLocation(readbackProgram, `tex${i}`), i);
+    }
+
+    // Draw final result to canvas
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // Final error check
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) throw new Error("WebGL Error: " + error);
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

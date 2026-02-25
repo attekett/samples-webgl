@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION
+        const REQUIRED_EXTENSIONS = []; // Transform Feedback and RASTERIZER_DISCARD are core in WebGL2
+
+        // FUZZING PARAMETERS
+        const TAPE_LENGTH = 128;
+        const ITERATIONS = 128;
+        const STATE_CHANGE_COUNT = 50;
+        const INITIAL_PATTERN_SEED = 0.5;
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2');
+            if (!gl) throw new Error("WebGL2 required for Transform Feedback");
+
+            // 1. EXTENSION GATING
+            const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+            if (missingExtensions.length > 0) {
+                throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+            }
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION STARTS HERE
+            // ==========================================
+
+            // Refactored to use FLOAT to avoid integer attribute issues
+            const collatzVsSource = `#version 300 es
+    layout(location=0) in float a_number;
+    
+    out float v_nextNumber;
+    
+    void main() {
+        float n = a_number;
+        
+        // Collatz Logic with Floats
+        if (mod(n, 2.0) == 0.0) {
+            n = n / 2.0;
+        } else {
+            n = 3.0 * n + 1.0;
+        }
+        
+        v_nextNumber = n;
+    }`;
+
+            const simulateFsSource = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    void main() {
+        // Dummy output to satisfy pipeline if RASTERIZER_DISCARD is off
+        outColor = vec4(0.0, 0.0, 0.0, 0.0);
+    }`;
+
+            // Visualization Shader
+            const drawVsSource = `#version 300 es
+    layout(location=0) in float a_number;
+    
+    void main() {
+        float x = (float(gl_VertexID) / ${TAPE_LENGTH}.0) * 2.0 - 1.0;
+        float y = (a_number / 1000.0) * 2.0 - 1.0;
+        
+        gl_Position = vec4(x, y, 0.0, 1.0);
+        gl_PointSize = 4.0;
+    }`;
+
+            const drawFsSource = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    void main() {
+        outColor = vec4(1.0, 0.2, 0.2, 1.0);
+    }`;
+
+            function createTransformFeedbackProgram(vsSrc, varyings) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc);
+                gl.compileShader(vs);
+                if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(vs));
+
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, simulateFsSource);
+                gl.compileShader(fs);
+
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+
+                gl.transformFeedbackVaryings(prog, varyings, gl.INTERLEAVED_ATTRIBS);
+
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+                return prog;
+            }
+
+            function createDrawProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc);
+                gl.compileShader(vs);
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc);
+                gl.compileShader(fs);
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                return prog;
+            }
+
+            const simulateProgram = createTransformFeedbackProgram(collatzVsSource, ["v_nextNumber"]);
+            const drawProgram = createDrawProgram(drawVsSource, drawFsSource);
+
+            // Setup Buffers
+            const bufferA = gl.createBuffer();
+            const bufferB = gl.createBuffer();
+
+            // Initial Data: Floats
+            const initialData = new Float32Array(TAPE_LENGTH);
+            for (let i = 0; i < TAPE_LENGTH; i++) {
+                initialData[i] = i + 1; // Start with different seeds
+            }
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, bufferA);
+            gl.bufferData(gl.ARRAY_BUFFER, initialData, gl.DYNAMIC_COPY);
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, bufferB);
+            gl.bufferData(gl.ARRAY_BUFFER, initialData.byteLength, gl.DYNAMIC_COPY);
+
+            // Transform Feedback Object
+            const tf = gl.createTransformFeedback();
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+
+            // State Variables
+            let currentBuffer = bufferA; // Input
+            let nextBuffer = bufferB;    // Output
+
+            function poisonState() {
+                // Disabled poison for debug
+            }
+
+            // MAIN LOOP
+            gl.clearColor(0.1, 0.1, 0.1, 1.0);
+
+            // Check error before loop
+            if (gl.getError() !== gl.NO_ERROR) throw new Error("Pre-loop Error");
+
+            for (let i = 0; i < ITERATIONS; i++) {
+                // 1. COMPUTE PASS
+                gl.useProgram(simulateProgram);
+                gl.bindVertexArray(null); // Unbind VAO (Manual Binding)
+
+                // Manual Binding
+                gl.bindBuffer(gl.ARRAY_BUFFER, currentBuffer);
+                gl.enableVertexAttribArray(0);
+                gl.vertexAttribPointer(0, 1, gl.FLOAT, false, 0, 0);
+
+                // TF RE-ENABLED
+                gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, nextBuffer);
+
+                // Note: RASTERIZER_DISCARD disabled to avoid potential driver bugs
+                // gl.enable(gl.RASTERIZER_DISCARD); 
+
+                gl.beginTransformFeedback(gl.POINTS);
+
+                gl.drawArrays(gl.POINTS, 0, TAPE_LENGTH);
+                const drawErr = gl.getError();
+                if (drawErr !== gl.NO_ERROR) throw new Error("DrawArrays Error at " + i + " code: " + drawErr);
+
+                gl.endTransformFeedback();
+
+                // gl.disable(gl.RASTERIZER_DISCARD);
+                gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+
+                poisonState();
+
+                // Ping-Pong
+                let temp = currentBuffer;
+                currentBuffer = nextBuffer;
+                nextBuffer = temp;
+            }
+
+            // 2. VISUALIZATION PASS
+            // Render the final numbers
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.useProgram(drawProgram);
+            gl.bindVertexArray(null);
+            gl.bindBuffer(gl.ARRAY_BUFFER, currentBuffer);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 1, gl.FLOAT, false, 0, 0);
+            gl.drawArrays(gl.POINTS, 0, TAPE_LENGTH);
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION ENDS HERE
+            // ==========================================
+
+            // 3. ERROR CHECKING
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

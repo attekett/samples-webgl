@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+// CONFIGURATION: Define required extensions here - none needed for shader compilation errors
+const REQUIRED_EXTENSIONS = [
+];
+
+// Shader compilation error test configuration
+const SHADER_ERROR_COUNT = 8;
+const VERTEX_SHADER_ATTEMPTS = 4;
+const FRAGMENT_SHADER_ATTEMPTS = 4;
+const STATE_CHANGE_COUNT = 25;
+const RESOURCE_BINDING_CYCLES = 4;
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ // WEBGL2-ONLY POLICY: Request WebGL2 context directly - no WebGL1 fallback
+ const gl = canvas.getContext('webgl2');
+ if (!gl) {
+   throw new Error("WebGL2 not supported - required for all tests");
+ }
+
+ // 1. EXTENSION GATING - no extensions required for this test
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+   throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS - none needed
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // Initialize state poisoning counters
+ let stateChangesPerformed = 0;
+ let bindingCycles = 0;
+
+ // Create shader compilation test function
+ function testShaderCompilation(vertexSource, fragmentSource, testIndex) {
+   // State poisoning: Bind/unbind resources before shader operations
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+   gl.bindTexture(gl.TEXTURE_2D, null);
+   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+   stateChangesPerformed += 4;
+
+   // Create vertex shader with intentional compilation errors
+   const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+   gl.shaderSource(vertexShader, vertexSource);
+   gl.compileShader(vertexShader);
+
+   // Check compilation status
+   const vertexCompileStatus = gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS);
+   const vertexInfoLog = gl.getShaderInfoLog(vertexShader);
+
+   // State poisoning: Enable/disable capabilities between shader operations
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   stateChangesPerformed += 4;
+
+   // Create fragment shader with intentional compilation errors
+   const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+   gl.shaderSource(fragmentShader, fragmentSource);
+   gl.compileShader(fragmentShader);
+
+   // Check compilation status
+   const fragmentCompileStatus = gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS);
+   const fragmentInfoLog = gl.getShaderInfoLog(fragmentShader);
+
+   // State poisoning: More capability churn
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.SCISSOR_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+   stateChangesPerformed += 4;
+
+   // Create program and attempt linking
+   const program = gl.createProgram();
+   gl.attachShader(program, vertexShader);
+   gl.attachShader(program, fragmentShader);
+   gl.linkProgram(program);
+
+   const linkStatus = gl.getProgramParameter(program, gl.LINK_STATUS);
+   const programInfoLog = gl.getProgramInfoLog(program);
+
+   // State poisoning: Texture binding churn
+   for (let i = 0; i < RESOURCE_BINDING_CYCLES; i++) {
+     gl.activeTexture(gl.TEXTURE0 + i % 8);
+     gl.bindTexture(gl.TEXTURE_2D, null);
+     bindingCycles++;
+   }
+   stateChangesPerformed += RESOURCE_BINDING_CYCLES;
+
+   // Return compilation results for visual feedback
+   return {
+     testIndex,
+     vertexSuccess: vertexCompileStatus,
+     fragmentSuccess: fragmentCompileStatus,
+     linkSuccess: linkStatus,
+     vertexLog: vertexInfoLog,
+     fragmentLog: fragmentInfoLog,
+     programLog: programInfoLog
+   };
+ }
+
+ // Define shader sources with intentional compilation errors
+ const shaderTestCases = [
+   // Test 0: Valid shaders (should compile successfully)
+   {
+     vertex: `#version 300 es
+precision highp float;
+in vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`,
+     fragment: `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+  fragColor = vec4(0.0, 1.0, 0.0, 1.0); // Green for success
+}`
+   },
+   // Test 1: Invalid GLSL syntax - missing semicolon
+   {
+     vertex: `#version 300 es
+precision highp float;
+in vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0)
+}`,
+     fragment: `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+  fragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red for error
+}`
+   },
+   // Test 2: Type mismatch - assigning float to vec2
+   {
+     vertex: `#version 300 es
+precision highp float;
+in vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`,
+     fragment: `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+  vec2 test = 1.0; // Type mismatch
+  fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+}`
+   },
+   // Test 3: Undefined function
+   {
+     vertex: `#version 300 es
+precision highp float;
+in vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`,
+     fragment: `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+  fragColor = vec4(undefinedFunction(), 0.0, 0.0, 1.0);
+}`
+   },
+   // Test 4: Preprocessor error - invalid directive
+   {
+     vertex: `#version 300 es
+precision highp float;
+#invalid_directive
+in vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`,
+     fragment: `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+  fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+}`
+   },
+   // Test 5: Version mismatch - wrong GLSL version
+   {
+     vertex: `#version 100
+precision highp float;
+attribute vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`,
+     fragment: `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+  fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+}`
+   },
+   // Test 6: Missing precision qualifier
+   {
+     vertex: `#version 300 es
+in vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`,
+     fragment: `#version 300 es
+out vec4 fragColor;
+void main() {
+  fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+}`
+   },
+   // Test 7: Invalid variable name - starts with number
+   {
+     vertex: `#version 300 es
+precision highp float;
+in vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`,
+     fragment: `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+  float 123invalid = 1.0;
+  fragColor = vec4(123invalid, 0.0, 0.0, 1.0);
+}`
+   }
+ ];
+
+ // Run shader compilation tests
+ const compilationResults = [];
+ for (let i = 0; i < SHADER_ERROR_COUNT; i++) {
+   const result = testShaderCompilation(
+     shaderTestCases[i].vertex,
+     shaderTestCases[i].fragment,
+     i
+   );
+   compilationResults.push(result);
+
+   // State poisoning: More capability changes between tests
+   gl.enable(gl.POLYGON_OFFSET_FILL);
+   gl.disable(gl.POLYGON_OFFSET_FILL);
+   gl.enable(gl.SAMPLE_COVERAGE);
+   gl.disable(gl.SAMPLE_COVERAGE);
+   stateChangesPerformed += 4;
+ }
+
+ // Create visual feedback shader (valid shader for rendering results)
+ const validVertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(validVertexShader, `#version 300 es
+precision highp float;
+in vec2 a_position;
+in vec2 a_texCoord;
+out vec2 v_texCoord;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+  v_texCoord = a_texCoord;
+}`);
+ gl.compileShader(validVertexShader);
+
+ const validFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(validFragmentShader, `#version 300 es
+precision highp float;
+in vec2 v_texCoord;
+out vec4 fragColor;
+uniform int u_testIndex;
+uniform bool u_vertexSuccess;
+uniform bool u_fragmentSuccess;
+uniform bool u_linkSuccess;
+void main() {
+  // Create visual pattern based on compilation results
+  float x = v_texCoord.x;
+  float y = v_texCoord.y;
+
+  // Checkerboard pattern
+  float check = mod(floor(x * 8.0) + floor(y * 8.0), 2.0);
+
+  // Color based on compilation success
+  vec3 color;
+  if (u_vertexSuccess && u_fragmentSuccess && u_linkSuccess) {
+    // Green for complete success
+    color = vec3(0.0, 1.0, 0.0);
+  } else if (u_vertexSuccess || u_fragmentSuccess) {
+    // Yellow for partial success
+    color = vec3(1.0, 1.0, 0.0);
+  } else {
+    // Red for complete failure
+    color = vec3(1.0, 0.0, 0.0);
+  }
+
+  // Mix with checkerboard for visual interest
+  color = mix(color, vec3(0.2, 0.2, 0.2), check * 0.3);
+
+  fragColor = vec4(color, 1.0);
+}`);
+ gl.compileShader(validFragmentShader);
+
+ // Create program for visual feedback
+ const visualProgram = gl.createProgram();
+ gl.attachShader(visualProgram, validVertexShader);
+ gl.attachShader(visualProgram, validFragmentShader);
+ gl.linkProgram(visualProgram);
+
+ // State poisoning: Final capability churn before rendering
+ gl.enable(gl.BLEND);
+ gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+ gl.disable(gl.DEPTH_TEST);
+ gl.enable(gl.SCISSOR_TEST);
+ gl.scissor(0, 0, 256, 256);
+ stateChangesPerformed += 5;
+
+ // Create geometry for rendering test results
+ const vertices = new Float32Array([
+   -1.0, -1.0, 0.0, 0.0,
+   1.0, -1.0, 1.0, 0.0,
+   -1.0, 1.0, 0.0, 1.0,
+   1.0, 1.0, 1.0, 1.0
+ ]);
+
+ const indices = new Uint16Array([0, 1, 2, 1, 3, 2]);
+
+ // Create buffers
+ const vertexBuffer = gl.createBuffer();
+ const indexBuffer = gl.createBuffer();
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+ // Setup attributes
+ gl.useProgram(visualProgram);
+ const positionLoc = gl.getAttribLocation(visualProgram, 'a_position');
+ const texCoordLoc = gl.getAttribLocation(visualProgram, 'a_texCoord');
+
+ gl.enableVertexAttribArray(positionLoc);
+ gl.enableVertexAttribArray(texCoordLoc);
+
+ gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
+ gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 16, 8);
+
+ // Render each test case result in a grid
+ const gridSize = Math.ceil(Math.sqrt(SHADER_ERROR_COUNT));
+ for (let i = 0; i < SHADER_ERROR_COUNT; i++) {
+   const row = Math.floor(i / gridSize);
+   const col = i % gridSize;
+
+   const x = (col / gridSize) * 2.0 - 1.0;
+   const y = (row / gridSize) * 2.0 - 1.0;
+   const w = 2.0 / gridSize;
+   const h = 2.0 / gridSize;
+
+   gl.scissor(col * (256 / gridSize), row * (256 / gridSize), 256 / gridSize, 256 / gridSize);
+
+   // Set uniforms for this test case
+   const testIndexLoc = gl.getUniformLocation(visualProgram, 'u_testIndex');
+   const vertexSuccessLoc = gl.getUniformLocation(visualProgram, 'u_vertexSuccess');
+   const fragmentSuccessLoc = gl.getUniformLocation(visualProgram, 'u_fragmentSuccess');
+   const linkSuccessLoc = gl.getUniformLocation(visualProgram, 'u_linkSuccess');
+
+   gl.uniform1i(testIndexLoc, i);
+   gl.uniform1i(vertexSuccessLoc, compilationResults[i].vertexSuccess ? 1 : 0);
+   gl.uniform1i(fragmentSuccessLoc, compilationResults[i].fragmentSuccess ? 1 : 0);
+   gl.uniform1i(linkSuccessLoc, compilationResults[i].linkSuccess ? 1 : 0);
+
+   gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+   // State poisoning: Blend mode changes between renders
+   gl.blendFunc(gl.ONE, gl.ONE);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   stateChangesPerformed += 2;
+ }
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ throw err;
+});
+</script>
+</body>
+</html>

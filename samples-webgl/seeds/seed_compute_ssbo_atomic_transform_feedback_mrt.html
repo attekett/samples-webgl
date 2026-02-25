@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 required");
+
+    const DATA_SIZE = 4096;
+    const MRT_TARGETS = 4;
+    const TEXTURE_LAYERS = 16;
+    const INSTANCE_COUNT = 32;
+
+    gl.viewport(0, 0, 256, 256);
+    gl.clearColor(0.05, 0.1, 0.15, 1.0);
+    gl.clearDepth(1.0);
+    gl.clearStencil(0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.STENCIL_TEST);
+    gl.enable(gl.BLEND);
+    gl.depthFunc(gl.LEQUAL);
+    gl.stencilFunc(gl.ALWAYS, 1, 0xFF);
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+
+    const ssbo1 = gl.createBuffer();
+    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo1);
+    const ssbo1Data = new Float32Array(DATA_SIZE * 4);
+    for (let i = 0; i < ssbo1Data.length; i++) ssbo1Data[i] = Math.sin(i * 0.01) * Math.cos(i * 0.007);
+    gl.bufferData(gl.SHADER_STORAGE_BUFFER, ssbo1Data, gl.DYNAMIC_COPY);
+    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, ssbo1);
+
+    const ssbo2 = gl.createBuffer();
+    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo2);
+    const ssbo2Data = new Uint32Array(256);
+    for (let i = 0; i < ssbo2Data.length; i++) ssbo2Data[i] = i % 8;
+    gl.bufferData(gl.SHADER_STORAGE_BUFFER, ssbo2Data, gl.DYNAMIC_COPY);
+    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, ssbo2);
+
+    const ssbo3 = gl.createBuffer();
+    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo3);
+    const ssbo3Data = new Float32Array(64 * 16);
+    for (let i = 0; i < ssbo3Data.length; i++) ssbo3Data[i] = (i % 16) * 0.1;
+    gl.bufferData(gl.SHADER_STORAGE_BUFFER, ssbo3Data, gl.DYNAMIC_COPY);
+    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, ssbo3);
+
+    const transformVS = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(transformVS, `#version 300 es
+layout(location = 0) in vec3 position;
+layout(location = 1) in vec2 texCoord;
+layout(location = 2) in vec3 normal;
+
+layout(std430, binding = 0) readonly buffer SSBO1 {
+    vec4 computeData[];
+};
+
+layout(std430, binding = 2) readonly buffer SSBO3 {
+    mat4 matrices[];
+};
+
+uniform mat4 mvpMatrix;
+uniform int instanceId;
+uniform float time;
+
+out vec3 vPosition;
+out vec2 vTexCoord;
+out vec3 vNormal;
+out vec4 vComputeData;
+
+void main() {
+    uint idx = uint(instanceId * 3 + gl_InstanceID) % 16384u;
+    vec4 data = computeData[idx];
+    mat4 transform = matrices[instanceId % 32u];
+
+    vPosition = (transform * vec4(position, 1.0)).xyz;
+    vTexCoord = texCoord + data.xy * 0.1;
+    vNormal = normalize((transform * vec4(normal, 0.0)).xyz);
+    vComputeData = data;
+
+    gl_Position = mvpMatrix * vec4(vPosition, 1.0);
+}
+`);
+    gl.compileShader(transformVS);
+
+    const transformFS = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(transformFS, `#version 300 es
+precision highp float;
+
+layout(std430, binding = 0) readonly buffer SSBO1 {
+    vec4 computeData[];
+};
+
+uniform sampler2DArray texArray;
+uniform sampler3D tex3D;
+uniform float time;
+uniform int instanceId;
+
+in vec3 vPosition;
+in vec2 vTexCoord;
+in vec3 vNormal;
+in vec4 vComputeData;
+
+layout(location = 0) out vec4 color0;
+layout(location = 1) out vec4 color1;
+layout(location = 2) out vec4 color2;
+layout(location = 3) out vec4 color3;
+
+void main() {
+    uint idx = uint(instanceId * 3 + int(gl_FragCoord.x)) % 16384u;
+    vec4 data = computeData[idx];
+
+    vec4 tex2DArray = texture(texArray, vec3(vTexCoord, float(instanceId % ${TEXTURE_LAYERS})));
+    vec4 tex3D = texture(tex3D, vPosition * 0.01 + vec3(time * 0.1));
+
+    color0 = vec4(vNormal * 0.5 + 0.5, 1.0) + data * 0.3;
+    color1 = tex2DArray * vComputeData;
+    color2 = tex3D + vec4(sin(time + vPosition.x), cos(time + vPosition.y), sin(time * 1.3 + vPosition.z), 1.0);
+    color3 = vec4(data.w, vTexCoord.x, vTexCoord.y, 1.0);
+}
+`);
+    gl.compileShader(transformFS);
+
+    const transformProgram = gl.createProgram();
+    gl.attachShader(transformProgram, transformVS);
+    gl.attachShader(transformProgram, transformFS);
+    gl.transformFeedbackVaryings(transformProgram, ['vPosition', 'vTexCoord', 'vNormal', 'vComputeData'], gl.INTERLEAVED_ATTRIBS);
+    gl.linkProgram(transformProgram);
+
+    const vertexData = new Float32Array([
+        -0.5, -0.5, 0.0,  0.0, 0.0,  0.0, 0.0, 1.0,
+         0.5, -0.5, 0.0,  1.0, 0.0,  0.0, 0.0, 1.0,
+         0.0,  0.5, 0.0,  0.5, 1.0,  0.0, 0.0, 1.0
+    ]);
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 32, 12);
+    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 32, 20);
+    gl.enableVertexAttribArray(0);
+    gl.enableVertexAttribArray(1);
+    gl.enableVertexAttribArray(2);
+
+    const feedbackBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, feedbackBuffer);
+    gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, INSTANCE_COUNT * 3 * (3 + 2 + 3 + 4) * 4, gl.STATIC_DRAW);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, feedbackBuffer);
+
+    const tex2DArray = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex2DArray);
+    const arrayData = new Uint8Array(32 * 32 * TEXTURE_LAYERS * 4);
+    for (let i = 0; i < arrayData.length; i++) arrayData[i] = (i * 13) % 256;
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 32, 32, TEXTURE_LAYERS, 0, gl.RGBA, gl.UNSIGNED_BYTE, arrayData);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+
+    const tex3D = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_3D, tex3D);
+    const tex3DData = new Uint8Array(16 * 16 * 16 * 4);
+    for (let i = 0; i < tex3DData.length; i++) tex3DData[i] = Math.sin(i * 0.01) * 127 + 128;
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 16, 16, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, tex3DData);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+
+    const mrtTextures = [];
+    const mrtFormats = [gl.RGBA8, gl.RGBA8, gl.RGBA8, gl.RGBA8];
+
+    for (let i = 0; i < MRT_TARGETS; i++) {
+        const tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2 + i);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, mrtFormats[i], 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, tex, 0);
+        mrtTextures.push(tex);
+    }
+
+    const depthStencilTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE6);
+    gl.bindTexture(gl.TEXTURE_2D, depthStencilTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH24_STENCIL8, 256, 256, 0, gl.DEPTH_STENCIL, gl.UNSIGNED_INT_24_8, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, depthStencilTex, 0);
+
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
+
+    const query = gl.createQuery();
+    const timerQuery = gl.createQuery();
+
+    const blendEquations = [gl.FUNC_ADD, gl.FUNC_SUBTRACT, gl.FUNC_REVERSE_SUBTRACT, gl.MIN, gl.MAX];
+    const blendFuncs = [
+        [gl.ONE, gl.ZERO], [gl.SRC_COLOR, gl.DST_COLOR], [gl.ONE_MINUS_SRC_COLOR, gl.ONE],
+        [gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA], [gl.DST_ALPHA, gl.ONE_MINUS_DST_ALPHA],
+        [gl.CONSTANT_COLOR, gl.CONSTANT_ALPHA]
+    ];
+
+    for (let pass = 0; pass < 3; pass++) {
+        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, ssbo1);
+        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, ssbo2);
+        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, ssbo3);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
+
+        gl.stencilOp(gl.KEEP, gl.KEEP, [gl.REPLACE, gl.INCR, gl.DECR][pass % 3]);
+        gl.stencilFunc(gl.EQUAL, pass % 8, 0xFF);
+
+        gl.blendEquation(blendEquations[pass % blendEquations.length]);
+        const funcs = blendFuncs[pass % blendFuncs.length];
+        gl.blendFunc(funcs[0], funcs[1]);
+
+        if (pass === 0) {
+            gl.beginQuery(gl.ANY_SAMPLES_PASSED, query);
+            gl.beginQuery(gl.TIME_ELAPSED_EXT, timerQuery);
+        }
+
+        gl.useProgram(transformProgram);
+
+        const mvp = new Float32Array([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+        ]);
+        gl.uniformMatrix4fv(gl.getUniformLocation(transformProgram, "mvpMatrix"), false, mvp);
+        gl.uniform1f(gl.getUniformLocation(transformProgram, "time"), pass * 0.3);
+        gl.uniform1i(gl.getUniformLocation(transformProgram, "instanceId"), pass);
+
+        gl.uniform1i(gl.getUniformLocation(transformProgram, "texArray"), 0);
+        gl.uniform1i(gl.getUniformLocation(transformProgram, "tex3D"), 1);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex2DArray);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_3D, tex3D);
+
+        gl.bindVertexArray(vao);
+        gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, INSTANCE_COUNT);
+        gl.endTransformFeedback();
+
+        if (pass === 0) {
+            gl.endQuery(gl.ANY_SAMPLES_PASSED);
+            gl.endQuery(gl.TIME_ELAPSED_EXT);
+        }
+
+        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, null);
+        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, null);
+    }
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    const compositeVS = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(compositeVS, `#version 300 es
+layout(location = 0) in vec2 position;
+out vec2 vTexCoord;
+void main() {
+    vTexCoord = position * 0.5 + 0.5;
+    gl_Position = vec4(position, 0.0, 1.0);
+}
+`);
+    gl.compileShader(compositeVS);
+
+    const compositeFS = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(compositeFS, `#version 300 es
+precision highp float;
+uniform sampler2D mrtTex0;
+uniform sampler2D mrtTex1;
+uniform sampler2D mrtTex2;
+uniform sampler2D mrtTex3;
+uniform float time;
+in vec2 vTexCoord;
+out vec4 fragColor;
+void main() {
+    vec4 c0 = texture(mrtTex0, vTexCoord);
+    vec4 c1 = texture(mrtTex1, vTexCoord);
+    vec4 c2 = texture(mrtTex2, vTexCoord);
+    vec4 c3 = texture(mrtTex3, vTexCoord);
+
+    vec4 result = (c0 + c1 + c2 + c3) * 0.25;
+    result.rgb += vec3(sin(time + vTexCoord.x * 10.0), cos(time + vTexCoord.y * 10.0), sin(time * 1.3)) * 0.1;
+    fragColor = result;
+}
+`);
+    gl.compileShader(compositeFS);
+
+    const compositeProgram = gl.createProgram();
+    gl.attachShader(compositeProgram, compositeVS);
+    gl.attachShader(compositeProgram, compositeFS);
+    gl.linkProgram(compositeProgram);
+
+    gl.useProgram(compositeProgram);
+    gl.uniform1f(gl.getUniformLocation(compositeProgram, "time"), 1.0);
+
+    for (let i = 0; i < MRT_TARGETS; i++) {
+        gl.activeTexture(gl.TEXTURE0 + i);
+        gl.bindTexture(gl.TEXTURE_2D, mrtTextures[i]);
+        gl.uniform1i(gl.getUniformLocation(compositeProgram, `mrtTex${i}`), i);
+    }
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) throw new Error("WebGL Error: " + error);
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

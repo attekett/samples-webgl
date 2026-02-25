@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
+
+const TEXTURE_SIZE = 128;
+const VERTEX_COUNT = 1024;
+
+const vsSource = `#version 300 es
+in vec3 a_position;
+in ivec3 a_intData;
+out ivec3 v_intOutput;
+flat out int v_vertexId;
+
+uniform mat4 u_transform;
+uniform ivec3 u_intOffsets;
+uniform float u_scaleParam;
+
+void main() {
+    vec3 pos = a_position * u_scaleParam;
+    pos.x += float(a_intData.x) * 0.001;
+    pos.y += float(a_intData.y) * 0.001;
+
+    gl_Position = u_transform * vec4(pos, 1.0);
+
+    v_intOutput.x = a_intData.x + u_intOffsets.x;
+    v_intOutput.y = a_intData.y + u_intOffsets.y;
+    v_intOutput.z = a_intData.z + u_intOffsets.z;
+    v_vertexId = gl_VertexID;
+}`;
+
+const fsSource = `#version 300 es
+precision highp float;
+precision highp isampler3D;
+
+in ivec3 v_intOutput;
+flat in int v_vertexId;
+
+layout(location = 0) out vec4 fragColor0;
+layout(location = 1) out ivec4 fragColor1;
+
+uniform isampler3D u_intTexture3D;
+uniform vec3 u_texCoordScale;
+
+void main() {
+    vec3 coord = vec3(v_intOutput) / float(${TEXTURE_SIZE});
+    coord *= u_texCoordScale;
+    ivec4 texel = texture(u_intTexture3D, coord);
+
+    fragColor0 = vec4(vec3(texel.rgb) / 65536.0, 1.0);
+
+    fragColor1.r = texel.r + v_intOutput.x;
+    fragColor1.g = texel.g + v_intOutput.y;
+    fragColor1.b = texel.b + v_intOutput.z;
+    fragColor1.a = v_vertexId * 16;
+}`;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    let vertexShader, fragmentShader, program;
+    try {
+        vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vsSource);
+        gl.compileShader(vertexShader);
+    } catch (e) { throw e; }
+
+    try {
+        fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fsSource);
+        gl.compileShader(fragmentShader);
+    } catch (e) { throw e; }
+
+    try {
+        program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.transformFeedbackVaryings(program, ['v_intOutput', 'v_vertexId'], gl.SEPARATE_ATTRIBS);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch (e) { throw e; }
+
+    const positionLoc = gl.getAttribLocation(program, 'a_position');
+    const intDataLoc = gl.getAttribLocation(program, 'a_intData');
+    const transformLoc = gl.getUniformLocation(program, 'u_transform');
+    const intOffsetsLoc = gl.getUniformLocation(program, 'u_intOffsets');
+    const scaleParamLoc = gl.getUniformLocation(program, 'u_scaleParam');
+    const intTexture3DLoc = gl.getUniformLocation(program, 'u_intTexture3D');
+    const texCoordScaleLoc = gl.getUniformLocation(program, 'u_texCoordScale');
+
+    const vertices = new Float32Array(VERTEX_COUNT * 3);
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+        const angle = (i / VERTEX_COUNT) * Math.PI * 2;
+        const radius = 0.3 + (i % 10) * 0.05;
+        vertices[i * 3] = Math.cos(angle) * radius;
+        vertices[i * 3 + 1] = Math.sin(angle) * radius;
+        vertices[i * 3 + 2] = (i / VERTEX_COUNT - 0.5) * 0.5;
+    }
+
+    const intData = new Int32Array(VERTEX_COUNT * 3);
+    for (let i = 0; i < VERTEX_COUNT; i++) {
+        intData[i * 3] = (i * 127) % TEXTURE_SIZE;
+        intData[i * 3 + 1] = (i * 251) % TEXTURE_SIZE;
+        intData[i * 3 + 2] = (i * 379) % TEXTURE_SIZE;
+    }
+
+    let positionBuffer, intDataBuffer;
+    try {
+        positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+    } catch (e) { throw e; }
+
+    try {
+        intDataBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, intDataBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, intData, gl.STATIC_DRAW);
+    } catch (e) { throw e; }
+
+    const tfIntBuffer = gl.createBuffer();
+    const tfVertexIdBuffer = gl.createBuffer();
+    try {
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfIntBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * 3 * 4, gl.DYNAMIC_COPY);
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfVertexIdBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * 4, gl.DYNAMIC_COPY);
+    } catch (e) { throw e; }
+
+    let intTexture3D;
+    try {
+        intTexture3D = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, intTexture3D);
+
+        const texData = new Int32Array(TEXTURE_SIZE * TEXTURE_SIZE * TEXTURE_SIZE);
+        for (let i = 0; i < texData.length; i++) {
+            texData[i] = (i * 12345) % 65536 - 32768;
+        }
+
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.R32I, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_SIZE, 0, gl.RED_INTEGER, gl.INT, texData);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT);
+    } catch (e) { throw e; }
+
+    const mrtTextures = [];
+    try {
+        const floatTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, floatTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 256, 256, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        mrtTextures.push(floatTex);
+
+        const intTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, intTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32I, 256, 256, 0, gl.RGBA_INTEGER, gl.INT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        mrtTextures.push(intTex);
+    } catch (e) { throw e; }
+
+    let fbo;
+    try {
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, mrtTextures[0], 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, mrtTextures[1], 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    } catch (e) { throw e; }
+
+    let vao;
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(positionLoc);
+        gl.vertexAttribPointer(positionLoc, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, intDataBuffer);
+        gl.enableVertexAttribArray(intDataLoc);
+        gl.vertexAttribIPointer(intDataLoc, 3, gl.INT, 0, 0);
+    } catch (e) { throw e; }
+
+    const tf = gl.createTransformFeedback();
+
+    const transform = new Float32Array([
+        1.3, 0, 0, 0,
+        0, 1.3, 0, 0,
+        0, 0, 1.3, 0,
+        0, 0, 0, 1
+    ]);
+
+    gl.uniformMatrix4fv(transformLoc, false, transform);
+    gl.uniform3f(texCoordScaleLoc, 1.0, 1.0, 1.0);
+    gl.uniform1i(intTexture3DLoc, 0);
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 1]);
+        gl.clearBufferiv(gl.COLOR, 1, [0, 0, 0, 0]);
+
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfIntBuffer);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, tfVertexIdBuffer);
+
+        for (let pass = 0; pass < 8; pass++) {
+            gl.uniform3i(intOffsetsLoc, pass * 10, pass * 20, pass * 30);
+            gl.uniform1f(scaleParamLoc, 0.8 + pass * 0.02);
+
+            gl.beginTransformFeedback(gl.POINTS);
+            gl.drawArrays(gl.POINTS, 0, VERTEX_COUNT);
+            gl.endTransformFeedback();
+        }
+
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, null);
+    } catch (e) { throw e; }
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindVertexArray(vao);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.uniform3i(intOffsetsLoc, 0, 0, 0);
+        gl.uniform1f(scaleParamLoc, 1.0);
+        gl.drawArrays(gl.POINTS, 0, VERTEX_COUNT);
+    } catch (e) { throw e; }
+
+    try {
+        const intTexData = new Int32Array(TEXTURE_SIZE * TEXTURE_SIZE);
+        for (let i = 0; i < intTexData.length; i++) {
+            intTexData[i] = i * 100;
+        }
+        gl.bindTexture(gl.TEXTURE_3D, intTexture3D);
+        gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 64, TEXTURE_SIZE, TEXTURE_SIZE, 1, gl.RED_INTEGER, gl.INT, intTexData);
+    } catch (e) { throw e; }
+
+    try {
+        gl.deleteTexture(intTexture3D);
+        mrtTextures.forEach(tex => gl.deleteTexture(tex));
+        gl.deleteBuffer(positionBuffer);
+        gl.deleteBuffer(intDataBuffer);
+        gl.deleteBuffer(tfIntBuffer);
+        gl.deleteBuffer(tfVertexIdBuffer);
+        gl.deleteFramebuffer(fbo);
+        gl.deleteVertexArray(vao);
+        gl.deleteTransformFeedback(tf);
+        gl.deleteProgram(program);
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+    } catch (e) { throw e; }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

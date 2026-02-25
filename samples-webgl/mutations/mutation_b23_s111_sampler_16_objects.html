@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const samplerCount = 16;
+const textureUnits = 16;
+const bindCycles = 64;
+const parameterSets = 8;
+const texSize = 256;
+const bufferElements = 6;
+const drawIterations = 12;
+
+const filterTarget = 10241;
+const wrapTarget = 10242;
+const minFilterLinear = 9729;
+const wrapClamp = 33071;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const sampler1 = gl.createSampler();
+        const sampler2 = gl.createSampler();
+        const sampler3 = gl.createSampler();
+        const sampler4 = gl.createSampler();
+        const sampler5 = gl.createSampler();
+        const sampler6 = gl.createSampler();
+        const sampler7 = gl.createSampler();
+        const sampler8 = gl.createSampler();
+        const sampler9 = gl.createSampler();
+        const sampler10 = gl.createSampler();
+        const sampler11 = gl.createSampler();
+        const sampler12 = gl.createSampler();
+        const sampler13 = gl.createSampler();
+        const sampler14 = gl.createSampler();
+        const sampler15 = gl.createSampler();
+        const sampler16 = gl.createSampler();
+    } catch(e) { console.log(e); }
+
+    try {
+        const samplerA = gl.createSampler();
+        const samplerB = gl.createSampler();
+        const samplerC = gl.createSampler();
+        gl.samplerParameteri(samplerA, filterTarget, minFilterLinear);
+        gl.samplerParameteri(samplerB, filterTarget, 9728);
+        gl.samplerParameteri(samplerC, filterTarget, 9987);
+        gl.samplerParameteri(samplerA, wrapTarget, wrapClamp);
+        gl.samplerParameteri(samplerB, 10243, 33071);
+        gl.samplerParameteri(samplerC, 10242, 10497);
+    } catch(e) { console.log(e); }
+
+    try {
+        const tex1 = gl.createTexture();
+        const tex2 = gl.createTexture();
+        const tex3 = gl.createTexture();
+        const tex4 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex1);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindTexture(gl.TEXTURE_2D, tex2);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindTexture(gl.TEXTURE_2D, tex3);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindTexture(gl.TEXTURE_2D, tex4);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    } catch(e) { console.log(e); }
+
+    try {
+        const s1 = gl.createSampler();
+        const s2 = gl.createSampler();
+        const s3 = gl.createSampler();
+        const s4 = gl.createSampler();
+        gl.bindSampler(0, s1);
+        gl.bindSampler(1, s2);
+        gl.bindSampler(0, s3);
+        gl.bindSampler(1, s4);
+        gl.bindSampler(2, s1);
+        gl.bindSampler(3, s2);
+        gl.bindSampler(2, s3);
+        gl.bindSampler(4, s1);
+        gl.bindSampler(5, s2);
+        gl.bindSampler(6, s3);
+        gl.bindSampler(7, s4);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < parameterSets; i++) {
+            const sam = gl.createSampler();
+            gl.samplerParameteri(sam, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.samplerParameteri(sam, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.samplerParameteri(sam, gl.TEXTURE_WRAP_S, gl.REPEAT);
+            gl.samplerParameteri(sam, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.bindSampler(i, sam);
+            gl.bindSampler(i + 8, sam);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        const smp1 = gl.createSampler();
+        const smp2 = gl.createSampler();
+        gl.bindSampler(0, smp1);
+        gl.bindSampler(1, smp1);
+        gl.bindSampler(2, smp2);
+        gl.bindSampler(0, smp2);
+        gl.bindSampler(1, smp2);
+        gl.bindSampler(3, smp1);
+        gl.samplerParameteri(smp1, gl.TEXTURE_MIN_FILTER, 9984);
+        gl.samplerParameteri(smp2, gl.TEXTURE_MAG_FILTER, 9729);
+        gl.bindSampler(4, smp1);
+        gl.bindSampler(5, smp2);
+        gl.bindSampler(4, smp2);
+    } catch(e) { console.log(e); }
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            out vec2 vUv;
+            void main() {
+                vUv = position.xy * 0.5 + 0.5;
+                gl_Position = vec4(position, 1.0);
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            uniform sampler2D uTex0;
+            uniform sampler2D uTex1;
+            uniform sampler2D uTex2;
+            uniform sampler2D uTex3;
+            in vec2 vUv;
+            out vec4 fragColor;
+            void main() {
+                vec4 c0 = texture(uTex0, vUv);
+                vec4 c1 = texture(uTex1, vUv * 2.0);
+                vec4 c2 = texture(uTex2, vUv * 0.5);
+                vec4 c3 = texture(uTex3, vUv * 4.0);
+                fragColor = (c0 + c1 + c2 + c3) * 0.25;
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) { console.log(e); }
+
+    try {
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        const vertices = new Float32Array([
+            -1, -1, 0,
+             1, -1, 0,
+            -1,  1, 0,
+            -1,  1, 0,
+             1, -1, 0,
+             1,  1, 0
+        ]);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let i = 0; i < drawIterations; i++) {
+            const sam = gl.createSampler();
+            gl.samplerParameteri(sam, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.bindSampler(i % textureUnits, sam);
+            gl.drawArrays(gl.TRIANGLES, 0, bufferElements);
+            gl.bindSampler((i + 1) % textureUnits, sam);
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        const cleanup1 = gl.createSampler();
+        const cleanup2 = gl.createSampler();
+        gl.bindSampler(0, cleanup1);
+        gl.bindSampler(1, cleanup2);
+        gl.bindSampler(0, cleanup2);
+        gl.bindSampler(1, cleanup1);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

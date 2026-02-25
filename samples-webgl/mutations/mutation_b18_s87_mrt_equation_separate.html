@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_color_buffer_float'
+];
+
+const targetCount = 4;
+const equationCount = 5;
+const cycleCount = 20;
+const vertexCount = 6;
+const texSize = 256;
+const bufferSize = 48;
+
+const funcAdd = 32774;
+const funcSubtract = 32778;
+const funcReverseSubtract = 32779;
+const minFunc = 32775;
+const maxFunc = 32776;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        const buffer3 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer3);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        const vertices = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
+        gl.bufferData(gl.ARRAY_BUFFER, bufferSize, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
+    } catch(e) {}
+
+    try {
+        const tex1 = gl.createTexture();
+        const tex2 = gl.createTexture();
+        const tex3 = gl.createTexture();
+        const tex4 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex1);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, texSize, texSize, 0, gl.RGBA, gl.FLOAT, null);
+        gl.bindTexture(gl.TEXTURE_2D, tex2);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 256, 256, 0, gl.RGBA, gl.FLOAT, null);
+        gl.bindTexture(gl.TEXTURE_2D, tex3);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, texSize, texSize, 0, gl.RGBA, gl.FLOAT, null);
+        gl.bindTexture(gl.TEXTURE_2D, tex4);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 256, 256, 0, gl.RGBA, gl.FLOAT, null);
+        gl.bindTexture(gl.TEXTURE_2D, tex1);
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+            in vec2 position;
+            out vec2 vPos;
+            void main() {
+                gl_Position = vec4(position, 0.0, 1.0);
+                vPos = position;
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            in vec2 vPos;
+            layout(location = 0) out vec4 color0;
+            layout(location = 1) out vec4 color1;
+            layout(location = 2) out vec4 color2;
+            layout(location = 3) out vec4 color3;
+            void main() {
+                float r = vPos.x * 0.5 + 0.5;
+                float g = vPos.y * 0.5 + 0.5;
+                color0 = vec4(r, 0.0, 0.0, 0.8);
+                color1 = vec4(0.0, g, 0.0, 0.7);
+                color2 = vec4(0.0, 0.0, r+g, 0.6);
+                color3 = vec4(r, g, 0.0, 0.9);
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const posLoc = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 8, 0);
+    } catch(e) {}
+
+    try {
+        const fbo1 = gl.createFramebuffer();
+        const fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex1, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, tex2, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, tex3, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, gl.TEXTURE_2D, tex4, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex1, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.drawBuffers([gl.DRAW_BUFFER0, gl.DRAW_BUFFER1, gl.DRAW_BUFFER2, gl.DRAW_BUFFER3]);
+    } catch(e) {}
+
+    try {
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.blendEquationSeparate(funcAdd, funcAdd);
+        gl.blendEquationSeparate(funcSubtract, funcReverseSubtract);
+        gl.blendEquationSeparate(minFunc, maxFunc);
+        gl.blendEquationSeparate(funcAdd, funcSubtract);
+    } catch(e) {}
+
+    try {
+        gl.blendEquationSeparatei(0, funcAdd, funcSubtract);
+        gl.blendEquationSeparatei(1, funcSubtract, funcAdd);
+        gl.blendEquationSeparatei(2, minFunc, maxFunc);
+        gl.blendEquationSeparatei(3, funcReverseSubtract, funcAdd);
+        gl.blendEquationSeparatei(0, maxFunc, minFunc);
+        gl.blendEquationSeparatei(1, funcAdd, funcReverseSubtract);
+        gl.blendEquationSeparatei(2, funcSubtract, funcSubtract);
+        gl.blendEquationSeparatei(3, funcAdd, maxFunc);
+    } catch(e) {}
+
+    try {
+        gl.blendEquationSeparatei(0, funcAdd, funcAdd);
+        gl.blendEquationSeparatei(1, funcSubtract, funcSubtract);
+        gl.blendEquationSeparatei(2, funcReverseSubtract, funcAdd);
+        gl.blendEquationSeparatei(3, minFunc, maxFunc);
+        gl.blendEquationSeparate(funcAdd, funcSubtract);
+        gl.blendEquationSeparate(maxFunc, minFunc);
+        gl.blendEquationSeparate(funcReverseSubtract, funcReverseSubtract);
+    } catch(e) {}
+
+    try {
+        gl.blendFuncSeparatei(0, gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
+        gl.blendFuncSeparatei(1, gl.ONE, gl.ONE, gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendFuncSeparatei(2, gl.DST_COLOR, gl.SRC_COLOR, gl.ONE, gl.ONE);
+        gl.blendFuncSeparatei(3, gl.ONE_MINUS_DST_ALPHA, gl.DST_ALPHA, gl.ZERO, gl.ONE);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.viewport(0, 0, 256, 256);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.blendEquationSeparate(funcAdd, funcAdd);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.deleteBuffer(buffer1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
+        gl.deleteBuffer(buffer2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

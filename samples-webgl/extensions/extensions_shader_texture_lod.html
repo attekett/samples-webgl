@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+ 'EXT_shader_texture_lod'
+];
+
+async function main() {
+ const canvas = document.getElementById('webgl-canvas');
+ const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+ if (!gl) throw new Error("WebGL not supported");
+
+ // 1. EXTENSION GATING
+ const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+ if (missingExtensions.length > 0) {
+ // Signal to the Test Runner that this is an environment limit, not a code bug
+ throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+ }
+
+ // 2. ENABLE REQUIRED EXTENSIONS
+ REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION STARTS HERE
+ // ==========================================
+
+ // Fuzzing-friendly variables
+ const textureSize = 256;
+ const lodLevels = 8;
+ const lodBias = 1.5;
+ const textureFiltering = gl.LINEAR_MIPMAP_LINEAR;
+ const stateChangeCount = 25;
+ const vertexDensity = 32;
+
+ // Create vertex grid for LOD demonstration
+ const vertices = [];
+ const texCoords = [];
+ const indices = [];
+
+ for (let y = 0; y <= vertexDensity; y++) {
+   for (let x = 0; x <= vertexDensity; x++) {
+     const u = x / vertexDensity;
+     const v = y / vertexDensity;
+     vertices.push(u * 2 - 1, v * 2 - 1, 0);
+     texCoords.push(u, v);
+   }
+ }
+
+ for (let y = 0; y < vertexDensity; y++) {
+   for (let x = 0; x < vertexDensity; x++) {
+     const i = y * (vertexDensity + 1) + x;
+     indices.push(i, i + 1, i + vertexDensity + 1);
+     indices.push(i + 1, i + vertexDensity + 2, i + vertexDensity + 1);
+   }
+ }
+
+ // Create buffers
+ const vertexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+ const texCoordBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texCoords), gl.STATIC_DRAW);
+
+ const indexBuffer = gl.createBuffer();
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+ // Generate manual mipmapped texture
+ const texture = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, texture);
+
+ // Create base level texture (256x256)
+ const baseData = new Uint8Array(textureSize * textureSize * 4);
+ for (let i = 0; i < baseData.length; i += 4) {
+   const x = (i / 4) % textureSize;
+   const y = Math.floor((i / 4) / textureSize);
+   const distance = Math.sqrt((x - textureSize/2)**2 + (y - textureSize/2)**2);
+   const normalizedDist = distance / (textureSize / 2);
+   const lod = Math.floor(normalizedDist * (lodLevels - 1));
+
+   // Create distinct colors for each LOD level
+   const hue = (lod / (lodLevels - 1)) * 360;
+   baseData[i] = Math.sin(hue * Math.PI / 180) * 127 + 128;     // R
+   baseData[i+1] = Math.sin((hue + 120) * Math.PI / 180) * 127 + 128; // G
+   baseData[i+2] = Math.sin((hue + 240) * Math.PI / 180) * 127 + 128; // B
+   baseData[i+3] = 255; // A
+ }
+
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureSize, textureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, baseData);
+
+ // Generate mipmaps manually
+ for (let level = 1; level < lodLevels; level++) {
+   const levelSize = textureSize >> level;
+   if (levelSize < 1) break;
+
+   const levelData = new Uint8Array(levelSize * levelSize * 4);
+   for (let i = 0; i < levelData.length; i += 4) {
+     const x = (i / 4) % levelSize;
+     const y = Math.floor((i / 4) / levelSize);
+     const distance = Math.sqrt((x - levelSize/2)**2 + (y - levelSize/2)**2);
+     const normalizedDist = distance / (levelSize / 2);
+     const lod = Math.floor(normalizedDist * (lodLevels - 1));
+
+     const hue = (lod / (lodLevels - 1)) * 360;
+     levelData[i] = Math.sin(hue * Math.PI / 180) * 127 + 128;
+     levelData[i+1] = Math.sin((hue + 120) * Math.PI / 180) * 127 + 128;
+     levelData[i+2] = Math.sin((hue + 240) * Math.PI / 180) * 127 + 128;
+     levelData[i+3] = 255;
+   }
+
+   gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA, levelSize, levelSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, levelData);
+ }
+
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, textureFiltering);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+ // Create shaders with textureLod - WebGL1 compatible
+ const isWebGL2 = !!gl.createVertexArray;
+
+ const vertexShaderSource = isWebGL2 ?
+   `#version 300 es
+   in vec3 a_position;
+   in vec2 a_texCoord;
+   out vec2 v_texCoord;
+
+   void main() {
+     gl_Position = vec4(a_position, 1.0);
+     v_texCoord = a_texCoord;
+   }` :
+   `attribute vec3 a_position;
+   attribute vec2 a_texCoord;
+   varying vec2 v_texCoord;
+
+   void main() {
+     gl_Position = vec4(a_position, 1.0);
+     v_texCoord = a_texCoord;
+   }`;
+
+ const fragmentShaderSource = isWebGL2 ?
+   `#version 300 es
+   precision mediump float;
+   in vec2 v_texCoord;
+   out vec4 fragColor;
+   uniform sampler2D u_texture;
+   uniform float u_lodBias;
+
+   void main() {
+     vec2 center = vec2(0.5, 0.5);
+     float distance = length(v_texCoord - center);
+     float lod = distance * float(${lodLevels - 1}) + u_lodBias;
+
+     // Use textureLod for explicit LOD control
+     vec4 color = textureLod(u_texture, v_texCoord, lod);
+
+     // Add some visual variation based on distance
+     float intensity = 1.0 - distance * 2.0;
+     fragColor = color * intensity;
+   }` :
+   `precision mediump float;
+   varying vec2 v_texCoord;
+   uniform sampler2D u_texture;
+   uniform float u_lodBias;
+
+   void main() {
+     vec2 center = vec2(0.5, 0.5);
+     float distance = length(v_texCoord - center);
+     float lod = distance * float(${lodLevels - 1}) + u_lodBias;
+
+     // Use texture2DLod for explicit LOD control (EXT_shader_texture_lod)
+     vec4 color = texture2DLod(u_texture, v_texCoord, lod);
+
+     // Add some visual variation based on distance
+     float intensity = 1.0 - distance * 2.0;
+     gl_FragColor = color * intensity;
+   }`;
+
+ const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+ gl.shaderSource(vertexShader, vertexShaderSource);
+ gl.compileShader(vertexShader);
+
+ if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+   throw new Error('Vertex shader compilation failed: ' + gl.getShaderInfoLog(vertexShader));
+ }
+
+ const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+ gl.shaderSource(fragmentShader, fragmentShaderSource);
+ gl.compileShader(fragmentShader);
+
+ if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+   throw new Error('Fragment shader compilation failed: ' + gl.getShaderInfoLog(fragmentShader));
+ }
+
+ const program = gl.createProgram();
+ gl.attachShader(program, vertexShader);
+ gl.attachShader(program, fragmentShader);
+ gl.linkProgram(program);
+
+ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+   throw new Error('Shader link failed: ' + gl.getProgramInfoLog(program));
+ }
+
+ gl.useProgram(program);
+
+ // Get attribute/uniform locations
+ const positionLoc = gl.getAttribLocation(program, 'a_position');
+ const texCoordLoc = gl.getAttribLocation(program, 'a_texCoord');
+ const textureLoc = gl.getUniformLocation(program, 'u_texture');
+ const lodBiasLoc = gl.getUniformLocation(program, 'u_lodBias');
+
+ // State poisoning - heavy capability enable/disable operations
+ for (let i = 0; i < stateChangeCount; i++) {
+   gl.enable(gl.BLEND);
+   gl.disable(gl.BLEND);
+   gl.enable(gl.DEPTH_TEST);
+   gl.disable(gl.DEPTH_TEST);
+   gl.enable(gl.CULL_FACE);
+   gl.disable(gl.CULL_FACE);
+   gl.enable(gl.SCISSOR_TEST);
+   gl.disable(gl.SCISSOR_TEST);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.blendEquation(gl.FUNC_ADD);
+   gl.viewport(0, 0, textureSize, textureSize);
+   gl.viewport(0, 0, 256, 256);
+ }
+
+ // Bind vertex attributes
+ gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+ gl.enableVertexAttribArray(positionLoc);
+ gl.vertexAttribPointer(positionLoc, 3, gl.FLOAT, false, 0, 0);
+
+ gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+ gl.enableVertexAttribArray(texCoordLoc);
+ gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+
+ // Bind texture and set uniforms
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, texture);
+ gl.uniform1i(textureLoc, 0);
+ gl.uniform1f(lodBiasLoc, lodBias);
+
+ // More state poisoning - texture binding churn
+ for (let i = 0; i < stateChangeCount; i++) {
+   gl.bindTexture(gl.TEXTURE_2D, null);
+   gl.bindTexture(gl.TEXTURE_2D, texture);
+   gl.bindBuffer(gl.ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ }
+
+ // Draw
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+
+ // ==========================================
+ // COMPLEX IMPLEMENTATION ENDS HERE
+ // ==========================================
+
+ // 3. ERROR CHECKING
+ const error = gl.getError();
+ if (error !== gl.NO_ERROR) {
+   throw new Error(`WebGL Error: ${error}`);
+ }
+}
+
+main().catch(err => {
+ // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
+ // knows to log it to UNSUPPORTED.md and skip.
+ // Otherwise, it counts as a test failure/crash.
+ console.error('Exception caught:', err.message || err); // Show detailed error message
+ throw err; // Re-throw so test runner catches it
+});
+</script>
+</body>
+</html>

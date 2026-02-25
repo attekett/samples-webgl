@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const vertexCount = 18;
+    const attributeCount = 4;
+    const intRange = 255;
+    const bufferSize = vertexCount * attributeCount * 4;
+    const drawCalls = 3;
+
+    const intType = gl.UNSIGNED_BYTE;
+    const normalizeFlag = true;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+    const primitiveType = gl.TRIANGLES;
+
+    const vertexShader = `#version 300 es
+    in vec4 a_color_norm;
+    in ivec4 a_offset_int;
+    in uvec4 a_scale_uint;
+    in vec2 a_position;
+
+    out vec4 v_color;
+
+    void main() {
+        vec4 colorNorm = a_color_norm;
+        vec4 offsetInt = vec4(a_offset_int) / 127.0;
+        vec4 scaleUint = vec4(a_scale_uint) / 255.0;
+        v_color = colorNorm * scaleUint;
+        vec2 pos = a_position + offsetInt.xy * 0.3;
+        gl_Position = vec4(pos, 0.0, 1.0);
+    }
+    `;
+
+    const fragmentShader = `#version 300 es
+    precision highp float;
+    in vec4 v_color;
+    out vec4 fragColor;
+
+    void main() {
+        fragColor = v_color;
+    }
+    `;
+
+    try {
+        const positions = new Float32Array([
+            -0.3, -0.3, 0.3, -0.3, 0.3, 0.3, -0.3, -0.3, 0.3, 0.3, -0.3, 0.3,
+            -0.6, 0.2, -0.2, 0.2, -0.2, 0.6, -0.6, 0.2, -0.2, 0.6, -0.6, 0.6,
+            0.2, -0.6, 0.6, -0.6, 0.6, -0.2, 0.2, -0.6, 0.6, -0.2, 0.2, -0.2
+        ]);
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        const buffer3 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, positions, bufferUsage);
+        gl.bufferData(bufferTarget, 1024, bufferUsage);
+        gl.bufferData(bufferTarget, positions, bufferUsage);
+    } catch(e) {}
+
+    try {
+        const colorsNorm = new Uint8Array(vertexCount * 4);
+        for (let i = 0; i < vertexCount; i++) {
+            colorsNorm[i * 4 + 0] = (i * 30) % 256;
+            colorsNorm[i * 4 + 1] = (i * 50) % 256;
+            colorsNorm[i * 4 + 2] = (i * 70) % 256;
+            colorsNorm[i * 4 + 3] = 255;
+        }
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, colorsNorm, bufferUsage);
+        gl.bufferData(bufferTarget, 512, bufferUsage);
+        gl.bufferData(bufferTarget, colorsNorm, bufferUsage);
+    } catch(e) {}
+
+    try {
+        const offsetsInt = new Int8Array(vertexCount * 4);
+        for (let i = 0; i < vertexCount; i++) {
+            offsetsInt[i * 4 + 0] = ((i % 3) - 1) * 20;
+            offsetsInt[i * 4 + 1] = ((Math.floor(i / 3) % 3) - 1) * 20;
+            offsetsInt[i * 4 + 2] = (i % 7) * 10;
+            offsetsInt[i * 4 + 3] = 0;
+        }
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, offsetsInt, bufferUsage);
+    } catch(e) {}
+
+    try {
+        const scalesUint = new Uint8Array(vertexCount * 4);
+        for (let i = 0; i < vertexCount; i++) {
+            scalesUint[i * 4 + 0] = 200 + (i % 6) * 9;
+            scalesUint[i * 4 + 1] = 180 + (i % 7) * 10;
+            scalesUint[i * 4 + 2] = 220 + (i % 5) * 7;
+            scalesUint[i * 4 + 3] = 255;
+        }
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bufferData(bufferTarget, scalesUint, bufferUsage);
+    } catch(e) {}
+
+    let program;
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(vs, vertexShader);
+        gl.shaderSource(fs, fragmentShader);
+        gl.compileShader(vs);
+        gl.compileShader(fs);
+        if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(vs));
+        }
+        if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+            throw new Error(gl.getShaderInfoLog(fs));
+        }
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(program));
+        }
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const vao1 = gl.createVertexArray();
+        const vao2 = gl.createVertexArray();
+        const vao3 = gl.createVertexArray();
+        gl.bindVertexArray(vao1);
+        gl.bindVertexArray(vao2);
+        gl.bindVertexArray(vao1);
+        const posLoc = gl.getAttribLocation(program, 'a_position');
+        const colorLoc = gl.getAttribLocation(program, 'a_color_norm');
+        const offsetLoc = gl.getAttribLocation(program, 'a_offset_int');
+        const scaleLoc = gl.getAttribLocation(program, 'a_scale_uint');
+        gl.enableVertexAttribArray(posLoc);
+        gl.disableVertexAttribArray(posLoc);
+        gl.enableVertexAttribArray(posLoc);
+        gl.enableVertexAttribArray(colorLoc);
+        gl.disableVertexAttribArray(colorLoc);
+        gl.enableVertexAttribArray(colorLoc);
+        gl.enableVertexAttribArray(offsetLoc);
+        gl.enableVertexAttribArray(scaleLoc);
+    } catch(e) {}
+
+    try {
+        const posLoc = gl.getAttribLocation(program, 'a_position');
+        const colorLoc = gl.getAttribLocation(program, 'a_color_norm');
+        const offsetLoc = gl.getAttribLocation(program, 'a_offset_int');
+        const scaleLoc = gl.getAttribLocation(program, 'a_scale_uint');
+        const buffer1 = gl.createBuffer();
+        const buffer2 = gl.createBuffer();
+        const buffer3 = gl.createBuffer();
+        const buffer4 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, true, 0, 0);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, buffer2);
+        gl.vertexAttribPointer(colorLoc, 4, gl.UNSIGNED_BYTE, normalizeFlag, 0, 0);
+        gl.vertexAttribPointer(colorLoc, 4, gl.UNSIGNED_BYTE, false, 0, 0);
+        gl.vertexAttribPointer(colorLoc, 4, gl.UNSIGNED_BYTE, true, 0, 0);
+        gl.bindBuffer(bufferTarget, buffer3);
+        gl.vertexAttribIPointer(offsetLoc, 4, gl.BYTE, 0, 0);
+        gl.vertexAttribIPointer(offsetLoc, 4, intType, 0, 0);
+        gl.vertexAttribIPointer(offsetLoc, 4, gl.BYTE, 0, 0);
+        gl.bindBuffer(bufferTarget, buffer4);
+        gl.vertexAttribIPointer(scaleLoc, 4, intType, 0, 0);
+        gl.vertexAttribIPointer(scaleLoc, 4, gl.UNSIGNED_SHORT, 0, 0);
+        gl.vertexAttribIPointer(scaleLoc, 4, gl.UNSIGNED_BYTE, 0, 0);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_ADD);
+    } catch(e) {}
+
+    try {
+        for (let i = 0; i < drawCalls; i++) {
+            gl.drawArrays(primitiveType, 0, vertexCount);
+            gl.drawArrays(primitiveType, 0, 24);
+            gl.drawArrays(primitiveType, 0, vertexCount);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 12);
+            gl.drawArrays(primitiveType, 0, vertexCount);
+        }
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+        const delBuffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, delBuffer);
+        gl.deleteBuffer(delBuffer);
+        gl.bufferData(bufferTarget, 128, gl.STATIC_DRAW);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

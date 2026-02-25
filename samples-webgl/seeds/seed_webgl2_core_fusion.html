@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 required");
+
+    // ==========================================
+    // WEBGL2 CORE FUSION - Biomass Seed
+    // Combines: UBOs + Texture Arrays + MRT + Samplers + VAOs + Queries
+    // ==========================================
+
+    const TEXTURE_LAYERS = 4;
+    const MRT_TARGETS = 2;
+    const QUERY_COUNT = 2;
+
+    // FUZZING CONSTANTS
+    const TEX_MIN_FILTER = gl.LINEAR_MIPMAP_LINEAR;
+    const TEX_MAG_FILTER = gl.LINEAR;
+    const TEX_WRAP_MODE = gl.REPEAT;
+
+    // 1. CREATE UNIFORM BUFFER OBJECTS
+    const globalUBO = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, globalUBO);
+    const globalParams = new Float32Array([0.1, 0.5, 2.0, 0.8, 1.5, 0.3]);
+    gl.bufferData(gl.UNIFORM_BUFFER, globalParams, gl.DYNAMIC_DRAW);
+
+    const transformUBO = gl.createBuffer();
+    gl.bindBuffer(gl.UNIFORM_BUFFER, transformUBO);
+    const transformMatrices = new Float32Array(16 * 2); // projection + view
+    for (let i = 0; i < 16 * 2; i++) transformMatrices[i] = (i % 16 === Math.floor(i / 16)) ? 1.0 : 0.0;
+    gl.bufferData(gl.UNIFORM_BUFFER, transformMatrices, gl.DYNAMIC_DRAW);
+
+    // 2. CREATE TEXTURE ARRAYS
+    const textureArray = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+    const textureData = new Uint8Array(64 * 64 * TEXTURE_LAYERS * 4);
+    for (let i = 0; i < textureData.length; i++) textureData[i] = Math.floor(Math.random() * 256);
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 64, 64, TEXTURE_LAYERS, 0, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, TEX_MIN_FILTER);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, TEX_MAG_FILTER);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, TEX_WRAP_MODE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, TEX_WRAP_MODE);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+
+    // 3. CREATE SAMPLER OBJECTS
+    const sampler = gl.createSampler();
+    gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    gl.samplerParameteri(sampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    // 4. CREATE MRT FRAMEBUFFER
+    const mrtFramebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFramebuffer);
+    const mrtTextures = [];
+    for (let i = 0; i < MRT_TARGETS; i++) {
+        const tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1 + i);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, tex, 0);
+        mrtTextures.push(tex);
+    }
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+
+    // 5. CREATE QUERIES
+    const queries = [];
+    for (let i = 0; i < QUERY_COUNT; i++) {
+        queries.push(gl.createQuery());
+    }
+
+    // 6. CREATE VAOs
+    const quadVAO = gl.createVertexArray();
+    gl.bindVertexArray(quadVAO);
+    const quadVertices = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+    const quadBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
+
+    // 7. CREATE SHADERS
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, `#version 300 es
+layout(location=0) in vec2 position;
+uniform ubo1 { vec4 params; };
+uniform ubo2 { mat4 projection; mat4 view; };
+out vec2 vTexCoord;
+out vec4 vColor;
+
+void main() {
+    vTexCoord = position * 0.5 + 0.5;
+    vColor = params;
+    gl_Position = projection * view * vec4(position, 0.0, 1.0);
+}`);
+    gl.compileShader(vertexShader);
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+precision highp sampler2D;
+in vec2 vTexCoord;
+in vec4 vColor;
+uniform sampler2DArray texArray;
+uniform sampler2D mrtTex0;
+uniform sampler2D mrtTex1;
+layout(location=0) out vec4 fragColor;
+layout(location=1) out vec4 fieldColor;
+
+void main() {
+    vec4 texSample = texture(texArray, vec3(vTexCoord, 0.0));
+    vec4 mrt0 = texture(mrtTex0, vTexCoord);
+    vec4 mrt1 = texture(mrtTex1, vTexCoord);
+    fragColor = vColor * texSample + mrt0 * 0.5 + mrt1 * 0.3;
+    fieldColor = texSample;
+}`);
+    gl.compileShader(fragmentShader);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+
+    // 8. SETUP STATE
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    const ubo1Index = gl.getUniformBlockIndex(program, 'ubo1');
+    const ubo2Index = gl.getUniformBlockIndex(program, 'ubo2');
+    if (ubo1Index !== gl.INVALID_INDEX) gl.uniformBlockBinding(program, ubo1Index, 0);
+    if (ubo2Index !== gl.INVALID_INDEX) gl.uniformBlockBinding(program, ubo2Index, 1);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, globalUBO);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, transformUBO);
+    gl.bindSampler(0, sampler);
+
+    // 9. RENDER
+    gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[0]);
+
+    // MRT pass
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFramebuffer);
+    gl.viewport(0, 0, 256, 256);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(program);
+    gl.bindVertexArray(quadVAO);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+    gl.uniform1i(gl.getUniformLocation(program, 'texArray'), 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Final pass
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, 256, 256);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, mrtTextures[0]);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, mrtTextures[1]);
+    gl.uniform1i(gl.getUniformLocation(program, 'texArray'), 0);
+    gl.uniform1i(gl.getUniformLocation(program, 'mrtTex0'), 1);
+    gl.uniform1i(gl.getUniformLocation(program, 'mrtTex1'), 2);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    gl.endQuery(gl.ANY_SAMPLES_PASSED);
+
+    // Conditional rendering
+    const queryResult = new Uint32Array(1);
+    gl.getQueryParameter(queries[0], gl.QUERY_RESULT, queryResult);
+    if (queryResult[0] > 0) {
+        gl.beginConditionalRender(queries[0], gl.QUERY_BY_REGION_WAIT);
+        gl.drawArrays(gl.POINTS, 0, 10);
+        gl.endConditionalRender();
+    }
+
+    // 10. CLEANUP
+    gl.deleteProgram(program);
+    gl.deleteVertexArray(quadVAO);
+    gl.deleteBuffer(quadBuffer);
+    gl.deleteBuffer(globalUBO);
+    gl.deleteBuffer(transformUBO);
+    gl.deleteTexture(textureArray);
+    gl.deleteSampler(sampler);
+    gl.deleteFramebuffer(mrtFramebuffer);
+    mrtTextures.forEach(tex => gl.deleteTexture(tex));
+    queries.forEach(q => gl.deleteQuery(q));
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) throw new Error("WebGL Error: " + error);
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

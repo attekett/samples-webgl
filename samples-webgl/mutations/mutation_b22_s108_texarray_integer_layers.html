@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const layerCount = 32;
+const intFormat = 36236;
+const clearValue = 999;
+const sampleCount = 64;
+const texSize = 128;
+const bufferSize = texSize * texSize * 4;
+
+const arrayTarget = 35866;
+const intFormatUI = 36220;
+const colorBuffer = 6144;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const intArray1 = gl.createTexture();
+        const intArray2 = gl.createTexture();
+        const intArray3 = gl.createTexture();
+        gl.bindTexture(arrayTarget, intArray1);
+        gl.bindTexture(arrayTarget, intArray2);
+        gl.bindTexture(arrayTarget, intArray1);
+        gl.texStorage3D(arrayTarget, 1, intFormat, texSize, texSize, layerCount);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindTexture(arrayTarget, intArray2);
+        gl.texStorage3D(arrayTarget, 1, intFormatUI, 256, 256, 64);
+        gl.texParameteri(arrayTarget, 10241, 9728);
+        gl.texParameteri(arrayTarget, 10240, 9728);
+        gl.texParameteri(arrayTarget, 10242, 33071);
+    } catch(e) { console.log(e); }
+
+    try {
+        const fbo1 = gl.createFramebuffer();
+        const fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(36160, fbo1);
+        gl.framebufferTextureLayer(36160, 36064, intArray1, 0, 0);
+        gl.framebufferTextureLayer(36160, 36064, intArray1, 0, 8);
+        gl.framebufferTextureLayer(36160, 36064, intArray1, 0, 16);
+        gl.bindFramebuffer(36160, fbo2);
+        gl.framebufferTextureLayer(36160, 36064, intArray2, 0, 0);
+        gl.bindFramebuffer(36160, fbo1);
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let layer = 0; layer < 16; layer++) {
+            gl.framebufferTextureLayer(36160, 36064, intArray1, 0, layer);
+            const val = clearValue + layer * 100;
+            gl.clearBufferiv(colorBuffer, 0, new Int32Array([val, val * 2, val * 3, val * 4]));
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        for (let layer = 0; layer < 12; layer++) {
+            gl.bindFramebuffer(36160, fbo2);
+            gl.framebufferTextureLayer(36160, 36064, intArray2, 0, layer);
+            gl.clearBufferuiv(colorBuffer, 0, new Uint32Array([12345, 67890, 11111, 22222]));
+        }
+    } catch(e) { console.log(e); }
+
+    try {
+        const vs = gl.createShader(35633);
+        gl.shaderSource(vs, `#version 300 es
+            in vec3 position;
+            out vec3 vTexCoord;
+            void main() {
+                gl_Position = vec4(position, 1.0);
+                vTexCoord = vec3(position.xy * 0.5 + 0.5, float(gl_VertexID) * 0.5);
+            }
+        `);
+        gl.compileShader(vs);
+
+        const fs = gl.createShader(35632);
+        gl.shaderSource(fs, `#version 300 es
+            precision highp float;
+            precision highp isampler2DArray;
+            precision highp usampler2DArray;
+            uniform isampler2DArray uIntArray;
+            uniform usampler2DArray uUintArray;
+            in vec3 vTexCoord;
+            out vec4 fragColor;
+            void main() {
+                ivec4 iSample = texture(uIntArray, vTexCoord);
+                uvec4 uSample = texture(uUintArray, vTexCoord);
+                vec4 normalized = vec4(iSample) / float(${clearValue * 10});
+                fragColor = normalized + vec4(uSample) / 100000.0;
+            }
+        `);
+        gl.compileShader(fs);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) { console.log(e); }
+
+    try {
+        const buffer1 = gl.createBuffer();
+        gl.bindBuffer(34962, buffer1);
+        gl.bufferData(34962, bufferSize, 35044);
+        gl.vertexAttribPointer(0, 3, 5126, false, 0, 0);
+        gl.enableVertexAttribArray(0);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.enable(2929);
+        gl.disable(2929);
+        gl.enable(2929);
+        gl.depthFunc(515);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindFramebuffer(36160, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.drawArrays(4, 0, 6);
+        gl.drawArrays(4, 0, sampleCount);
+        gl.drawArrays(4, 0, 18);
+    } catch(e) { console.log(e); }
+
+    try {
+        gl.bindTexture(arrayTarget, intArray1);
+        gl.deleteTexture(intArray1);
+        gl.bindTexture(arrayTarget, intArray1);
+        gl.framebufferTextureLayer(36160, 36064, intArray1, 0, 0);
+    } catch(e) { console.log(e); }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

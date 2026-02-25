@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const programCount = 3;
+const switchCount = 8;
+const varyingCount = 6;
+const vertexCount = 256;
+const bufferSize = 4096;
+
+const tfTarget = 0x8C8E;
+const separateAttribs = 0x8C8D;
+const interleavedAttribs = 0x8C8C;
+const streamCopy = 0x88E2;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    try {
+        const buf1 = gl.createBuffer();
+        const buf2 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf1);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexCount * 16, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        const tfBuf1 = gl.createBuffer();
+        const tfBuf2 = gl.createBuffer();
+        const tfBuf3 = gl.createBuffer();
+        const tfBuf4 = gl.createBuffer();
+        gl.bindBuffer(tfTarget, tfBuf1);
+        gl.bindBuffer(tfTarget, tfBuf2);
+        gl.bindBuffer(tfTarget, tfBuf1);
+        gl.bufferData(tfTarget, bufferSize, streamCopy);
+        gl.bindBuffer(tfTarget, tfBuf3);
+        gl.bufferData(tfTarget, bufferSize * 2, streamCopy);
+        gl.bindBuffer(tfTarget, tfBuf2);
+        gl.bufferData(tfTarget, 8192, streamCopy);
+        gl.bindBuffer(tfTarget, tfBuf4);
+        gl.bufferData(tfTarget, 2048, streamCopy);
+    } catch(e) {}
+
+    try {
+        const vs1 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs1, `#version 300 es
+            in vec4 aPos;
+            out vec4 vOut1;
+            out vec4 vOut2;
+            void main() {
+                vOut1 = aPos * 2.0;
+                vOut2 = aPos + vec4(1.0);
+                gl_Position = aPos;
+            }
+        `);
+        gl.compileShader(vs1);
+
+        const fs1 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs1, `#version 300 es
+            precision highp float;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            }
+        `);
+        gl.compileShader(fs1);
+
+        const program1 = gl.createProgram();
+        gl.attachShader(program1, vs1);
+        gl.attachShader(program1, fs1);
+        gl.transformFeedbackVaryings(program1, ['vOut1', 'vOut2'], interleavedAttribs);
+        gl.linkProgram(program1);
+    } catch(e) {}
+
+    try {
+        const vs2 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs2, `#version 300 es
+            in vec4 aPos;
+            out vec4 vData;
+            void main() {
+                vData = aPos * 0.5;
+                gl_Position = aPos;
+            }
+        `);
+        gl.compileShader(vs2);
+
+        const fs2 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs2, `#version 300 es
+            precision highp float;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(0.0, 1.0, 0.0, 1.0);
+            }
+        `);
+        gl.compileShader(fs2);
+
+        const program2 = gl.createProgram();
+        gl.attachShader(program2, vs2);
+        gl.attachShader(program2, fs2);
+        gl.transformFeedbackVaryings(program2, ['vData'], interleavedAttribs);
+        gl.linkProgram(program2);
+    } catch(e) {}
+
+    try {
+        const vs3 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs3, `#version 300 es
+            in vec4 aPos;
+            out vec4 vA;
+            out vec4 vB;
+            out vec4 vC;
+            void main() {
+                vA = aPos;
+                vB = aPos * 1.5;
+                vC = aPos - vec4(0.5);
+                gl_Position = aPos;
+            }
+        `);
+        gl.compileShader(vs3);
+
+        const fs3 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs3, `#version 300 es
+            precision highp float;
+            out vec4 fragColor;
+            void main() {
+                fragColor = vec4(0.0, 0.0, 1.0, 1.0);
+            }
+        `);
+        gl.compileShader(fs3);
+
+        const program3 = gl.createProgram();
+        gl.attachShader(program3, vs3);
+        gl.attachShader(program3, fs3);
+        gl.transformFeedbackVaryings(program3, ['vA', 'vB', 'vC'], separateAttribs);
+        gl.linkProgram(program3);
+    } catch(e) {}
+
+    try {
+        const vertexData = new Float32Array(vertexCount * 4);
+        for (let i = 0; i < vertexData.length; i++) {
+            vertexData[i] = Math.sin(i * 0.1);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf1);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(0);
+    } catch(e) {}
+
+    try {
+        gl.bindBufferBase(tfTarget, 0, tfBuf1);
+        gl.bindBufferBase(tfTarget, 1, tfBuf2);
+        gl.bindBufferBase(tfTarget, 0, tfBuf1);
+    } catch(e) {}
+
+    try {
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.useProgram(program1);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, vertexCount);
+        gl.endTransformFeedback();
+    } catch(e) {}
+
+    try {
+        gl.bindBufferBase(tfTarget, 0, tfBuf2);
+        gl.useProgram(program2);
+        gl.useProgram(program1);
+        gl.useProgram(program2);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, 128);
+        gl.endTransformFeedback();
+    } catch(e) {}
+
+    try {
+        gl.bindBufferBase(tfTarget, 0, tfBuf3);
+        gl.bindBufferBase(tfTarget, 1, tfBuf4);
+        gl.useProgram(program3);
+        gl.useProgram(program1);
+        gl.useProgram(program3);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, 64);
+        gl.endTransformFeedback();
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.1, 0.1, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

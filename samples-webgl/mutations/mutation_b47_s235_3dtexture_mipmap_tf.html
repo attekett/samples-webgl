@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
+
+const BASE_SIZE = 256;
+const MIPMAP_LEVELS = 8;
+const VERTICES_PER_LEVEL = 64;
+
+const vsSource = `#version 300 es
+in vec3 a_position;
+in vec2 a_texCoord;
+in float a_mipmapLevel;
+out vec3 v_worldPos;
+out vec2 v_tc;
+out float v_mipLevel;
+
+uniform mat4 u_viewMatrix;
+uniform float u_levelScale;
+uniform vec3 u_positionOffset;
+
+void main() {
+    vec3 pos = a_position * u_levelScale;
+    pos += u_positionOffset;
+    pos.x += sin(a_mipmapLevel * 0.5) * 0.1;
+    pos.y += cos(a_mipmapLevel * 0.7) * 0.1;
+
+    gl_Position = u_viewMatrix * vec4(pos, 1.0);
+
+    v_worldPos = pos;
+    v_tc = a_texCoord;
+    v_mipLevel = a_mipmapLevel;
+}`;
+
+const fsSource = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+
+in vec3 v_worldPos;
+in vec2 v_tc;
+in float v_mipLevel;
+out vec4 fragColor;
+
+uniform sampler3D u_texture3D;
+uniform float u_lodBias;
+
+void main() {
+    vec3 coord = vec3(v_tc, v_mipLevel / float(${MIPMAP_LEVELS}));
+    vec4 texel = texture(u_texture3D, coord, u_lodBias);
+    fragColor = vec4(texel.rgb * 0.9 + vec3(v_mipLevel / float(${MIPMAP_LEVELS})) * 0.1, 1.0);
+}`;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    let vertexShader, fragmentShader, program;
+    try {
+        vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vsSource);
+        gl.compileShader(vertexShader);
+    } catch (e) { throw e; }
+
+    try {
+        fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fsSource);
+        gl.compileShader(fragmentShader);
+    } catch (e) { throw e; }
+
+    try {
+        program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.transformFeedbackVaryings(program, ['v_worldPos', 'v_tc', 'v_mipLevel'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch (e) { throw e; }
+
+    const positionLoc = gl.getAttribLocation(program, 'a_position');
+    const texCoordLoc = gl.getAttribLocation(program, 'a_texCoord');
+    const mipmapLevelLoc = gl.getAttribLocation(program, 'a_mipmapLevel');
+    const viewMatrixLoc = gl.getUniformLocation(program, 'u_viewMatrix');
+    const levelScaleLoc = gl.getUniformLocation(program, 'u_levelScale');
+    const positionOffsetLoc = gl.getUniformLocation(program, 'u_positionOffset');
+    const texture3DLoc = gl.getUniformLocation(program, 'u_texture3D');
+    const lodBiasLoc = gl.getUniformLocation(program, 'u_lodBias');
+
+    const positions = new Float32Array(VERTICES_PER_LEVEL * 3);
+    for (let i = 0; i < VERTICES_PER_LEVEL; i++) {
+        const angle = (i / VERTICES_PER_LEVEL) * Math.PI * 2;
+        positions[i * 3] = Math.cos(angle) * 0.5;
+        positions[i * 3 + 1] = Math.sin(angle) * 0.5;
+        positions[i * 3 + 2] = (i / VERTICES_PER_LEVEL - 0.5) * 0.3;
+    }
+
+    const texCoords = new Float32Array(VERTICES_PER_LEVEL * 2);
+    for (let i = 0; i < VERTICES_PER_LEVEL; i++) {
+        texCoords[i * 2] = i / VERTICES_PER_LEVEL;
+        texCoords[i * 2 + 1] = (i % 8) / 8.0;
+    }
+
+    const mipmapLevels = new Float32Array(VERTICES_PER_LEVEL);
+    for (let i = 0; i < VERTICES_PER_LEVEL; i++) {
+        mipmapLevels[i] = 0;
+    }
+
+    let positionBuffer, texCoordBuffer, mipmapLevelBuffer;
+    try {
+        positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+    } catch (e) { throw e; }
+
+    try {
+        texCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+    } catch (e) { throw e; }
+
+    try {
+        mipmapLevelBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, mipmapLevelBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, mipmapLevels, gl.DYNAMIC_DRAW);
+    } catch (e) { throw e; }
+
+    const tfBuffers = [];
+    try {
+        for (let i = 0; i < MIPMAP_LEVELS; i++) {
+            const buf = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+            gl.bufferData(gl.ARRAY_BUFFER, VERTICES_PER_LEVEL * (3 + 2 + 1) * 4, gl.DYNAMIC_COPY);
+            tfBuffers.push(buf);
+        }
+    } catch (e) { throw e; }
+
+    let texture3D;
+    try {
+        texture3D = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, texture3D);
+        gl.texStorage3D(gl.TEXTURE_3D, MIPMAP_LEVELS, gl.RGBA8, BASE_SIZE, BASE_SIZE, BASE_SIZE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    } catch (e) { throw e; }
+
+    let vao;
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(positionLoc);
+        gl.vertexAttribPointer(positionLoc, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.enableVertexAttribArray(texCoordLoc);
+        gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, mipmapLevelBuffer);
+        gl.enableVertexAttribArray(mipmapLevelLoc);
+        gl.vertexAttribPointer(mipmapLevelLoc, 1, gl.FLOAT, false, 0, 0);
+    } catch (e) { throw e; }
+
+    const tf = gl.createTransformFeedback();
+
+    const viewMatrix = new Float32Array([
+        1.2, 0, 0, 0,
+        0, 1.2, 0, 0,
+        0, 0, 1.2, 0,
+        0, 0, 0, 1
+    ]);
+
+    gl.uniformMatrix4fv(viewMatrixLoc, false, viewMatrix);
+    gl.uniform1i(texture3DLoc, 0);
+
+    try {
+        for (let level = 0; level < MIPMAP_LEVELS; level++) {
+            const levelSize = BASE_SIZE >> level;
+            if (levelSize < 1) break;
+
+            for (let i = 0; i < VERTICES_PER_LEVEL; i++) {
+                mipmapLevels[i] = level;
+            }
+            gl.bindBuffer(gl.ARRAY_BUFFER, mipmapLevelBuffer);
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, mipmapLevels);
+
+            gl.uniform1f(levelScaleLoc, 1.0 / (1 << level));
+            gl.uniform3f(positionOffsetLoc, level * 0.05, 0, 0);
+            gl.uniform1f(lodBiasLoc, level * 0.5);
+
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffers[level]);
+
+            gl.beginTransformFeedback(gl.POINTS);
+            gl.drawArrays(gl.POINTS, 0, VERTICES_PER_LEVEL);
+            gl.endTransformFeedback();
+
+            gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+
+            const texData = new Uint8Array(levelSize * levelSize * levelSize * 4);
+            for (let i = 0; i < texData.length; i += 4) {
+                texData[i] = (level * 30 + (i / 4) % 256) % 256;
+                texData[i + 1] = (level * 50 + (i / 4) % 256) % 256;
+                texData[i + 2] = (level * 70 + (i / 4) % 256) % 256;
+                texData[i + 3] = 255;
+            }
+
+            gl.bindTexture(gl.TEXTURE_3D, texture3D);
+            gl.texSubImage3D(gl.TEXTURE_3D, level, 0, 0, 0, levelSize, levelSize, levelSize, gl.RGBA, gl.UNSIGNED_BYTE, texData);
+        }
+    } catch (e) { throw e; }
+
+    try {
+        gl.bindTexture(gl.TEXTURE_3D, texture3D);
+        gl.generateMipmap(gl.TEXTURE_3D);
+
+        const maxLevel = gl.getParameter(gl.MAX_TEXTURE_MAX_LEVEL);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAX_LEVEL, Math.min(MIPMAP_LEVELS - 1, maxLevel));
+    } catch (e) { throw e; }
+
+    try {
+        gl.bindVertexArray(vao);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
+
+        for (let level = 0; level < MIPMAP_LEVELS; level++) {
+            for (let i = 0; i < VERTICES_PER_LEVEL; i++) {
+                mipmapLevels[i] = level;
+            }
+            gl.bindBuffer(gl.ARRAY_BUFFER, mipmapLevelBuffer);
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, mipmapLevels);
+
+            gl.uniform1f(levelScaleLoc, 0.8);
+            gl.uniform3f(positionOffsetLoc, 0, 0, 0);
+            gl.uniform1f(lodBiasLoc, 0);
+            gl.drawArrays(gl.POINTS, 0, VERTICES_PER_LEVEL);
+        }
+    } catch (e) { throw e; }
+
+    try {
+        gl.deleteTexture(texture3D);
+        gl.deleteBuffer(positionBuffer);
+        gl.deleteBuffer(texCoordBuffer);
+        gl.deleteBuffer(mipmapLevelBuffer);
+        tfBuffers.forEach(buf => gl.deleteBuffer(buf));
+        gl.deleteVertexArray(vao);
+        gl.deleteTransformFeedback(tf);
+        gl.deleteProgram(program);
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+    } catch (e) { throw e; }
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

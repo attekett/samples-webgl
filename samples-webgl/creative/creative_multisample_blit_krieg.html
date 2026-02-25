@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="512" height="512"></canvas>
+    <script>
+        // CONFIGURATION
+        const REQUIRED_EXTENSIONS = [];
+
+        // FUZZING PARAMETERS
+        const INITIAL_SIZE = 512;
+        const MSAA_SAMPLES = 4;
+        const RESOLVE_SIZE = 512;
+        const SCALE_SIZE = 128;
+        const STATE_CHANGE_COUNT = 50;
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            // We need WebGL2 for core MSAA renderbuffers
+            const gl = canvas.getContext('webgl2', { antialias: false }); // Disable default AA to rely on our manual MSAA
+            if (!gl) throw new Error("WebGL2 required for MSAA Renderbuffers");
+
+            // 1. EXTENSION GATING
+            const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+            if (missingExtensions.length > 0) {
+                throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+            }
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION STARTS HERE
+            // ==========================================
+
+            // 1. Setup MSAA Framebuffer (FBO A)
+            const msaaRB = gl.createRenderbuffer();
+            gl.bindRenderbuffer(gl.RENDERBUFFER, msaaRB);
+            // Use MAX_SAMPLES limit check?
+            const maxSamples = gl.getParameter(gl.MAX_SAMPLES);
+            const samples = Math.min(MSAA_SAMPLES, maxSamples);
+
+            gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, INITIAL_SIZE, INITIAL_SIZE);
+
+            const msaaFBO = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, msaaFBO);
+            gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, msaaRB);
+
+            if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("MSAA FBO Incomplete");
+
+            // 2. Setup Resolve Texture (FBO B)
+            const resolveTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, resolveTex);
+            gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, RESOLVE_SIZE, RESOLVE_SIZE);
+
+            const resolveFBO = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, resolveFBO);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, resolveTex, 0);
+
+            if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("Resolve FBO Incomplete");
+
+            // 3. Setup Scaled Texture (FBO C)
+            const scaledTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, scaledTex);
+            gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, SCALE_SIZE, SCALE_SIZE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+            const scaledFBO = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, scaledFBO);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, scaledTex, 0);
+
+            // 4. Setup Draw Program (High Frequency Noise)
+            const vsSource = `#version 300 es
+    in vec2 position;
+    void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+    }`;
+
+            // Draw a grid pattern that benefits from MSAA
+            const fsSource = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    void main() {
+        // Pixel coordinates roughly
+        float x = gl_FragCoord.x;
+        float y = gl_FragCoord.y;
+        
+        // High frequency checkboard/stripes
+        // If MSAA works, edges should be smooth grey
+        // If no MSAA, aliasing artifacts
+        
+        if (mod(x + y, 2.0) < 1.0) {
+            outColor = vec4(1.0, 1.0, 1.0, 1.0);
+        } else {
+            outColor = vec4(0.0, 0.0, 0.0, 1.0);
+        }
+    }`;
+
+            // Visualization Program
+            const drawFsSource = `#version 300 es
+    precision highp float;
+    out vec4 outColor;
+    uniform sampler2D u_tex;
+    void main() {
+        // Just sample
+        outColor = texture(u_tex, gl_FragCoord.xy / 512.0);
+    }`;
+
+            function createProgram(vsSrc, fsSrc) {
+                const vs = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vs, vsSrc);
+                gl.compileShader(vs);
+                const fs = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fs, fsSrc);
+                gl.compileShader(fs);
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+                return prog;
+            }
+
+            const patternProgram = createProgram(vsSource, fsSource);
+            const drawProgram = createProgram(vsSource, drawFsSource); // Reuse VS
+
+            // Quad
+            const quadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+            const vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+            function poisonState() {
+                if (Math.random() < 0.1) {
+                    gl.enable(gl.SCISSOR_TEST);
+                    gl.scissor(0, 0, 100, 100);
+                } else {
+                    gl.disable(gl.SCISSOR_TEST);
+                }
+            }
+
+            // MAIN LOOP
+
+            // 1. MSAA Pass
+            gl.bindFramebuffer(gl.FRAMEBUFFER, msaaFBO);
+            gl.viewport(0, 0, INITIAL_SIZE, INITIAL_SIZE);
+            gl.clearColor(0.5, 0.5, 0.5, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(patternProgram);
+            gl.bindVertexArray(vao);
+            // Draw TRIANGLE_FAN (Quad) - Wait, Strip order wrong in VBO? 0,1,2,3?
+            // -1,-1, 1,-1, -1,1, 1,1 -> Strip is fine.
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            poisonState();
+
+            // 2. Resolve Pass (MSAA -> Texture)
+            // Bind READ = MSAA, DRAW = Resolve
+            gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msaaFBO);
+            gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resolveFBO);
+            gl.blitFramebuffer(
+                0, 0, INITIAL_SIZE, INITIAL_SIZE,
+                0, 0, RESOLVE_SIZE, RESOLVE_SIZE,
+                gl.COLOR_BUFFER_BIT, gl.NEAREST // Scaling 1:1, filter ignored
+            );
+
+            poisonState(); // Might enable scissor
+
+            // 3. Scale Pass (Texture -> Scaled Texture)
+            // Bind READ = Resolve, DRAW = Scaled
+            gl.bindFramebuffer(gl.READ_FRAMEBUFFER, resolveFBO);
+            gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, scaledFBO);
+            gl.blitFramebuffer(
+                0, 0, RESOLVE_SIZE, RESOLVE_SIZE,
+                0, 0, SCALE_SIZE, SCALE_SIZE,
+                gl.COLOR_BUFFER_BIT, gl.LINEAR // Downsample
+            );
+
+            gl.disable(gl.SCISSOR_TEST); // Ensure cleanup
+
+            // 4. Visualization
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, 512, 512);
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(drawProgram);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, resolveTex); // Show resolved
+            gl.uniform1i(gl.getUniformLocation(drawProgram, "u_tex"), 0);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // ==========================================
+            // COMPLEX IMPLEMENTATION ENDS HERE
+            // ==========================================
+
+            // 3. ERROR CHECKING
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main();
+    </script>
+</body>
+
+</html>

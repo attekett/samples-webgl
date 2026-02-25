@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <canvas id="webgl-canvas" width="256" height="256"></canvas>
+    <script>
+        // CONFIGURATION: Compressed texture extensions
+        const REQUIRED_EXTENSIONS = [
+            'WEBGL_compressed_texture_s3tc',
+            'WEBGL_compressed_texture_etc',
+            'WEBGL_compressed_texture_astc',
+            'EXT_texture_compression_bptc',
+            'EXT_texture_compression_rgtc'
+        ];
+
+        async function main() {
+            const canvas = document.getElementById('webgl-canvas');
+            const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+            if (!gl) throw new Error("WebGL not supported");
+
+            // 1. EXTENSION GATING: Check availability and log which ones we found
+            const availableExtensions = {};
+            REQUIRED_EXTENSIONS.forEach(ext => {
+                const instance = gl.getExtension(ext);
+                if (instance) {
+                    availableExtensions[ext] = instance;
+                }
+            });
+
+            if (Object.keys(availableExtensions).length === 0) {
+                throw new Error(`UNSUPPORTED_EXTENSIONS: ${REQUIRED_EXTENSIONS.join(', ')}`);
+            }
+
+            // ==========================================
+            // COMPRESSED TEXTURES IMPLEMENTATION
+            // ==========================================
+
+            const vsSource = `#version 300 es
+    in vec2 a_position;
+    in vec2 a_texCoord;
+    out vec2 v_texCoord;
+    void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+        v_texCoord = a_texCoord;
+    }`;
+
+            const fsSource = `#version 300 es
+    precision highp float;
+    in vec2 v_texCoord;
+    out vec4 fragColor;
+    uniform sampler2D u_texture;
+    uniform float u_time;
+    void main() {
+        vec4 texel = texture(u_texture, v_texCoord);
+        fragColor = texel + vec4(sin(u_time) * 0.1, cos(u_time) * 0.1, 0.0, 0.0);
+    }`;
+
+            function createProgram(gl, vs, fs) {
+                const v = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(v, vs);
+                gl.compileShader(v);
+                if (!gl.getShaderParameter(v, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(v));
+                const f = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(f, fs);
+                gl.compileShader(f);
+                if (!gl.getShaderParameter(f, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(f));
+                const p = gl.createProgram();
+                gl.attachShader(p, v);
+                gl.attachShader(p, f);
+                gl.linkProgram(p);
+                if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+                return p;
+            }
+
+            const program = createProgram(gl, vsSource, fsSource);
+            gl.useProgram(program);
+
+            const positions = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+            const uvs = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
+
+            const vbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+            const posLoc = gl.getAttribLocation(program, "a_position");
+            gl.enableVertexAttribArray(posLoc);
+            gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+            const uvVbo = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, uvVbo);
+            gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+            const uvLoc = gl.getAttribLocation(program, "a_texCoord");
+            gl.enableVertexAttribArray(uvLoc);
+            gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 0, 0);
+
+            // Dummy compressed data for 4x4 blocks
+            const dxtData = new Uint8Array([0x00, 0xF8, 0x00, 0xF8, 0xAA, 0xAA, 0xAA, 0xAA]); // 8 bytes for DXT1
+            const etcData = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // 8 bytes for ETC2
+            const astcData = new Uint8Array(new Array(16).fill(0x55)); // 16 bytes for ASTC 4x4
+            const bptcData = new Uint8Array(new Array(16).fill(0xAA)); // 16 bytes for BPTC
+            const rgtcData = new Uint8Array([0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); // 8 bytes for RGTC1
+
+            const formats = [
+                { ext: 'WEBGL_compressed_texture_s3tc', format: 0x83F0, data: dxtData }, // COMPRESSED_RGB_S3TC_DXT1_EXT
+                { ext: 'WEBGL_compressed_texture_etc', format: 0x9274, data: etcData },  // COMPRESSED_RGB8_ETC2
+                { ext: 'WEBGL_compressed_texture_astc', format: 0x93B0, data: astcData }, // COMPRESSED_RGBA_ASTC_4x4_KHR
+                { ext: 'EXT_texture_compression_bptc', format: 0x8E8C, data: bptcData }, // COMPRESSED_RGBA_BPTC_UNORM_EXT
+                { ext: 'EXT_texture_compression_rgtc', format: 0x8DBB, data: rgtcData }  // COMPRESSED_RED_RGTC1_EXT
+            ];
+
+            const textures = [];
+            formats.forEach(f => {
+                if (availableExtensions[f.ext]) {
+                    const tex = gl.createTexture();
+                    gl.bindTexture(gl.TEXTURE_2D, tex);
+                    gl.compressedTexImage2D(gl.TEXTURE_2D, 0, f.format, 4, 4, 0, f.data);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                    textures.push(tex);
+                }
+            });
+
+            // STATE POISONING: 50+ redundant operations
+            for (let i = 0; i < 50; i++) {
+                gl.enable(gl.BLEND);
+                gl.disable(gl.BLEND);
+                gl.bindTexture(gl.TEXTURE_2D, textures[i % textures.length]);
+                gl.useProgram(program);
+                gl.viewport(0, 0, 256, 256);
+                gl.scissor(0, 0, 256, 256);
+                gl.clearColor(Math.random(), 0.0, 0.0, 1.0);
+            }
+
+            // DRAWING
+            const timeLoc = gl.getUniformLocation(program, "u_time");
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            textures.forEach((tex, idx) => {
+                const x = (idx % 3) * 80;
+                const y = Math.floor(idx / 3) * 80;
+                gl.viewport(x, y, 64, 64);
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.uniform1f(timeLoc, performance.now() / 1000.0);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            });
+
+            // ==========================================
+            // IMPLEMENTATION ENDS HERE
+            // ==========================================
+
+            const error = gl.getError();
+            if (error !== gl.NO_ERROR) {
+                throw new Error(`WebGL Error: ${error}`);
+            }
+        }
+
+        main().catch(err => { throw err; });
+    </script>
+</body>
+
+</html>

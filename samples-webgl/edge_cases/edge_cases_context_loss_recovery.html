@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_lose_context'
+];
+
+const RESOURCE_COUNT = 8;
+const STATE_CHANGE_COUNT = 50;
+const CONTEXT_LOSS_DELAY = 100;
+const RECOVERY_ATTEMPTS = 4;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) {
+        throw new Error("WebGL2 not supported - required for all tests");
+    }
+
+    // Extension detection with WebGL2 awareness
+    const missingExtensions = [];
+    const availableAsCore = [];
+
+    REQUIRED_EXTENSIONS.forEach(ext => {
+        const extension = gl.getExtension(ext);
+        if (!extension) {
+            let availableInCore = false;
+
+            switch(ext) {
+                case 'OES_vertex_array_object':
+                case 'WEBGL_draw_buffers':
+                case 'ANGLE_instanced_arrays':
+                    availableInCore = true;
+                    break;
+                case 'WEBGL_color_buffer_float':
+                    availableInCore = !!gl.getExtension('EXT_color_buffer_float');
+                    break;
+                case 'OES_texture_float':
+                    availableInCore = !!gl.getExtension('EXT_color_buffer_float');
+                    break;
+                default:
+                    availableInCore = false;
+            }
+
+            if (availableInCore) {
+                availableAsCore.push(ext);
+            } else {
+                missingExtensions.push(ext);
+            }
+        }
+    });
+
+    if (missingExtensions.length > 0) {
+        const isPlaywrightFirefox = typeof window.playwright !== 'undefined' ||
+                                   navigator.userAgent.includes('Headless') ||
+                                   !window.chrome;
+
+        if (isPlaywrightFirefox) {
+            throw new Error(`PLAYWRIGHT_FIREFOX_LIMITATION: Extensions ${missingExtensions.join(', ')} not available in Playwright Firefox.`);
+        } else {
+            throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+        }
+    }
+
+    // Get WEBGL_lose_context extension
+    const loseContextExt = gl.getExtension('WEBGL_lose_context');
+    if (!loseContextExt) {
+        throw new Error("WEBGL_lose_context extension not supported");
+    }
+
+    // ==========================================
+    // RESOURCE CREATION AND STATE MANAGEMENT
+    // ==========================================
+
+    // Create multiple resources for lifecycle testing
+    const resources = {
+        textures: [],
+        buffers: [],
+        programs: [],
+        framebuffers: []
+    };
+
+    // Create textures
+    for (let i = 0; i < RESOURCE_COUNT; i++) {
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        resources.textures.push(texture);
+    }
+
+    // Create buffers
+    for (let i = 0; i < RESOURCE_COUNT; i++) {
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        const data = new Float32Array(1024);
+        for (let j = 0; j < data.length; j++) {
+            data[j] = Math.random();
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+        resources.buffers.push(buffer);
+    }
+
+    // Create shader programs
+    const vertexShaderSource = `#version 300 es
+    in vec2 a_position;
+    in vec3 a_color;
+    out vec3 v_color;
+    uniform float u_time;
+    uniform vec2 u_offset;
+
+    void main() {
+        gl_Position = vec4(a_position + u_offset, 0.0, 1.0);
+        v_color = a_color;
+    }
+    `;
+
+    const fragmentShaderSource = `#version 300 es
+    precision mediump float;
+    in vec3 v_color;
+    out vec4 fragColor;
+    uniform float u_alpha;
+
+    void main() {
+        fragColor = vec4(v_color, u_alpha);
+    }
+    `;
+
+    function createShader(type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            throw new Error('Shader compilation failed: ' + gl.getShaderInfoLog(shader));
+        }
+        return shader;
+    }
+
+    const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+    const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+    for (let i = 0; i < RESOURCE_COUNT; i++) {
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error('Program linking failed: ' + gl.getProgramInfoLog(program));
+        }
+        resources.programs.push(program);
+    }
+
+    // Create framebuffers
+    for (let i = 0; i < RESOURCE_COUNT; i++) {
+        const fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, resources.textures[i], 0);
+        resources.framebuffers.push(fbo);
+    }
+
+    // ==========================================
+    // STATE POISONING - Heavy state changes
+    // ==========================================
+
+    for (let i = 0; i < STATE_CHANGE_COUNT; i++) {
+        // Bind different resources randomly
+        const texIndex = i % resources.textures.length;
+        const bufIndex = i % resources.buffers.length;
+        const progIndex = i % resources.programs.length;
+        const fboIndex = i % resources.framebuffers.length;
+
+        gl.bindTexture(gl.TEXTURE_2D, resources.textures[texIndex]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, resources.buffers[bufIndex]);
+        gl.useProgram(resources.programs[progIndex]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, resources.framebuffers[fboIndex]);
+
+        // Toggle various state
+        gl.enable(gl.BLEND);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.CULL_FACE);
+        gl.disable(gl.SCISSOR_TEST);
+
+        // Change blend modes
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_ADD);
+
+        // Change viewport randomly
+        gl.viewport(0, 0, 256, 256);
+
+        // Set uniforms
+        const timeLoc = gl.getUniformLocation(resources.programs[progIndex], 'u_time');
+        const offsetLoc = gl.getUniformLocation(resources.programs[progIndex], 'u_offset');
+        const alphaLoc = gl.getUniformLocation(resources.programs[progIndex], 'u_alpha');
+
+        if (timeLoc) gl.uniform1f(timeLoc, i * 0.1);
+        if (offsetLoc) gl.uniform2f(offsetLoc, Math.sin(i * 0.1), Math.cos(i * 0.1));
+        if (alphaLoc) gl.uniform1f(alphaLoc, 0.8);
+    }
+
+    // ==========================================
+    // CONTEXT LOSS SIMULATION
+    // ==========================================
+
+    // Initial render before context loss
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.clearColor(0.0, 0.5, 0.0, 1.0); // Green = normal operation
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // Simulate context loss after delay
+    setTimeout(() => {
+        console.log('Simulating context loss...');
+        loseContextExt.loseContext();
+
+        // Check if context is lost
+        if (gl.isContextLost()) {
+            console.log('Context is lost - attempting recovery...');
+
+            // Create a separate canvas for visual feedback when WebGL context is lost
+            const feedbackCanvas = document.createElement('canvas');
+            feedbackCanvas.width = 256;
+            feedbackCanvas.height = 256;
+            feedbackCanvas.style.position = 'absolute';
+            feedbackCanvas.style.top = '0';
+            feedbackCanvas.style.left = '0';
+            document.body.appendChild(feedbackCanvas);
+
+            const ctx = feedbackCanvas.getContext('2d');
+            ctx.fillStyle = 'red';
+            ctx.fillRect(0, 0, 256, 256);
+            ctx.fillStyle = 'white';
+            ctx.font = '16px Arial';
+            ctx.fillText('CONTEXT LOST', 80, 120);
+        }
+
+        // Attempt recovery
+        setTimeout(() => {
+            if (gl.isContextLost()) {
+                // Try to restore context
+                loseContextExt.restoreContext();
+
+                // Check if restoration worked
+                if (!gl.isContextLost()) {
+                    console.log('Context restored successfully');
+
+                    // Remove feedback canvas
+                    const feedbackCanvas = document.querySelector('canvas[style*="absolute"]');
+                    if (feedbackCanvas) {
+                        document.body.removeChild(feedbackCanvas);
+                    }
+
+                    // Re-create resources after restoration
+                    try {
+                        // Attempt to re-create some resources
+                        const testTexture = gl.createTexture();
+                        gl.bindTexture(gl.TEXTURE_2D, testTexture);
+                        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+                        // Render success indicator: Blue = restored
+                        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                        gl.clearColor(0.0, 0.0, 1.0, 1.0);
+                        gl.clear(gl.COLOR_BUFFER_BIT);
+
+                    } catch (error) {
+                        console.log('Resource recreation failed:', error);
+
+                        // Create feedback canvas for restoration failure
+                        const feedbackCanvas = document.createElement('canvas');
+                        feedbackCanvas.width = 256;
+                        feedbackCanvas.height = 256;
+                        feedbackCanvas.style.position = 'absolute';
+                        feedbackCanvas.style.top = '0';
+                        feedbackCanvas.style.left = '0';
+                        document.body.appendChild(feedbackCanvas);
+
+                        const ctx = feedbackCanvas.getContext('2d');
+                        ctx.fillStyle = 'yellow';
+                        ctx.fillRect(0, 0, 256, 256);
+                        ctx.fillStyle = 'black';
+                        ctx.font = '14px Arial';
+                        ctx.fillText('RESTORATION', 75, 110);
+                        ctx.fillText('FAILED', 105, 130);
+                    }
+                } else {
+                    console.log('Context restoration failed');
+
+                    // Update feedback canvas for restoration failure
+                    const feedbackCanvas = document.querySelector('canvas[style*="absolute"]');
+                    if (feedbackCanvas) {
+                        const ctx = feedbackCanvas.getContext('2d');
+                        ctx.fillStyle = 'yellow';
+                        ctx.fillRect(0, 0, 256, 256);
+                        ctx.fillStyle = 'black';
+                        ctx.font = '14px Arial';
+                        ctx.fillText('RESTORATION', 75, 110);
+                        ctx.fillText('FAILED', 105, 130);
+                    }
+                }
+            } else {
+                console.log('Context was not lost');
+
+                // Remove feedback canvas and show normal operation
+                const feedbackCanvas = document.querySelector('canvas[style*="absolute"]');
+                if (feedbackCanvas) {
+                    document.body.removeChild(feedbackCanvas);
+                }
+
+                // Purple = no context loss occurred
+                gl.clearColor(0.5, 0.0, 0.5, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+            }
+        }, CONTEXT_LOSS_DELAY * 2);
+
+    }, CONTEXT_LOSS_DELAY);
+
+    // ==========================================
+    // CLEANUP
+    // ==========================================
+
+    // Clean up resources
+    resources.textures.forEach(tex => gl.deleteTexture(tex));
+    resources.buffers.forEach(buf => gl.deleteBuffer(buf));
+    resources.programs.forEach(prog => gl.deleteProgram(prog));
+    resources.framebuffers.forEach(fbo => gl.deleteFramebuffer(fbo));
+
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) {
+        throw new Error(`WebGL Error: ${error}`);
+    }
+}
+
+main().catch(err => {
+    console.error(err);
+});
+</script>
+</body>
+</html>
