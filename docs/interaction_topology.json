@@ -56,7 +56,6 @@
     {"pair": ["ext_compressed_textures", "texture_ops"], "relationship": "compressed formats extend textures"},
     {"pair": ["ext_disjoint_timer_query", "query"], "relationship": "timer query extends query objects"},
     {"pair": ["ext_disjoint_timer_query", "draw_calls"], "relationship": "GPU timing of draw calls"},
-    {"pair": ["mrt", "blending"], "relationship": "per-target blending with MRT"},
-    {"pair": ["depth_stencil", "renderbuffer"], "relationship": "depth/stencil in renderbuffer storage"}
+    {"pair": ["mrt", "blending"], "relationship": "per-target blending with MRT"}
   ]
 }
