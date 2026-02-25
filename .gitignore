@@ -12,6 +12,9 @@ build/
 # Test outputs
 screenshots/
 *.json
+!docs/interaction_topology.json
+!docs/feature_categories.json
+!docs/webgl_api_surface.json
 *.log
 
 # IDE

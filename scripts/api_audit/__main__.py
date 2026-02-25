@@ -43,6 +43,7 @@ def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None):
         'glsl_builtins': {name: 1 for name in glsl},
         'extension_methods': {},
         'return_constants': list(calls.return_constants),
+        'extensions': list(ctx.extensions),
         'lint_warnings': warnings,
     }
 
@@ -114,6 +115,18 @@ def main():
                         help='Corpus directories to scan')
     parser.add_argument('--output', type=Path, default=None,
                         help='Output report path (JSON)')
+    parser.add_argument('--feature-categories', type=Path, default=None,
+                        help='Path to feature_categories.json config')
+    parser.add_argument('--interaction-topology', type=Path, default=None,
+                        help='Path to interaction_topology.json config')
+    parser.add_argument('--combination-matrix', type=Path, default=None,
+                        help='Output combination matrix report (JSON)')
+    parser.add_argument('--n-way', type=int, default=2,
+                        help='Compute N-way combinations (default: 2, max: 4)')
+    parser.add_argument('--min-seeds', type=int, default=1,
+                        help='Minimum seeds per combination (default: 1)')
+    parser.add_argument('--baseline', type=Path, default=None,
+                        help='Baseline matrix for incremental merge')
     args = parser.parse_args()
 
     surface = json.loads(args.surface.read_text())
@@ -145,6 +158,29 @@ def main():
             for w in result['lint_warnings']:
                 print(f"    - {w}")
         print("Analyzed 1 file")
+
+        # Phase 1: Incremental merge into baseline matrix
+        if args.feature_categories and args.baseline and args.baseline.exists():
+            from api_audit.feature_detection import detect_features
+            from api_audit.combination_matrix import merge_seed_into_matrix
+
+            categories_config = json.loads(args.feature_categories.read_text())
+            fp = detect_features(
+                result,
+                set(result.get('glsl_builtins', {}).keys()),
+                categories_config,
+                extensions=set(result.get('extensions', [])))
+            fp['file'] = str(args.file)
+
+            baseline = json.loads(args.baseline.read_text())
+            merge_seed_into_matrix(baseline, fp,
+                                   n_way=baseline.get('n_way', 2))
+
+            if args.combination_matrix:
+                args.combination_matrix.parent.mkdir(parents=True, exist_ok=True)
+                args.combination_matrix.write_text(
+                    json.dumps(baseline, indent=2, default=str))
+                print(f"Updated matrix written to {args.combination_matrix}")
     else:
         # Full corpus mode
         html_files = []
@@ -191,6 +227,57 @@ def main():
         serializable_coverage['return_constants'] = list(coverage['return_constants'])
         surface_hash = hashlib.sha256(json.dumps(surface, sort_keys=True).encode()).hexdigest()[:16]
         cache.store_evaluation(surface_hash, 'corpus_aggregate', serializable_coverage)
+
+        # Phase 1: Feature detection + combination matrix pipeline
+        if args.feature_categories:
+            from api_audit.feature_detection import detect_features
+            from api_audit.combination_matrix import (
+                compute_matrix, generate_matrix_report)
+
+            categories_config = json.loads(args.feature_categories.read_text())
+            topology = None
+            if args.interaction_topology:
+                topology = json.loads(args.interaction_topology.read_text())
+
+            # Run feature detection on each per-file result
+            corpus_features = {}
+            for r in results:
+                filepath = r['file']
+                fp = detect_features(
+                    r,
+                    set(r.get('glsl_builtins', {}).keys()),
+                    categories_config,
+                    extensions=set(r.get('extensions', [])))
+                fp['file'] = filepath
+                corpus_features[filepath] = fp
+
+            if args.combination_matrix:
+                n = min(args.n_way, 4)
+                matrix = compute_matrix(corpus_features, n=n,
+                                        interaction_topology=topology)
+                report_matrix = generate_matrix_report(
+                    matrix, corpus_features, topology)
+
+                output_data = {
+                    "corpus_size": len(results),
+                    "feature_count": len(set(
+                        f for fp in corpus_features.values()
+                        for f in fp["features"])),
+                    "phase2_enriched": False,
+                    f"{n}way_combinations": report_matrix,
+                }
+
+                args.combination_matrix.parent.mkdir(parents=True, exist_ok=True)
+                args.combination_matrix.write_text(
+                    json.dumps(output_data, indent=2, default=str))
+                print(f"Combination matrix written to {args.combination_matrix}")
+                print(f"  {n}-way: {report_matrix['total']} combos, "
+                      f"{report_matrix['covered']} covered, "
+                      f"{report_matrix['uncovered']} uncovered")
+                if report_matrix['gaps']:
+                    print(f"  Top gaps ({len(report_matrix['gaps'])} total):")
+                    for g in report_matrix['gaps'][:5]:
+                        print(f"    {g['priority']}: {g['combo']}")
 
 
 if __name__ == '__main__':
