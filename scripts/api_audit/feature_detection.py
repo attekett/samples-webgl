@@ -171,6 +171,12 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
         extensions = set()
     if extension_methods is None:
         extension_methods = ext_methods_extracted
+    elif isinstance(extension_methods, dict):
+        flat = set()
+        for ext_name, ext_methods_dict in extension_methods.items():
+            for method_name in ext_methods_dict:
+                flat.add(method_name)
+        extension_methods = flat
 
     if glsl_builtins is None:
         glsl_builtins = set()
