@@ -1,0 +1,600 @@
+{
+  "version": 1,
+  "categories": {
+    "buffer_ops": {
+      "description": "Buffer creation, binding, data transfer, and lifecycle operations",
+      "methods": [
+        "createBuffer",
+        "bindBuffer",
+        "bufferData",
+        "bufferSubData",
+        "copyBufferSubData",
+        "getBufferSubData",
+        "deleteBuffer",
+        "getBufferParameter",
+        "isBuffer"
+      ],
+      "constants": [
+        "ARRAY_BUFFER",
+        "ELEMENT_ARRAY_BUFFER",
+        "COPY_READ_BUFFER",
+        "COPY_WRITE_BUFFER",
+        "PIXEL_PACK_BUFFER",
+        "PIXEL_UNPACK_BUFFER"
+      ],
+      "min_methods_for_match": 1
+    },
+    "transform_feedback": {
+      "description": "Transform feedback capture and playback of vertex shader outputs",
+      "methods": [
+        "beginTransformFeedback",
+        "endTransformFeedback",
+        "transformFeedbackVaryings",
+        "createTransformFeedback",
+        "bindTransformFeedback",
+        "deleteTransformFeedback",
+        "pauseTransformFeedback",
+        "resumeTransformFeedback",
+        "getTransformFeedbackVarying"
+      ],
+      "constants": [
+        "TRANSFORM_FEEDBACK",
+        "TRANSFORM_FEEDBACK_BUFFER",
+        "TRANSFORM_FEEDBACK_BINDING"
+      ],
+      "min_methods_for_match": 1
+    },
+    "fbo": {
+      "description": "Framebuffer object creation, binding, attachment, and blit operations",
+      "methods": [
+        "createFramebuffer",
+        "bindFramebuffer",
+        "deleteFramebuffer",
+        "framebufferTexture2D",
+        "framebufferTextureLayer",
+        "framebufferRenderbuffer",
+        "checkFramebufferStatus",
+        "blitFramebuffer",
+        "readBuffer",
+        "invalidateFramebuffer",
+        "invalidateSubFramebuffer",
+        "isFramebuffer"
+      ],
+      "constants": [
+        "FRAMEBUFFER",
+        "DRAW_FRAMEBUFFER",
+        "READ_FRAMEBUFFER"
+      ],
+      "min_methods_for_match": 1
+    },
+    "texture_ops": {
+      "description": "2D and cube map texture creation, upload, storage, and parameter operations",
+      "methods": [
+        "createTexture",
+        "bindTexture",
+        "deleteTexture",
+        "texImage2D",
+        "texSubImage2D",
+        "texStorage2D",
+        "texParameteri",
+        "texParameterf",
+        "generateMipmap",
+        "compressedTexImage2D",
+        "compressedTexSubImage2D",
+        "copyTexImage2D",
+        "copyTexSubImage2D",
+        "isTexture",
+        "getTexParameter"
+      ],
+      "constants": [
+        "TEXTURE_2D",
+        "TEXTURE_CUBE_MAP"
+      ],
+      "min_methods_for_match": 1
+    },
+    "texture_3d": {
+      "description": "3D texture creation, upload, and storage operations",
+      "methods": [
+        "texImage3D",
+        "texSubImage3D",
+        "texStorage3D",
+        "compressedTexImage3D",
+        "compressedTexSubImage3D",
+        "copyTexSubImage3D"
+      ],
+      "constants": [
+        "TEXTURE_3D"
+      ],
+      "min_methods_for_match": 1
+    },
+    "texture_arrays": {
+      "description": "2D texture array operations using layered textures",
+      "methods": [
+        "texImage3D",
+        "texSubImage3D",
+        "texStorage3D",
+        "framebufferTextureLayer"
+      ],
+      "constants": [
+        "TEXTURE_2D_ARRAY"
+      ],
+      "min_methods_for_match": 1,
+      "requires_any_constant": true
+    },
+    "sampler": {
+      "description": "Sampler object creation, binding, and parameter configuration",
+      "methods": [
+        "createSampler",
+        "bindSampler",
+        "deleteSampler",
+        "samplerParameteri",
+        "samplerParameterf",
+        "getSamplerParameter",
+        "isSampler"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "sync": {
+      "description": "GPU synchronization fence creation and wait operations",
+      "methods": [
+        "fenceSync",
+        "clientWaitSync",
+        "waitSync",
+        "deleteSync",
+        "getSyncParameter",
+        "isSync"
+      ],
+      "constants": [
+        "SYNC_GPU_COMMANDS_COMPLETE",
+        "SYNC_FENCE"
+      ],
+      "min_methods_for_match": 1
+    },
+    "query": {
+      "description": "Occlusion and transform feedback query objects",
+      "methods": [
+        "createQuery",
+        "deleteQuery",
+        "beginQuery",
+        "endQuery",
+        "getQuery",
+        "getQueryParameter",
+        "isQuery"
+      ],
+      "constants": [
+        "ANY_SAMPLES_PASSED",
+        "ANY_SAMPLES_PASSED_CONSERVATIVE",
+        "TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN"
+      ],
+      "min_methods_for_match": 1
+    },
+    "vao": {
+      "description": "Vertex array object creation, binding, and lifecycle",
+      "methods": [
+        "createVertexArray",
+        "bindVertexArray",
+        "deleteVertexArray",
+        "isVertexArray"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "instancing": {
+      "description": "Instanced draw calls and per-instance vertex attribute divisors",
+      "methods": [
+        "drawArraysInstanced",
+        "drawElementsInstanced",
+        "vertexAttribDivisor"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "mrt": {
+      "description": "Multiple render target draw buffer configuration",
+      "methods": [
+        "drawBuffers"
+      ],
+      "constants": [
+        "COLOR_ATTACHMENT1",
+        "COLOR_ATTACHMENT2",
+        "COLOR_ATTACHMENT3",
+        "COLOR_ATTACHMENT4",
+        "COLOR_ATTACHMENT5",
+        "COLOR_ATTACHMENT6",
+        "COLOR_ATTACHMENT7"
+      ],
+      "min_methods_for_match": 1
+    },
+    "ubo": {
+      "description": "Uniform buffer object binding and block configuration",
+      "methods": [
+        "getUniformBlockIndex",
+        "uniformBlockBinding",
+        "getActiveUniformBlockParameter",
+        "getActiveUniformBlockName",
+        "getUniformIndices",
+        "getActiveUniforms"
+      ],
+      "constants": [
+        "UNIFORM_BUFFER",
+        "UNIFORM_BUFFER_BINDING"
+      ],
+      "min_methods_for_match": 1
+    },
+    "integer_textures": {
+      "description": "Integer format textures and integer clear operations",
+      "methods": [
+        "clearBufferiv",
+        "clearBufferuiv"
+      ],
+      "constants": [
+        "R8I",
+        "R16I",
+        "R32I",
+        "RG8I",
+        "RG16I",
+        "RG32I",
+        "RGB8I",
+        "RGB16I",
+        "RGB32I",
+        "RGBA8I",
+        "RGBA16I",
+        "RGBA32I",
+        "R8UI",
+        "R16UI",
+        "R32UI",
+        "RG8UI",
+        "RG16UI",
+        "RG32UI",
+        "RGB8UI",
+        "RGB16UI",
+        "RGB32UI",
+        "RGBA8UI",
+        "RGBA16UI",
+        "RGBA32UI"
+      ],
+      "min_methods_for_match": 0,
+      "min_constants_for_match": 1
+    },
+    "depth_stencil": {
+      "description": "Depth and stencil test configuration, masking, and clear operations",
+      "methods": [
+        "depthFunc",
+        "depthMask",
+        "depthRange",
+        "stencilFunc",
+        "stencilFuncSeparate",
+        "stencilMask",
+        "stencilMaskSeparate",
+        "stencilOp",
+        "stencilOpSeparate",
+        "clearDepth",
+        "clearStencil"
+      ],
+      "constants": [
+        "DEPTH_TEST",
+        "STENCIL_TEST"
+      ],
+      "min_methods_for_match": 1
+    },
+    "blending": {
+      "description": "Color blending equation and function configuration",
+      "methods": [
+        "blendColor",
+        "blendEquation",
+        "blendEquationSeparate",
+        "blendFunc",
+        "blendFuncSeparate"
+      ],
+      "constants": [
+        "BLEND"
+      ],
+      "min_methods_for_match": 1
+    },
+    "pixel_ops": {
+      "description": "Pixel read-back and pixel store parameter operations",
+      "methods": [
+        "readPixels",
+        "pixelStorei"
+      ],
+      "constants": [
+        "PACK_ROW_LENGTH",
+        "PACK_SKIP_PIXELS",
+        "PACK_SKIP_ROWS",
+        "UNPACK_ROW_LENGTH",
+        "UNPACK_IMAGE_HEIGHT",
+        "UNPACK_SKIP_PIXELS",
+        "UNPACK_SKIP_ROWS",
+        "UNPACK_SKIP_IMAGES"
+      ],
+      "min_methods_for_match": 1
+    },
+    "renderbuffer": {
+      "description": "Renderbuffer creation, storage allocation, and multisample configuration",
+      "methods": [
+        "createRenderbuffer",
+        "bindRenderbuffer",
+        "deleteRenderbuffer",
+        "renderbufferStorage",
+        "renderbufferStorageMultisample",
+        "getRenderbufferParameter",
+        "isRenderbuffer"
+      ],
+      "constants": [
+        "RENDERBUFFER"
+      ],
+      "min_methods_for_match": 1
+    },
+    "shader_pipeline": {
+      "description": "Shader compilation, program linking, and pipeline management",
+      "methods": [
+        "createShader",
+        "shaderSource",
+        "compileShader",
+        "deleteShader",
+        "getShaderParameter",
+        "getShaderInfoLog",
+        "getShaderSource",
+        "isShader",
+        "createProgram",
+        "attachShader",
+        "detachShader",
+        "linkProgram",
+        "useProgram",
+        "deleteProgram",
+        "validateProgram",
+        "getProgramParameter",
+        "getProgramInfoLog",
+        "isProgram",
+        "getAttachedShaders"
+      ],
+      "constants": [
+        "VERTEX_SHADER",
+        "FRAGMENT_SHADER",
+        "COMPILE_STATUS",
+        "LINK_STATUS"
+      ],
+      "min_methods_for_match": 2
+    },
+    "uniforms": {
+      "description": "Shader uniform variable location queries and value upload",
+      "methods": [
+        "getUniformLocation",
+        "getActiveUniform",
+        "uniform1f",
+        "uniform2f",
+        "uniform3f",
+        "uniform4f",
+        "uniform1i",
+        "uniform2i",
+        "uniform3i",
+        "uniform4i",
+        "uniform1ui",
+        "uniform2ui",
+        "uniform3ui",
+        "uniform4ui",
+        "uniform1fv",
+        "uniform2fv",
+        "uniform3fv",
+        "uniform4fv",
+        "uniform1iv",
+        "uniform2iv",
+        "uniform3iv",
+        "uniform4iv",
+        "uniform1uiv",
+        "uniform2uiv",
+        "uniform3uiv",
+        "uniform4uiv",
+        "uniformMatrix2fv",
+        "uniformMatrix3fv",
+        "uniformMatrix4fv",
+        "uniformMatrix2x3fv",
+        "uniformMatrix3x2fv",
+        "uniformMatrix2x4fv",
+        "uniformMatrix4x2fv",
+        "uniformMatrix3x4fv",
+        "uniformMatrix4x3fv",
+        "getUniform"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "attributes": {
+      "description": "Vertex attribute location queries, pointer setup, and value configuration",
+      "methods": [
+        "getAttribLocation",
+        "getActiveAttrib",
+        "vertexAttribPointer",
+        "vertexAttribIPointer",
+        "enableVertexAttribArray",
+        "disableVertexAttribArray",
+        "vertexAttrib1f",
+        "vertexAttrib2f",
+        "vertexAttrib3f",
+        "vertexAttrib4f",
+        "vertexAttrib1fv",
+        "vertexAttrib2fv",
+        "vertexAttrib3fv",
+        "vertexAttrib4fv",
+        "vertexAttribI4i",
+        "vertexAttribI4iv",
+        "vertexAttribI4ui",
+        "vertexAttribI4uiv",
+        "getVertexAttrib",
+        "getVertexAttribOffset"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "draw_calls": {
+      "description": "Draw command invocation and color/depth/stencil buffer clearing",
+      "methods": [
+        "drawArrays",
+        "drawElements",
+        "drawRangeElements",
+        "drawArraysInstanced",
+        "drawElementsInstanced",
+        "clear",
+        "clearColor",
+        "clearBufferfv",
+        "clearBufferfi",
+        "clearBufferiv",
+        "clearBufferuiv"
+      ],
+      "constants": [
+        "TRIANGLES",
+        "TRIANGLE_STRIP",
+        "TRIANGLE_FAN",
+        "LINES",
+        "LINE_STRIP",
+        "LINE_LOOP",
+        "POINTS",
+        "COLOR_BUFFER_BIT",
+        "DEPTH_BUFFER_BIT",
+        "STENCIL_BUFFER_BIT"
+      ],
+      "min_methods_for_match": 1
+    },
+    "viewport_scissor": {
+      "description": "Viewport dimensions, scissor test rectangle, and color write mask",
+      "methods": [
+        "viewport",
+        "scissor",
+        "colorMask"
+      ],
+      "constants": [
+        "SCISSOR_TEST"
+      ],
+      "min_methods_for_match": 1
+    },
+    "ext_float_textures": {
+      "description": "Floating-point texture format extensions for HDR rendering",
+      "methods": [],
+      "constants": [],
+      "extensions": [
+        "OES_texture_float",
+        "OES_texture_half_float",
+        "OES_texture_float_linear",
+        "OES_texture_half_float_linear"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_color_buffer_float": {
+      "description": "Floating-point color buffer rendering extensions",
+      "methods": [],
+      "constants": [],
+      "extensions": [
+        "EXT_color_buffer_float",
+        "EXT_color_buffer_half_float"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_draw_buffers_indexed": {
+      "description": "Per-draw-buffer blend and color mask configuration extension",
+      "methods": [],
+      "constants": [],
+      "extensions": [
+        "OES_draw_buffers_indexed"
+      ],
+      "extension_methods": [
+        "enableiOES",
+        "disableiOES",
+        "blendEquationiOES",
+        "blendEquationSeparateiOES",
+        "blendFunciOES",
+        "blendFuncSeparateiOES",
+        "colorMaskiOES"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_texture_filter_anisotropic": {
+      "description": "Anisotropic texture filtering extension",
+      "methods": [],
+      "constants": [
+        "TEXTURE_MAX_ANISOTROPY_EXT",
+        "MAX_TEXTURE_MAX_ANISOTROPY_EXT"
+      ],
+      "extensions": [
+        "EXT_texture_filter_anisotropic"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_compressed_textures": {
+      "description": "GPU compressed texture format extensions (S3TC, ETC, ASTC, PVRTC, BPTC, RGTC)",
+      "methods": [],
+      "constants": [],
+      "extensions": [
+        "WEBGL_compressed_texture_s3tc",
+        "WEBGL_compressed_texture_s3tc_srgb",
+        "WEBGL_compressed_texture_etc",
+        "WEBGL_compressed_texture_astc",
+        "WEBGL_compressed_texture_pvrtc",
+        "EXT_texture_compression_bptc",
+        "EXT_texture_compression_rgtc"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_disjoint_timer_query": {
+      "description": "GPU timestamp and elapsed time query extension",
+      "methods": [],
+      "constants": [],
+      "extensions": [
+        "EXT_disjoint_timer_query_webgl2",
+        "EXT_disjoint_timer_query"
+      ],
+      "extension_methods": [
+        "queryCounterEXT"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "glsl_builtins": {
+      "description": "GLSL built-in function usage in vertex and fragment shaders",
+      "methods": [],
+      "constants": [],
+      "glsl_functions": [
+        "smoothstep",
+        "refract",
+        "reflect",
+        "faceforward",
+        "matrixCompMult",
+        "outerProduct",
+        "transpose",
+        "determinant",
+        "inverse",
+        "inversesqrt",
+        "textureSize",
+        "textureLod",
+        "textureGrad",
+        "textureOffset",
+        "textureProjLod",
+        "textureProjGrad",
+        "texelFetch",
+        "texelFetchOffset",
+        "textureGather",
+        "textureGatherOffset",
+        "dFdx",
+        "dFdy",
+        "fwidth",
+        "intBitsToFloat",
+        "uintBitsToFloat",
+        "floatBitsToInt",
+        "floatBitsToUint",
+        "packSnorm2x16",
+        "unpackSnorm2x16",
+        "packUnorm2x16",
+        "unpackUnorm2x16",
+        "packHalf2x16",
+        "unpackHalf2x16"
+      ],
+      "min_glsl_for_match": 1,
+      "min_methods_for_match": 0
+    }
+  }
+}

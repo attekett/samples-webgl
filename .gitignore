@@ -13,6 +13,7 @@ build/
 screenshots/
 *.json
 !docs/interaction_topology.json
+!docs/feature_categories.json
 *.log
 
 # IDE
