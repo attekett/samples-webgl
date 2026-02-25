@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const texSize = 256;
+const vertexCount = 6;
+const bufferSize = vertexCount * 8;
+const uniformCheckCount = 37;
+const blockIndex = 0;
+const componentCount = 2;
+const stride = componentCount * 4;
+const matElements = 16;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+    const primitiveMode = gl.TRIANGLES;
+    const textureTarget = gl.TEXTURE_2D;
+
+    var program = null;
+    var vs = null;
+    var fs = null;
+    var vao = null;
+    var buffer1 = null;
+
+    try {
+        vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+precision highp float;
+precision highp int;
+in vec2 aPos;
+uniform vec2 u_v2;
+uniform vec3 u_v3;
+uniform vec4 u_v4;
+uniform ivec2 u_iv2;
+uniform ivec3 u_iv3;
+uniform ivec4 u_iv4;
+uniform bool u_b;
+uniform bvec2 u_bv2;
+uniform bvec3 u_bv3;
+uniform bvec4 u_bv4;
+uniform mat2 u_m2;
+uniform mat3 u_m3;
+uniform mat4 u_m4;
+uniform mat2x3 u_m2x3;
+uniform mat2x4 u_m2x4;
+uniform mat3x2 u_m3x2;
+uniform mat3x4 u_m3x4;
+uniform mat4x2 u_m4x2;
+uniform mat4x3 u_m4x3;
+uniform uvec2 u_uv2;
+uniform uvec3 u_uv3;
+uniform uvec4 u_uv4;
+layout(std140) uniform TestBlock {
+    mat4 blockMat;
+    vec4 blockVec;
+};
+flat out vec4 vData;
+flat out ivec4 vIData;
+flat out uvec4 vUData;
+void main() {
+    vec2 p = aPos * u_v2 + u_m2 * u_v2;
+    vec3 c3 = u_m3 * u_v3; vec4 c4 = u_m4 * u_v4;
+    vec3 mx1 = u_m2x3 * u_v2; vec4 mx2 = u_m2x4 * u_v2;
+    vec2 mx3 = u_m3x2 * u_v3; vec4 mx4 = u_m3x4 * u_v3;
+    vec2 mx5 = u_m4x2 * u_v4; vec3 mx6 = u_m4x3 * u_v4;
+    float bf = u_b ? 1.0 : 0.0; float bv2f = u_bv2.x ? 1.0 : 0.0;
+    float bv3f = u_bv3.x ? 1.0 : 0.0; float bv4f = u_bv4.x ? 1.0 : 0.0;
+    float iv = float(u_iv2.x + u_iv3.x + u_iv4.x);
+    float uv = float(u_uv2.x + u_uv3.x + u_uv4.x);
+    vec4 bv = blockMat * blockVec;
+    uint bits = floatBitsToUint(bf); float back = uintBitsToFloat(bits);
+    uint pk = packUnorm2x16(u_v2); vec2 upk = unpackUnorm2x16(pk);
+    float re = roundEven(back + upk.x); bool inf = isinf(re);
+    float sum = p.x + p.y + c3.x + c4.x + mx1.x + mx2.x + mx3.x + mx4.x + mx5.x + mx6.x;
+    sum += bf + bv2f + bv3f + bv4f + iv + uv + bv.x + (inf ? 0.0 : re);
+    gl_Position = vec4(aPos + sum * 0.0001, 0.0, 1.0);
+    vData = vec4(sum, c3.y, c4.y, mx1.y);
+    vIData = ivec4(u_iv2, u_iv3.x, u_iv4.x);
+    vUData = uvec4(u_uv2, u_uv3.x, u_uv4.x);
+}
+`);
+        gl.compileShader(vs);
+    } catch(e) {}
+
+    try {
+        fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D; precision highp sampler3D; precision highp samplerCube;
+precision highp sampler2DShadow; precision highp sampler2DArray;
+precision highp sampler2DArrayShadow; precision highp samplerCubeShadow;
+precision highp isampler2D; precision highp isampler3D;
+precision highp isamplerCube; precision highp isampler2DArray;
+precision highp usampler2D; precision highp usampler3D;
+precision highp usamplerCube; precision highp usampler2DArray;
+flat in vec4 vData;
+flat in ivec4 vIData;
+flat in uvec4 vUData;
+uniform sampler2D u_s2d;
+uniform samplerCube u_sc;
+uniform sampler3D u_s3d;
+uniform sampler2DShadow u_s2ds;
+uniform sampler2DArray u_s2da;
+uniform sampler2DArrayShadow u_s2das;
+uniform samplerCubeShadow u_scs;
+uniform isampler2D u_is2d;
+uniform isampler3D u_is3d;
+uniform isamplerCube u_isc;
+uniform isampler2DArray u_is2da;
+uniform usampler2D u_us2d;
+uniform usampler3D u_us3d;
+uniform usamplerCube u_usc;
+uniform usampler2DArray u_us2da;
+layout(std140) uniform TestBlock {
+    mat4 blockMat;
+    vec4 blockVec;
+};
+out vec4 fragColor;
+void main() {
+    vec4 t1 = texture(u_s2d, vec2(0.5)); vec4 t2 = texture(u_sc, vec3(1.0, 0.0, 0.0));
+    vec4 t3 = texture(u_s3d, vec3(0.5)); float t4 = texture(u_s2ds, vec3(0.5, 0.5, 0.5));
+    vec4 t5 = texture(u_s2da, vec3(0.5, 0.5, 0.0));
+    float t6 = texture(u_s2das, vec4(0.5, 0.5, 0.0, 0.5));
+    float t7 = texture(u_scs, vec4(1.0, 0.0, 0.0, 0.5));
+    ivec4 t8 = texture(u_is2d, vec2(0.5)); ivec4 t9 = texture(u_is3d, vec3(0.5));
+    ivec4 t10 = texture(u_isc, vec3(1.0, 0.0, 0.0));
+    ivec4 t11 = texture(u_is2da, vec3(0.5, 0.5, 0.0));
+    uvec4 t12 = texture(u_us2d, vec2(0.5)); uvec4 t13 = texture(u_us3d, vec3(0.5));
+    uvec4 t14 = texture(u_usc, vec3(1.0, 0.0, 0.0));
+    uvec4 t15 = texture(u_us2da, vec3(0.5, 0.5, 0.0));
+    vec4 bv = blockMat * blockVec;
+    uint bits = floatBitsToUint(t1.r); float back = uintBitsToFloat(bits);
+    uint pk = packUnorm2x16(t1.rg); vec2 upk = unpackUnorm2x16(pk);
+    float re = roundEven(back); bool inf = isinf(re);
+    float ss = t1.r + t2.r + t3.r + t4 + t5.r + t6 + t7;
+    float si = float(t8.r + t9.r + t10.r + t11.r);
+    float su = float(t12.r + t13.r + t14.r + t15.r);
+    fragColor = vec4(ss * 0.01 + si * 0.001 + su * 0.001 + vData.x * 0.01 + bv.x * 0.01, upk.x * 0.1, re * 0.01 + float(vIData.x) * 0.001 + float(vUData.x) * 0.001, 1.0);
+    fragColor.r += inf ? 0.0 : back * 0.001;
+}
+`);
+        gl.compileShader(fs);
+    } catch(e) {}
+
+    try {
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.bindAttribLocation(program, 0, 'aPos');
+        gl.linkProgram(program);
+        gl.validateProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        buffer1 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, buffer1);
+        const verts = new Float32Array([
+            -1.0, -1.0, 1.0, -1.0, 1.0, 1.0,
+            -1.0, -1.0, 1.0, 1.0, -1.0, 1.0
+        ]);
+        gl.bufferData(bufferTarget, verts, bufferUsage);
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, componentCount, gl.FLOAT, false, stride, 0);
+
+        var uboData = new Float32Array(matElements + 4);
+        uboData[0] = 1.0; uboData[5] = 1.0; uboData[10] = 1.0; uboData[15] = 1.0;
+        uboData[16] = 0.5; uboData[17] = 0.5; uboData[18] = 0.5; uboData[19] = 1.0;
+        var uboBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.UNIFORM_BUFFER, uboBuffer);
+        gl.bufferData(gl.UNIFORM_BUFFER, uboData, bufferUsage);
+        var blockIdx = gl.getUniformBlockIndex(program, 'TestBlock');
+        gl.uniformBlockBinding(program, blockIdx, 0);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, uboBuffer);
+    } catch(e) {}
+
+    try {
+        var numUniforms = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        for (var i = 0; i < numUniforms; i++) {
+            var info = gl.getActiveUniform(program, i);
+            if (!info) continue;
+            var t = info.type;
+            if (t === gl.FLOAT_VEC2) {}
+            if (t === gl.FLOAT_VEC3) {}
+            if (t === gl.FLOAT_VEC4) {}
+            if (t === gl.INT_VEC2) {}
+            if (t === gl.INT_VEC3) {}
+            if (t === gl.INT_VEC4) {}
+            if (t === gl.BOOL) {}
+            if (t === gl.BOOL_VEC2) {}
+            if (t === gl.BOOL_VEC3) {}
+            if (t === gl.BOOL_VEC4) {}
+            if (t === gl.FLOAT_MAT2) {}
+            if (t === gl.FLOAT_MAT3) {}
+            if (t === gl.FLOAT_MAT4) {}
+            if (t === gl.SAMPLER_2D) {}
+            if (t === gl.SAMPLER_CUBE) {}
+            if (t === gl.SAMPLER_3D) {}
+            if (t === gl.SAMPLER_2D_SHADOW) {}
+            if (t === gl.FLOAT_MAT2x3) {}
+            if (t === gl.FLOAT_MAT2x4) {}
+            if (t === gl.FLOAT_MAT3x2) {}
+            if (t === gl.FLOAT_MAT3x4) {}
+            if (t === gl.FLOAT_MAT4x2) {}
+            if (t === gl.FLOAT_MAT4x3) {}
+            if (t === gl.SAMPLER_2D_ARRAY) {}
+            if (t === gl.SAMPLER_2D_ARRAY_SHADOW) {}
+            if (t === gl.SAMPLER_CUBE_SHADOW) {}
+            if (t === gl.UNSIGNED_INT_VEC2) {}
+            if (t === gl.UNSIGNED_INT_VEC3) {}
+            if (t === gl.UNSIGNED_INT_VEC4) {}
+            if (t === gl.INT_SAMPLER_2D) {}
+            if (t === gl.INT_SAMPLER_3D) {}
+            if (t === gl.INT_SAMPLER_CUBE) {}
+            if (t === gl.INT_SAMPLER_2D_ARRAY) {}
+            if (t === gl.UNSIGNED_INT_SAMPLER_2D) {}
+            if (t === gl.UNSIGNED_INT_SAMPLER_3D) {}
+            if (t === gl.UNSIGNED_INT_SAMPLER_CUBE) {}
+            if (t === gl.UNSIGNED_INT_SAMPLER_2D_ARRAY) {}
+        }
+    } catch(e) {}
+
+    try {
+        gl.getProgramParameter(program, gl.VALIDATE_STATUS);
+        gl.getProgramParameter(program, gl.ATTACHED_SHADERS);
+        gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+        gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
+        gl.getShaderParameter(vs, gl.SHADER_TYPE);
+        gl.getShaderParameter(vs, gl.DELETE_STATUS);
+        gl.getShaderParameter(fs, gl.SHADER_TYPE);
+        gl.getShaderParameter(fs, gl.DELETE_STATUS);
+        gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.LOW_FLOAT);
+        gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.MEDIUM_INT);
+        var maxVaryVec = gl.getParameter(gl.MAX_VARYING_VECTORS);
+        var maxCombTex = gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+        var maxVTex = gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS);
+        var maxTex = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
+        var slVer = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
+        var shType = gl.getShaderParameter(vs, gl.SHADER_TYPE);
+        if (shType === gl.VERTEX_SHADER) {}
+        if (shType === gl.FRAGMENT_SHADER) {}
+        var shType2 = gl.getShaderParameter(fs, gl.SHADER_TYPE);
+        if (shType2 === gl.VERTEX_SHADER) {}
+        if (shType2 === gl.FRAGMENT_SHADER) {}
+        if (maxVaryVec === gl.MAX_VARYING_VECTORS) {}
+        if (maxCombTex === gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS) {}
+        if (maxVTex === gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) {}
+        if (maxTex === gl.MAX_TEXTURE_IMAGE_UNITS) {}
+        if (slVer === gl.SHADING_LANGUAGE_VERSION) {}
+    } catch(e) {}
+
+    try {
+        var blockIdx = gl.getUniformBlockIndex(program, 'TestBlock');
+        gl.getActiveUniformBlockParameter(program, blockIdx, gl.UNIFORM_BLOCK_ACTIVE_UNIFORMS);
+        gl.getActiveUniformBlockParameter(program, blockIdx, gl.UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES);
+        gl.getActiveUniformBlockParameter(program, blockIdx, gl.UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER);
+        gl.getActiveUniformBlockParameter(program, blockIdx, gl.UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER);
+        gl.getActiveUniforms(program, [0], gl.UNIFORM_ARRAY_STRIDE);
+        gl.getActiveUniforms(program, [0], gl.UNIFORM_MATRIX_STRIDE);
+        gl.getActiveUniforms(program, [0], gl.UNIFORM_IS_ROW_MAJOR);
+    } catch(e) {}
+
+    try {
+        gl.clearColor(0.1, 0.05, 0.15, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.drawArrays(primitiveMode, 0, vertexCount);
+        gl.drawArrays(primitiveMode, 0, 3);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        gl.deleteProgram(program);
+        gl.deleteBuffer(buffer1);
+        gl.deleteVertexArray(vao);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const texPixels = texSize * texSize;
+    const bufSize = texPixels * 4;
+    const vertexCount = 6;
+    const uintVal1 = 42;
+    const uintVal2 = 1337;
+    const uintVal3 = 65535;
+    const uintVal4 = 16777215;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+    const textureTarget = gl.TEXTURE_2D;
+    const texInternalFmt = gl.RGBA8;
+    const fboTarget = gl.FRAMEBUFFER;
+
+    const vsSource = `#version 300 es
+    precision highp float;
+    in vec2 a_position;
+    out vec2 v_texCoord;
+    void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+        v_texCoord = a_position * 0.5 + 0.5;
+    }`;
+
+    const fsSource = `#version 300 es
+    precision highp float;
+    precision highp int;
+    precision highp sampler2D;
+    uniform uint u_val1;
+    uniform uvec2 u_val2;
+    uniform uvec3 u_val3;
+    uniform uvec4 u_val4;
+    uniform uint u_arr1[3];
+    uniform uvec2 u_arr2[2];
+    uniform uvec3 u_arr3[2];
+    uniform uvec4 u_arr4[2];
+    uniform sampler2D u_sampler;
+    in vec2 v_texCoord;
+    layout(location = 0) out vec4 fragColor;
+    void main() {
+        ivec2 tSize = textureSize(u_sampler, 0);
+        vec4 texLod = textureLod(u_sampler, v_texCoord, 0.0);
+        ivec2 fetchCoord = ivec2(v_texCoord * vec2(tSize));
+        vec4 fetched = texelFetch(u_sampler, fetchCoord, 0);
+        float fval = float(u_val1) + float(u_val2.x) + float(u_val3.x) + float(u_val4.x);
+        float arrVal = float(u_arr1[0]) + float(u_arr2[0].x) + float(u_arr3[0].x) + float(u_arr4[0].x);
+        int fbti = floatBitsToInt(fval * 0.0001);
+        float ibf = intBitsToFloat(fbti + 1);
+        float combined = fval * 0.00001 + arrVal * 0.00001 + ibf * 0.001;
+        fragColor = fetched * 0.3 + texLod * 0.3 + vec4(combined, float(tSize.x) / 512.0, v_texCoord) * 0.4;
+    }`;
+
+    const vShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vShader, vsSource);
+    gl.compileShader(vShader);
+
+    const fShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fShader, fsSource);
+    gl.compileShader(fShader);
+
+    const program = gl.createProgram();
+    const program2 = gl.createProgram();
+    gl.attachShader(program, vShader);
+    gl.attachShader(program, fShader);
+    gl.linkProgram(program);
+    gl.attachShader(program2, vShader);
+    gl.attachShader(program2, fShader);
+    gl.linkProgram(program2);
+
+    gl.useProgram(program);
+
+    const fragDataLoc = gl.getFragDataLocation(program, 'fragColor');
+    const fragDataLoc2 = gl.getFragDataLocation(program2, 'fragColor');
+
+    const loc_val1 = gl.getUniformLocation(program, 'u_val1');
+    const loc_val2 = gl.getUniformLocation(program, 'u_val2');
+    const loc_val3 = gl.getUniformLocation(program, 'u_val3');
+    const loc_val4 = gl.getUniformLocation(program, 'u_val4');
+    const loc_arr1_0 = gl.getUniformLocation(program, 'u_arr1[0]');
+    const loc_arr1_1 = gl.getUniformLocation(program, 'u_arr1[1]');
+    const loc_arr1_2 = gl.getUniformLocation(program, 'u_arr1[2]');
+    const loc_arr2 = gl.getUniformLocation(program, 'u_arr2[0]');
+    const loc_arr3 = gl.getUniformLocation(program, 'u_arr3[0]');
+    const loc_arr4 = gl.getUniformLocation(program, 'u_arr4[0]');
+    const loc_sampler = gl.getUniformLocation(program, 'u_sampler');
+
+    const quadVerts = new Float32Array([
+        -1.0, -1.0,
+         1.0, -1.0,
+        -1.0,  1.0,
+        -1.0,  1.0,
+         1.0, -1.0,
+         1.0,  1.0
+    ]);
+
+    let vbo1, vbo2, tex1, tex2, tex3, fbo1, fbo2;
+
+    try {
+        vbo1 = gl.createBuffer();
+        vbo2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vbo1);
+        gl.bindBuffer(bufferTarget, vbo2);
+        gl.bindBuffer(bufferTarget, vbo1);
+        gl.bufferData(bufferTarget, quadVerts, bufferUsage);
+        gl.bindBuffer(bufferTarget, vbo2);
+        gl.bufferData(bufferTarget, bufSize, bufferUsage);
+        gl.bindBuffer(bufferTarget, vbo1);
+    } catch(e) {}
+
+    try {
+        const posLoc = gl.getAttribLocation(program, 'a_position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+    } catch(e) {}
+
+    try {
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
+        gl.bindTexture(textureTarget, tex1);
+        gl.bindTexture(textureTarget, tex2);
+        gl.bindTexture(textureTarget, tex1);
+        gl.texImage2D(textureTarget, 0, texInternalFmt, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(textureTarget, tex2);
+        gl.texImage2D(textureTarget, 0, texInternalFmt, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(textureTarget, tex3);
+        gl.texImage2D(textureTarget, 0, texInternalFmt, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(textureTarget, tex1);
+    } catch(e) {}
+
+    try {
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex2, 0);
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex3, 0);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.uniform1ui(loc_val1, uintVal1);
+        gl.uniform1ui(loc_val1, uintVal2);
+        gl.uniform1ui(loc_val1, uintVal1);
+
+        gl.uniform2ui(loc_val2, uintVal1, uintVal2);
+        gl.uniform2ui(loc_val2, uintVal3, uintVal4);
+        gl.uniform2ui(loc_val2, uintVal1, uintVal2);
+
+        gl.uniform3ui(loc_val3, uintVal1, uintVal2, uintVal3);
+        gl.uniform3ui(loc_val3, uintVal4, uintVal1, uintVal2);
+        gl.uniform3ui(loc_val3, uintVal1, uintVal2, uintVal3);
+
+        gl.uniform4ui(loc_val4, uintVal1, uintVal2, uintVal3, uintVal4);
+        gl.uniform4ui(loc_val4, uintVal4, uintVal3, uintVal2, uintVal1);
+        gl.uniform4ui(loc_val4, uintVal1, uintVal2, uintVal3, uintVal4);
+    } catch(e) {}
+
+    try {
+        gl.uniform1uiv(loc_arr1_0, new Uint32Array([uintVal1, uintVal2, uintVal3]));
+
+        gl.uniform2uiv(loc_arr2, new Uint32Array([uintVal1, uintVal2, uintVal3, uintVal4]));
+
+        gl.uniform3uiv(loc_arr3, new Uint32Array([uintVal1, uintVal2, uintVal3, uintVal4, uintVal1, uintVal2]));
+
+        gl.uniform4uiv(loc_arr4, new Uint32Array([uintVal1, uintVal2, uintVal3, uintVal4, uintVal4, uintVal3, uintVal2, uintVal1]));
+    } catch(e) {}
+
+    try {
+        const readVal1 = gl.getUniform(program, loc_val1);
+        const readVal2 = gl.getUniform(program, loc_val2);
+        const readVal3 = gl.getUniform(program, loc_val3);
+        const readVal4 = gl.getUniform(program, loc_val4);
+        const readArr1 = gl.getUniform(program, loc_arr1_0);
+        const readArr2 = gl.getUniform(program, loc_arr2);
+        const readArr3 = gl.getUniform(program, loc_arr3);
+        const readArr4 = gl.getUniform(program, loc_arr4);
+
+        gl.uniform1ui(loc_val1, readVal1 + 1);
+        gl.uniform1uiv(loc_arr1_1, new Uint32Array([readVal1 + 100]));
+        gl.uniform1uiv(loc_arr1_2, new Uint32Array([readVal1 + 200]));
+    } catch(e) {}
+
+    try {
+        gl.uniform1i(loc_sampler, 0);
+        gl.activeTexture(gl.TEXTURE0);
+    } catch(e) {}
+
+    try {
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.disable(gl.BLEND);
+
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.1, 0.05, 0.15, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, fbo1);
+        gl.viewport(0, 0, 128, 128);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.uniform1ui(loc_val1, 999);
+        gl.uniform2ui(loc_val2, 888, 777);
+        gl.uniform3ui(loc_val3, 666, 555, 444);
+        gl.uniform4ui(loc_val4, 333, 222, 111, 99);
+
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+
+        gl.bindFramebuffer(fboTarget, fbo2);
+        gl.viewport(0, 0, 64, 64);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.uniform1uiv(loc_arr1_0, new Uint32Array([11111, 22222, 33333]));
+        gl.uniform2uiv(loc_arr2, new Uint32Array([44444, 55555, 66666, 77777]));
+        gl.uniform3uiv(loc_arr3, new Uint32Array([88888, 99999, 10101, 20202, 30303, 40404]));
+        gl.uniform4uiv(loc_arr4, new Uint32Array([50505, 60606, 70707, 80808, 90909, 10001, 20002, 30003]));
+
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+
+        gl.bindFramebuffer(fboTarget, null);
+        gl.viewport(0, 0, texSize, texSize);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(program2);
+        const loc2_val1 = gl.getUniformLocation(program2, 'u_val1');
+        const loc2_val4 = gl.getUniformLocation(program2, 'u_val4');
+        const loc2_sampler = gl.getUniformLocation(program2, 'u_sampler');
+        gl.uniform1ui(loc2_val1, 54321);
+        gl.uniform4ui(loc2_val4, 12345, 67890, 11111, 22222);
+        gl.uniform1i(loc2_sampler, 0);
+        const readBack = gl.getUniform(program2, loc2_val1);
+        gl.uniform1ui(loc2_val1, readBack + 7);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+
+        gl.deleteProgram(program2);
+        gl.useProgram(program);
+        gl.uniform1ui(loc_val1, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+
+        gl.deleteFramebuffer(fbo1);
+        gl.deleteFramebuffer(fbo2);
+        gl.bindFramebuffer(fboTarget, fbo1);
+
+        gl.deleteBuffer(vbo2);
+        gl.bindBuffer(bufferTarget, vbo2);
+
+        gl.deleteTexture(tex2);
+        gl.deleteTexture(tex3);
+        gl.bindTexture(textureTarget, tex2);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
