@@ -12,6 +12,7 @@ build/
 # Test outputs
 screenshots/
 *.json
+!docs/interaction_topology.json
 *.log
 
 # IDE
