@@ -253,7 +253,8 @@ def _collect_helper_shader_sources(root_node, ctx, consts: dict) -> list[str]:
     return sources
 
 
-def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict) -> set[str]:
+def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict,
+                          extra_builtins: list[str] | None = None) -> set[str]:
     """Extract GLSL builtins from shader sources in the file.
 
     Args:
@@ -261,11 +262,15 @@ def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict) -> set[st
         ctx: ContextInfo from context.detect_context().
         consts: resolved constants from const_propagation.resolve_constants().
         surface: API surface dict (test_surface.json structure).
+        extra_builtins: Optional list of additional builtin names to scan for
+            (e.g. category-only builtins not in the surface definition).
 
     Returns:
         Set of matched GLSL builtin names found in shader sources.
     """
     all_builtin_names = _flatten_builtin_names(surface)
+    if extra_builtins:
+        all_builtin_names = list(set(all_builtin_names) | set(extra_builtins))
     if not all_builtin_names:
         return set()
 

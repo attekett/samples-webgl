@@ -182,6 +182,133 @@ class TestIncrementalMerge:
         assert baseline[("A", "B")]["seed_count"] == 2
 
 
+class TestComputeMatrixWithConfig:
+    """Bug 1: compute_matrix() should include 0-seed features from config."""
+
+    def _corpus_ab(self):
+        return {
+            "seed1": {"features": ["A", "B"],
+                       "methods_per_feature": {"A": ["m1"], "B": ["m2"]}},
+        }
+
+    def test_zero_seed_feature_included_when_config_provided(self):
+        corpus = self._corpus_ab()
+        config = {"categories": {"A": {}, "B": {}, "C": {}}}
+        matrix = compute_matrix(corpus, n=2, categories_config=config)
+        assert ("A", "C") in matrix
+        assert matrix[("A", "C")]["seed_count"] == 0
+
+    def test_all_corpus_features_still_present(self):
+        corpus = self._corpus_ab()
+        config = {"categories": {"A": {}, "B": {}, "C": {}}}
+        matrix = compute_matrix(corpus, n=2, categories_config=config)
+        assert ("A", "B") in matrix
+        assert matrix[("A", "B")]["seed_count"] == 1
+
+    def test_backward_compatible_without_config(self):
+        corpus = self._corpus_ab()
+        matrix = compute_matrix(corpus, n=2)
+        all_features_in_matrix = set()
+        for combo in matrix:
+            all_features_in_matrix.update(combo)
+        assert "C" not in all_features_in_matrix
+
+    def test_config_with_inner_dict_format(self):
+        corpus = self._corpus_ab()
+        config = {"A": {}, "B": {}, "C": {}}
+        matrix = compute_matrix(corpus, n=2, categories_config=config)
+        assert ("A", "C") in matrix
+
+    def test_empty_corpus_with_config_has_combos(self):
+        corpus = {}
+        config = {"categories": {"A": {}, "B": {}, "C": {}}}
+        matrix = compute_matrix(corpus, n=2, categories_config=config)
+        assert len(matrix) == 3  # C(3,2) = 3
+        for data in matrix.values():
+            assert data["seed_count"] == 0
+
+    def test_topology_filtering_with_config_features(self):
+        corpus = self._corpus_ab()
+        config = {"categories": {"A": {}, "B": {}, "C": {}}}
+        topology = {"edges": [{"pair": ["A", "B"]}]}
+        matrix = compute_matrix(corpus, n=2, interaction_topology=topology,
+                                categories_config=config)
+        assert ("A", "C") in matrix
+        assert matrix[("A", "C")]["topology_connected"] is False
+
+
+class TestLowDiversity:
+    """Bug 4: monoculture combos (2-4 seeds, 1 fingerprint) should be flagged."""
+
+    def _make_matrix(self, seed_count, fingerprints):
+        return {
+            ("A", "B"): {
+                "seed_count": seed_count,
+                "distinct_fingerprints": fingerprints,
+                "seeds": [f"s{i}" for i in range(seed_count)],
+                "topology_connected": True,
+            },
+        }
+
+    def _make_corpus(self, seed_count, methods_variants):
+        corpus = {}
+        for i in range(seed_count):
+            variant = methods_variants[i % len(methods_variants)]
+            corpus[f"s{i}"] = {
+                "features": ["A", "B"],
+                "methods_per_feature": {"A": variant, "B": ["m2"]},
+                "feature_depth": {},
+            }
+        return corpus
+
+    def test_monoculture_flagged_with_2_seeds(self):
+        corpus = self._make_corpus(2, [["m1"]])
+        matrix = compute_matrix(corpus, n=2)
+        report = generate_matrix_report(matrix, corpus)
+        ld = report["low_diversity"]
+        assert any(e["combo"] == ["A", "B"] and "monoculture" in e["note"]
+                   for e in ld)
+
+    def test_monoculture_flagged_with_4_seeds(self):
+        corpus = self._make_corpus(4, [["m1"]])
+        matrix = compute_matrix(corpus, n=2)
+        report = generate_matrix_report(matrix, corpus)
+        ld = report["low_diversity"]
+        assert any(e["combo"] == ["A", "B"] and "monoculture" in e["note"]
+                   for e in ld)
+
+    def test_2_seeds_2_fingerprints_not_monoculture(self):
+        corpus = self._make_corpus(2, [["m1"], ["m1", "m3"]])
+        matrix = compute_matrix(corpus, n=2)
+        report = generate_matrix_report(matrix, corpus)
+        ld = report["low_diversity"]
+        assert not any(e["combo"] == ["A", "B"] and "monoculture" in e["note"]
+                       for e in ld)
+
+    def test_existing_low_diversity_still_detected(self):
+        corpus = self._make_corpus(6, [["m1"], ["m1", "m3"]])
+        matrix = compute_matrix(corpus, n=2)
+        report = generate_matrix_report(matrix, corpus)
+        ld = report["low_diversity"]
+        assert any(e["combo"] == ["A", "B"] and "near-duplicate" in e["note"]
+                   for e in ld)
+
+    def test_5_plus_seeds_1_fingerprint_is_monoculture(self):
+        corpus = self._make_corpus(6, [["m1"]])
+        matrix = compute_matrix(corpus, n=2)
+        report = generate_matrix_report(matrix, corpus)
+        ld = report["low_diversity"]
+        assert any(e["combo"] == ["A", "B"] and "monoculture" in e["note"]
+                   for e in ld)
+
+    def test_single_seed_not_flagged(self):
+        corpus = self._make_corpus(1, [["m1"]])
+        matrix = compute_matrix(corpus, n=2)
+        report = generate_matrix_report(matrix, corpus)
+        ld = report["low_diversity"]
+        assert not any(e["combo"] == ["A", "B"] for e in ld)
+
+
 class TestGenerateReport:
     def test_report_structure(self):
         corpus = {

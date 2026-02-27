@@ -157,3 +157,24 @@ def test_surface_method_completeness(feature_categories, api_surface):
             f"{len(uncategorized)} uncategorized methods in api_surface: "
             f"{uncategorized}"
         )
+
+
+def test_category_glsl_functions_in_surface_or_known_extras(
+    feature_categories, api_surface
+):
+    """All glsl_functions in categories exist in api_surface or are known GLSL3 extras."""
+    surface_glsl = set()
+    for category, names in api_surface.get("glsl_builtins", {}).items():
+        surface_glsl.update(names)
+    KNOWN_EXTRAS = {
+        "smoothstep", "refract", "reflect", "faceforward",
+        "matrixCompMult", "inversesqrt", "textureGather", "textureGatherOffset",
+    }
+    missing = []
+    for cat_name, cat in feature_categories["categories"].items():
+        for fn in cat.get("glsl_functions", []):
+            if fn not in surface_glsl and fn not in KNOWN_EXTRAS:
+                missing.append(f"{cat_name}.glsl_functions: {fn}")
+    assert not missing, (
+        f"GLSL functions not in surface or known extras:\n" + "\n".join(missing)
+    )

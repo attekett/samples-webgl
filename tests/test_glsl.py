@@ -1,5 +1,5 @@
 import pytest
-from api_audit.glsl import extract_glsl_builtins, strip_glsl_comments
+from api_audit.glsl import extract_glsl_builtins, strip_glsl_comments, _match_builtins
 
 
 class TestStripGlslComments:
@@ -90,3 +90,53 @@ class TestExtractGlslBuiltins:
         ctx = detect_context(root, consts)
         builtins = extract_glsl_builtins(root, ctx, consts, surface)
         assert builtins == set()
+
+
+class TestExtraBuiltins:
+    """Bug 2: extra_builtins parameter adds category-only builtins to scan."""
+
+    def test_extra_builtin_matched_via_match_builtins(self):
+        result = _match_builtins('smoothstep(0.0, 1.0, v)', ['smoothstep'])
+        assert 'smoothstep' in result
+
+    def test_extra_builtins_parameter_adds_to_scan(self, parse_html, surface):
+        root = parse_html('glsl_builtins.html')
+        from api_audit.const_propagation import resolve_constants
+        from api_audit.context import detect_context
+        consts = resolve_constants(root)
+        ctx = detect_context(root, consts)
+        base = extract_glsl_builtins(root, ctx, consts, surface)
+        extra = extract_glsl_builtins(root, ctx, consts, surface,
+                                      extra_builtins=['smoothstep'])
+        assert base <= extra
+
+    def test_extra_builtins_backward_compatible(self, parse_html, surface):
+        root = parse_html('glsl_builtins.html')
+        from api_audit.const_propagation import resolve_constants
+        from api_audit.context import detect_context
+        consts = resolve_constants(root)
+        ctx = detect_context(root, consts)
+        builtins = extract_glsl_builtins(root, ctx, consts, surface)
+        assert 'texelFetch' in builtins
+
+    def test_extra_builtins_empty_list(self, parse_html, surface):
+        root = parse_html('glsl_builtins.html')
+        from api_audit.const_propagation import resolve_constants
+        from api_audit.context import detect_context
+        consts = resolve_constants(root)
+        ctx = detect_context(root, consts)
+        base = extract_glsl_builtins(root, ctx, consts, surface)
+        with_empty = extract_glsl_builtins(root, ctx, consts, surface,
+                                           extra_builtins=[])
+        assert base == with_empty
+
+    def test_extra_builtins_deduplication(self, parse_html, surface):
+        root = parse_html('glsl_builtins.html')
+        from api_audit.const_propagation import resolve_constants
+        from api_audit.context import detect_context
+        consts = resolve_constants(root)
+        ctx = detect_context(root, consts)
+        base = extract_glsl_builtins(root, ctx, consts, surface)
+        with_dup = extract_glsl_builtins(root, ctx, consts, surface,
+                                         extra_builtins=['texelFetch'])
+        assert base == with_dup

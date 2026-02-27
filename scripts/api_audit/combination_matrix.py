@@ -53,7 +53,8 @@ def is_topology_connected(combo, topology):
     return visited == combo_set
 
 
-def compute_matrix(corpus_features, n=2, interaction_topology=None):
+def compute_matrix(corpus_features, n=2, interaction_topology=None,
+                   categories_config=None):
     """Compute n-way feature combination coverage.
 
     Args:
@@ -62,13 +63,24 @@ def compute_matrix(corpus_features, n=2, interaction_topology=None):
             "methods_per_feature" (dict {feature: [method_names]}).
         n: combination size (2, 3, or 4)
         interaction_topology: parsed interaction_topology.json (optional)
+        categories_config: Optional feature_categories.json dict (with or
+            without outer "categories" key, matching _load_categories()
+            convention).
 
     Returns:
         dict {combo_tuple: {seed_count, distinct_fingerprints, seeds,
                             topology_connected}}
     """
-    all_features = sorted(set(
-        f for fp in corpus_features.values() for f in fp["features"]))
+    corpus_feature_names = set(
+        f for fp in corpus_features.values() for f in fp["features"])
+    if categories_config is not None:
+        if isinstance(categories_config, dict) and "categories" in categories_config:
+            config_names = set(categories_config["categories"].keys())
+        else:
+            config_names = set(categories_config.keys())
+        all_features = sorted(corpus_feature_names | config_names)
+    else:
+        all_features = sorted(corpus_feature_names)
 
     matrix = {}
     for combo in combinations(all_features, n):
@@ -261,13 +273,22 @@ def generate_matrix_report(matrix, corpus_features, interaction_topology=None):
 
     low_diversity = []
     for combo, data in matrix.items():
-        if (data["seed_count"] >= 5
-                and data.get("distinct_fingerprints", 0) <= 2
-                and data.get("topology_connected", True)):
+        if not data.get("topology_connected", True):
+            continue
+        sc = data["seed_count"]
+        fp = data.get("distinct_fingerprints", 0)
+        if sc >= 2 and fp == 1:
             low_diversity.append({
                 "combo": list(combo),
-                "seed_count": data["seed_count"],
-                "distinct_fingerprints": data["distinct_fingerprints"],
+                "seed_count": sc,
+                "distinct_fingerprints": fp,
+                "note": "monoculture - all seeds identical",
+            })
+        elif sc >= 5 and fp <= 2:
+            low_diversity.append({
+                "combo": list(combo),
+                "seed_count": sc,
+                "distinct_fingerprints": fp,
                 "note": "high seed count but near-duplicate coverage",
             })
 

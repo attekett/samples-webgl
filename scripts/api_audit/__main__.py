@@ -16,7 +16,8 @@ from api_audit.cache import FileCache
 from api_audit.report import generate_report, generate_delta_report
 
 
-def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None):
+def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None,
+                 extra_glsl_builtins: list[str] | None = None):
     """Run full analysis pipeline on a single HTML file."""
     content = filepath.read_text()
 
@@ -33,7 +34,8 @@ def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None):
     consts = resolve_constants(root)
     ctx = detect_context(root, consts)
     calls = analyze_calls(root, ctx, consts, surface)
-    glsl = extract_glsl_builtins(root, ctx, consts, surface)
+    glsl = extract_glsl_builtins(root, ctx, consts, surface,
+                                 extra_builtins=extra_glsl_builtins)
     warnings = check_conventions(root, context_vars=ctx.context_vars)
 
     result = {
@@ -134,7 +136,15 @@ def main():
 
     if args.file:
         # Delta mode: analyze single file against existing coverage
-        result = analyze_file(args.file, surface)
+        extra_glsl = None
+        if args.feature_categories:
+            categories_config_delta = json.loads(args.feature_categories.read_text())
+            cats_delta = categories_config_delta.get("categories", categories_config_delta)
+            extra_glsl = list(set(
+                fn for cat_def in cats_delta.values()
+                for fn in cat_def.get("glsl_functions", [])))
+
+        result = analyze_file(args.file, surface, extra_glsl_builtins=extra_glsl)
         if result is None:
             print(f"No script content found in {args.file}")
             sys.exit(1)
@@ -183,6 +193,16 @@ def main():
                 print(f"Updated matrix written to {args.combination_matrix}")
     else:
         # Full corpus mode
+        # Parse categories config once (used for report, matrix, and per-file analysis)
+        categories_config = None
+        extra_glsl = None
+        if args.feature_categories:
+            categories_config = json.loads(args.feature_categories.read_text())
+            cats = categories_config.get("categories", categories_config)
+            extra_glsl = list(set(
+                fn for cat_def in cats.values()
+                for fn in cat_def.get("glsl_functions", [])))
+
         html_files = []
         for d in args.corpus_dirs:
             if d.exists():
@@ -190,12 +210,14 @@ def main():
 
         results = []
         for f in sorted(html_files):
-            result = analyze_file(f, surface, cache)
+            result = analyze_file(f, surface, cache,
+                                  extra_glsl_builtins=extra_glsl)
             if result:
                 results.append(result)
 
         coverage = aggregate_results(results)
-        report = generate_report(coverage, surface)
+        report = generate_report(coverage, surface,
+                                 extra_glsl_builtins=extra_glsl)
 
         print(f"Analyzed {len(results)} files")
         print(f"Methods: {report.covered_methods}/{report.total_methods} covered")
@@ -234,7 +256,6 @@ def main():
             from api_audit.combination_matrix import (
                 compute_matrix, generate_matrix_report)
 
-            categories_config = json.loads(args.feature_categories.read_text())
             topology = None
             if args.interaction_topology:
                 topology = json.loads(args.interaction_topology.read_text())
@@ -254,15 +275,20 @@ def main():
             if args.combination_matrix:
                 n = min(args.n_way, 4)
                 matrix = compute_matrix(corpus_features, n=n,
-                                        interaction_topology=topology)
+                                        interaction_topology=topology,
+                                        categories_config=categories_config)
                 report_matrix = generate_matrix_report(
                     matrix, corpus_features, topology)
 
+                all_feature_names = set(
+                    f for fp in corpus_features.values()
+                    for f in fp["features"])
+                if categories_config:
+                    all_feature_names |= set(cats.keys())
+
                 output_data = {
                     "corpus_size": len(results),
-                    "feature_count": len(set(
-                        f for fp in corpus_features.values()
-                        for f in fp["features"])),
+                    "feature_count": len(all_feature_names),
                     "phase2_enriched": False,
                     f"{n}way_combinations": report_matrix,
                 }

@@ -87,3 +87,60 @@ class TestDeltaReport:
         }
         delta = generate_delta_report(new_seed_calls, None, surface)
         assert delta.fallback_warning is not None
+
+
+class TestTier3ExtraBuiltins:
+    """Bug 3: extra_glsl_builtins should appear in Tier 3 when uncovered."""
+
+    def test_extra_glsl_builtins_appear_in_tier3_gaps(self, surface):
+        coverage = _make_coverage(
+            methods_covered={'drawArrays': 5},
+            constants_covered={},
+            glsl_covered={},
+        )
+        report = generate_report(coverage, surface,
+                                 extra_glsl_builtins=['smoothstep', 'refract'])
+        tier3_names = [g for g in report.tier3_ambiguous]
+        assert any('smoothstep' in g for g in tier3_names)
+        assert any('refract' in g for g in tier3_names)
+
+    def test_extra_glsl_covered_not_in_gaps(self, surface):
+        coverage = _make_coverage(
+            methods_covered={'drawArrays': 5},
+            constants_covered={},
+            glsl_covered={'smoothstep': 3},
+        )
+        report = generate_report(coverage, surface,
+                                 extra_glsl_builtins=['smoothstep'])
+        assert not any('smoothstep' in g for g in report.tier3_ambiguous)
+
+    def test_backward_compatible_without_extra(self, surface):
+        coverage = _make_coverage(
+            methods_covered={'drawArrays': 5},
+            constants_covered={},
+            glsl_covered={},
+        )
+        report = generate_report(coverage, surface)
+        assert not any('smoothstep' in g for g in report.tier3_ambiguous)
+
+    def test_extra_glsl_deduplication(self, surface):
+        coverage = _make_coverage(
+            methods_covered={'drawArrays': 5},
+            constants_covered={},
+            glsl_covered={},
+        )
+        report = generate_report(coverage, surface,
+                                 extra_glsl_builtins=['texelFetch'])
+        count = sum(1 for g in report.tier3_ambiguous if 'texelFetch' in g)
+        assert count == 1
+
+    def test_empty_extra_builtins_list(self, surface):
+        coverage = _make_coverage(
+            methods_covered={'drawArrays': 5},
+            constants_covered={},
+            glsl_covered={},
+        )
+        base = generate_report(coverage, surface)
+        with_empty = generate_report(coverage, surface,
+                                     extra_glsl_builtins=[])
+        assert base.tier3_ambiguous == with_empty.tier3_ambiguous

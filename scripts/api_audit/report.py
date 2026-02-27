@@ -26,13 +26,17 @@ class DeltaReport:
     fallback_warning: str | None = None
 
 
-def generate_report(coverage: dict, surface: dict) -> GapReport:
+def generate_report(coverage: dict, surface: dict,
+                    extra_glsl_builtins: list[str] | None = None) -> GapReport:
     """Generate tiered gap report from aggregated coverage vs surface.
 
     Args:
         coverage: Aggregated call data with keys 'methods', 'constants',
                   'glsl_builtins', 'extension_methods', 'return_constants'.
         surface: API surface dict (test_surface.json structure).
+        extra_glsl_builtins: Optional list of additional GLSL builtin names
+            to include in Tier 3 gap analysis (e.g. category-only builtins
+            not in the surface definition).
 
     Returns:
         GapReport with tier1 (uncovered methods), tier2 (uncovered constant
@@ -85,6 +89,8 @@ def generate_report(coverage: dict, surface: dict) -> GapReport:
     for category, builtins in all_glsl.items():
         for name in builtins:
             all_builtin_names.add(name)
+    if extra_glsl_builtins:
+        all_builtin_names |= set(extra_glsl_builtins)
 
     # Flatten covered GLSL builtin names
     covered_builtin_names = set()
