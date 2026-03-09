@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const uboSize = 256;
+    const uboSize2 = uboSize * 2;
+    const uboSize3 = uboSize * 3;
+    const vertCount = 6;
+    const bindingPoint0 = 0;
+    const bindingPoint1 = 1;
+    const bindingPoint2 = 2;
+
+    const uniTarget = gl.UNIFORM_BUFFER;
+    const bufUsage = gl.STATIC_DRAW;
+    const fbTarget = gl.FRAMEBUFFER;
+    const texTarget = gl.TEXTURE_2D;
+
+    try {
+        var vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+precision highp float;
+layout(std140) uniform TransformBlock {
+    mat4 uModel;
+    mat4 uView;
+};
+layout(std140) uniform LightBlock {
+    vec4 uLightPos;
+    vec4 uLightColor;
+    float uIntensity;
+    float uRadius;
+    float uFalloff;
+    float uAmbient;
+};
+layout(std140) uniform MaterialBlock {
+    vec4 uDiffuse;
+    vec4 uSpecular;
+    float uShininess;
+    float uRoughness;
+    float uMetallic;
+    float uOcclusion;
+};
+in vec2 aPos;
+out vec4 vLight;
+out vec4 vMat;
+void main() {
+    vec4 wp = uModel * vec4(aPos, 0.0, 1.0);
+    vec4 vp = uView * wp;
+    float d = length(uLightPos.xyz - wp.xyz);
+    float atten = uIntensity / (1.0 + uFalloff * d * d);
+    vLight = uLightColor * atten + vec4(uAmbient);
+    vMat = uDiffuse * uOcclusion + uSpecular * uMetallic;
+    gl_Position = vp;
+}`);
+        gl.compileShader(vs);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+precision highp float;
+in vec4 vLight;
+in vec4 vMat;
+out vec4 outColor;
+void main() {
+    outColor = vLight * vMat + vec4(0.05, 0.05, 0.05, 1.0);
+}`);
+        gl.compileShader(fs);
+        var prog = gl.createProgram();
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
+    } catch(e) {}
+
+    try {
+        var blockIdxTransform = gl.getUniformBlockIndex(prog, 'TransformBlock');
+        var blockIdxLight = gl.getUniformBlockIndex(prog, 'LightBlock');
+        var blockIdxMaterial = gl.getUniformBlockIndex(prog, 'MaterialBlock');
+        gl.uniformBlockBinding(prog, blockIdxTransform, bindingPoint0);
+        gl.uniformBlockBinding(prog, blockIdxLight, bindingPoint1);
+        gl.uniformBlockBinding(prog, blockIdxMaterial, bindingPoint2);
+        gl.uniformBlockBinding(prog, blockIdxTransform, bindingPoint2);
+        gl.uniformBlockBinding(prog, blockIdxTransform, bindingPoint0);
+        gl.uniformBlockBinding(prog, blockIdxLight, bindingPoint0);
+        gl.uniformBlockBinding(prog, blockIdxLight, bindingPoint1);
+        gl.uniformBlockBinding(prog, blockIdxMaterial, bindingPoint1);
+        gl.uniformBlockBinding(prog, blockIdxMaterial, bindingPoint2);
+        var nameT = gl.getActiveUniformBlockName(prog, blockIdxTransform);
+        var nameL = gl.getActiveUniformBlockName(prog, blockIdxLight);
+        var nameM = gl.getActiveUniformBlockName(prog, blockIdxMaterial);
+        var nameT2 = gl.getActiveUniformBlockName(prog, 0);
+        var nameL2 = gl.getActiveUniformBlockName(prog, 1);
+    } catch(e) {}
+
+    try {
+        var uboBuf0 = gl.createBuffer();
+        var uboBuf1 = gl.createBuffer();
+        var uboBuf2 = gl.createBuffer();
+        gl.bindBuffer(uniTarget, uboBuf0);
+        gl.bindBuffer(uniTarget, uboBuf1);
+        gl.bindBuffer(uniTarget, uboBuf0);
+        gl.bufferData(uniTarget, new Float32Array([
+            1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1,
+            1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0.5,1
+        ]), bufUsage);
+        gl.bindBuffer(uniTarget, uboBuf1);
+        gl.bufferData(uniTarget, new Float32Array([
+            2.0, 3.0, 4.0, 1.0,
+            1.0, 0.8, 0.6, 1.0,
+            1.5, 0.05, 0.8, 0.2
+        ]), bufUsage);
+        gl.bindBuffer(uniTarget, uboBuf2);
+        gl.bufferData(uniTarget, new Float32Array([
+            0.8, 0.6, 0.4, 1.0,
+            0.9, 0.9, 0.9, 1.0,
+            32.0, 0.5, 0.0, 1.0
+        ]), bufUsage);
+        gl.bindBuffer(uniTarget, uboBuf0);
+        gl.bindBuffer(uniTarget, uboBuf2);
+        gl.bindBuffer(uniTarget, uboBuf0);
+    } catch(e) {}
+
+    try {
+        gl.bindBufferBase(uniTarget, bindingPoint0, uboBuf0);
+        gl.bindBufferBase(uniTarget, bindingPoint1, uboBuf1);
+        gl.bindBufferBase(uniTarget, bindingPoint2, uboBuf2);
+        gl.bindBufferBase(uniTarget, bindingPoint0, uboBuf2);
+        gl.bindBufferBase(uniTarget, bindingPoint0, uboBuf0);
+        gl.bindBufferBase(uniTarget, bindingPoint1, uboBuf0);
+        gl.bindBufferBase(uniTarget, bindingPoint1, uboBuf1);
+        gl.bindBufferBase(uniTarget, bindingPoint2, uboBuf1);
+        gl.bindBufferBase(uniTarget, bindingPoint2, uboBuf2);
+    } catch(e) {}
+
+    try {
+        var vertBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1,-1, 1,-1, -1,1,
+            -1,1,  1,-1,  1,1
+        ]), bufUsage);
+        var aPos = gl.getAttribLocation(prog, 'aPos');
+        gl.enableVertexAttribArray(aPos);
+        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 8, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertBuf);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertBuf);
+    } catch(e) {}
+
+    try {
+        var tex1 = gl.createTexture();
+        var tex2 = gl.createTexture();
+        gl.bindTexture(texTarget, tex1);
+        gl.texStorage2D(texTarget, 1, gl.RGBA8, 256, 256);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(texTarget, tex2);
+        gl.texStorage2D(texTarget, 1, gl.RGBA8, 128, 128);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(texTarget, tex1);
+        gl.bindTexture(texTarget, tex2);
+        gl.bindTexture(texTarget, tex1);
+        var fbo1 = gl.createFramebuffer();
+        var fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(fbTarget, fbo1);
+        gl.framebufferTexture2D(fbTarget, gl.COLOR_ATTACHMENT0, texTarget, tex1, 0);
+        gl.bindFramebuffer(fbTarget, fbo2);
+        gl.framebufferTexture2D(fbTarget, gl.COLOR_ATTACHMENT0, texTarget, tex2, 0);
+        gl.bindFramebuffer(fbTarget, fbo1);
+        gl.framebufferTexture2D(fbTarget, gl.COLOR_ATTACHMENT0, texTarget, tex2, 0);
+        gl.bindFramebuffer(fbTarget, fbo1);
+    } catch(e) {}
+
+    try {
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fbTarget, fbo1);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.1, 0.1, 0.2, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, vertCount);
+        gl.bindBufferBase(uniTarget, bindingPoint0, uboBuf1);
+        gl.bindBufferBase(uniTarget, bindingPoint1, uboBuf2);
+        gl.bindBufferBase(uniTarget, bindingPoint2, uboBuf0);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindFramebuffer(fbTarget, fbo2);
+        gl.viewport(0, 0, 128, 128);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, vertCount);
+        gl.bindFramebuffer(fbTarget, fbo1);
+        gl.viewport(0, 0, 256, 256);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fbTarget, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, vertCount);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(uniTarget, uboBuf0);
+        gl.deleteBuffer(uboBuf0);
+        gl.bindBufferBase(uniTarget, bindingPoint0, uboBuf0);
+        gl.bindBuffer(uniTarget, uboBuf0);
+        gl.deleteBuffer(uboBuf1);
+        gl.deleteBuffer(uboBuf2);
+        gl.deleteBuffer(vertBuf);
+        gl.deleteTexture(tex1);
+        gl.deleteTexture(tex2);
+        gl.deleteFramebuffer(fbo1);
+        gl.deleteFramebuffer(fbo2);
+        gl.deleteProgram(prog);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

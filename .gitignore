@@ -33,6 +33,12 @@ Thumbs.db
 *.bak
 .worktrees/
 
+# Workflow/task artifacts
+plan_ids.txt
+progress_ids.txt
+workflow_package.tar.gz
+workflow_package_summary.txt
+
 # Node
 node_modules/
 

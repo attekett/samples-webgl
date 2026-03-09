@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+const texSize = 256;
+const bufSize = texSize * texSize * 4;
+const vertCount = 6;
+const instanceCount = vertCount * 4;
+const queryCount = 3;
+
+const drawTarget = WebGL2RenderingContext.TRIANGLES;
+const syncCond = WebGL2RenderingContext.SYNC_GPU_COMMANDS_COMPLETE;
+const syncFlag = WebGL2RenderingContext.SYNC_FLUSH_COMMANDS_BIT;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    const vsSrc = `#version 300 es
+in vec2 a_pos;
+void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+    const fsSrc = `#version 300 es
+precision mediump float;
+out vec4 fragColor;
+void main() { fragColor = vec4(0.8, 0.4, 0.2, 1.0); }`;
+
+    let prog, vao, fbo1, fbo2, tex1, tex2, rbo;
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, vsSrc);
+        gl.compileShader(vs);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, fsSrc);
+        gl.compileShader(fs);
+        prog = gl.createProgram();
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
+    } catch(e) {}
+
+    try {
+        const vbuf1 = gl.createBuffer();
+        const vbuf2 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbuf1);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbuf2);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbuf1);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1,-1, 1,-1, -1,1,
+            1,-1, 1,1, -1,1
+        ]), gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbuf2);
+        gl.bufferData(gl.ARRAY_BUFFER, bufSize, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbuf1);
+        const loc = gl.getAttribLocation(prog, 'a_pos');
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 8, 0);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex1);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, tex2);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 128, 128);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, tex1);
+        rbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, texSize, texSize);
+    } catch(e) {}
+
+    try {
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex1, 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex2, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex2, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex1, 0);
+    } catch(e) {}
+
+    let q1, q2, q3;
+
+    try {
+        q1 = gl.createQuery();
+        q2 = gl.createQuery();
+        q3 = gl.createQuery();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.clearColor(0.1, 0.2, 0.3, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.bindVertexArray(vao);
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED, q1);
+        gl.drawArrays(drawTarget, 0, vertCount);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.viewport(0, 0, 128, 128);
+        gl.clearColor(0.5, 0.5, 0.5, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, q2);
+        gl.drawArrays(gl.TRIANGLES, 0, vertCount);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED, q3);
+        gl.drawArrays(drawTarget, 0, vertCount);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) {}
+
+    let sync1, sync2, sync3;
+
+    try {
+        sync1 = gl.fenceSync(syncCond, 0);
+        gl.flush();
+        sync2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        const status1 = gl.clientWaitSync(sync1, syncFlag, 0);
+        const status2 = gl.clientWaitSync(sync1, 0, 0);
+        const status3 = gl.clientWaitSync(sync2, syncFlag, 0);
+        gl.waitSync(sync1, 0, gl.TIMEOUT_IGNORED);
+        gl.waitSync(sync2, 0, gl.TIMEOUT_IGNORED);
+        const sp1 = gl.getSyncParameter(sync1, gl.SYNC_STATUS);
+        const sp2 = gl.getSyncParameter(sync1, gl.SYNC_CONDITION);
+        const sp3 = gl.getSyncParameter(sync2, gl.SYNC_STATUS);
+        const sp4 = gl.getSyncParameter(sync2, gl.SYNC_FLAGS);
+        const isS1 = gl.isSync(sync1);
+        const isS2 = gl.isSync(sync2);
+        const isNull = gl.isSync(null);
+    } catch(e) {}
+
+    try {
+        sync3 = gl.fenceSync(syncCond, 0);
+        gl.flush();
+        gl.waitSync(sync3, 0, gl.TIMEOUT_IGNORED);
+        gl.deleteSync(sync1);
+        gl.deleteSync(sync2);
+        gl.clientWaitSync(sync1, syncFlag, 0);
+        gl.getSyncParameter(sync1, gl.SYNC_STATUS);
+        gl.isSync(sync1);
+        gl.deleteSync(sync1);
+        gl.waitSync(sync3, 0, gl.TIMEOUT_IGNORED);
+        gl.getSyncParameter(sync3, gl.SYNC_STATUS);
+        gl.deleteSync(sync3);
+        gl.deleteSync(sync3);
+    } catch(e) {}
+
+    try {
+        const q4 = gl.createQuery();
+        const q5 = gl.createQuery();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, 256, 256);
+        gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, q4);
+        gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
+        const qRes1 = gl.getQueryParameter(q1, gl.QUERY_RESULT_AVAILABLE);
+        const qRes2 = gl.getQueryParameter(q2, gl.QUERY_RESULT_AVAILABLE);
+        const qRes3 = gl.getQueryParameter(q1, gl.QUERY_RESULT);
+        const isQ1 = gl.isQuery(q1);
+        const isQ2 = gl.isQuery(q4);
+        const isNull2 = gl.isQuery(null);
+        const qinfo1 = gl.getQuery(gl.ANY_SAMPLES_PASSED, gl.CURRENT_QUERY);
+        const qinfo2 = gl.getQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, gl.CURRENT_QUERY);
+        const qinfo3 = gl.getQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, gl.CURRENT_QUERY);
+        gl.deleteQuery(q1);
+        gl.deleteQuery(q2);
+        gl.deleteQuery(q3);
+        gl.deleteQuery(q4);
+        gl.deleteQuery(q5);
+        gl.deleteQuery(q1);
+        gl.getQueryParameter(q1, gl.QUERY_RESULT_AVAILABLE);
+        gl.isQuery(q1);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
