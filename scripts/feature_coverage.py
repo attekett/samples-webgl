@@ -345,7 +345,8 @@ def main():
         print("## GLSL Builtin Coverage")
         never = sorted(all_builtins - set(glsl_counts))
         used = sorted(glsl_counts.items(), key=lambda x: x[1], reverse=True)
-        print(f"Used builtins ({len(used)}/{len(all_builtins)}):")
+        covered_defined = set(glsl_counts) & all_builtins
+        print(f"Used builtins ({len(covered_defined)}/{len(all_builtins)}):")
         for name, count in used:
             print(f"  {name:<30} {count:>4} seeds")
         if never:

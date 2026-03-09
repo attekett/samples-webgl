@@ -25,3 +25,10 @@ def test_aggregate_glsl_builtins_missing_key():
     # fingerprint without glsl_builtins key is handled gracefully
     result = aggregate_glsl_builtins([{"features": ["fbo"]}])
     assert result == {}
+
+
+def test_aggregate_glsl_builtins_none_entry():
+    from feature_coverage import aggregate_glsl_builtins
+    # None entries in the list are skipped gracefully
+    result = aggregate_glsl_builtins([None, {"glsl_builtins": {"smoothstep"}}])
+    assert result == {"smoothstep": 1}
