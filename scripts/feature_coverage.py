@@ -144,6 +144,32 @@ def aggregate_glsl_builtins(fingerprints: list) -> dict:
     return counts
 
 
+def diff_coverage_snapshots(prev: dict, curr: dict) -> dict:
+    """Compute delta between two coverage snapshots.
+
+    Each snapshot is {feature_name: {seeds: N, pct: float}}.
+
+    Returns:
+        dict with:
+          changed: {feature: {delta_seeds, delta_pct}} — only non-zero deltas
+          new_features: sorted list of features in curr but not prev
+          removed_features: sorted list of features in prev but not curr
+    """
+    prev_keys = set(prev)
+    curr_keys = set(curr)
+    changed = {}
+    for feat in prev_keys & curr_keys:
+        ds = curr[feat]["seeds"] - prev[feat]["seeds"]
+        dp = round(curr[feat]["pct"] - prev[feat]["pct"], 1)
+        if ds != 0 or dp != 0.0:
+            changed[feat] = {"delta_seeds": ds, "delta_pct": dp}
+    return {
+        "changed": changed,
+        "new_features": sorted(curr_keys - prev_keys),
+        "removed_features": sorted(prev_keys - curr_keys),
+    }
+
+
 def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
@@ -222,6 +248,10 @@ def main():
                         help="Show per-method API surface coverage report")
     parser.add_argument("--glsl-detail", action="store_true",
                         help="Show per-GLSL-builtin seed counts")
+    parser.add_argument("--snapshot", type=Path, metavar="FILE",
+                        help="Save current coverage to FILE as JSON snapshot")
+    parser.add_argument("--diff", type=Path, metavar="PREV_SNAPSHOT",
+                        help="Compare current coverage against PREV_SNAPSHOT and print delta")
     args = parser.parse_args()
 
     surface = json.loads(args.surface.read_text())
@@ -264,6 +294,14 @@ def main():
             "feature_depth": fp.get("feature_depth", {}),
             "glsl_builtins": fp.get("glsl_builtins", []),
         }
+
+    snapshot = {feat: {"seeds": count, "total": total,
+                        "pct": round(count * 100 / total, 1) if total else 0}
+                for feat, count in feature_counts.items()}
+
+    if args.snapshot:
+        args.snapshot.write_text(json.dumps(snapshot, indent=2))
+        print(f"Snapshot saved to {args.snapshot}")
 
     if args.json:
         out = {feat: {"seeds": count, "total": total,
@@ -352,6 +390,25 @@ def main():
         if never:
             print(f"Never used ({len(never)}): {', '.join(never)}")
         print()
+
+    if args.diff and args.diff.exists():
+        prev_snapshot = json.loads(args.diff.read_text())
+        delta = diff_coverage_snapshots(prev_snapshot, snapshot)
+        print("## Coverage Delta")
+        if delta["new_features"]:
+            print(f"New features: {', '.join(delta['new_features'])}")
+        if delta["removed_features"]:
+            print(f"Removed features: {', '.join(delta['removed_features'])}")
+        if delta["changed"]:
+            for feat, d in sorted(delta["changed"].items()):
+                sign = "+" if d["delta_seeds"] >= 0 else ""
+                print(f"  {feat:<40} {sign}{d['delta_seeds']} seeds  "
+                      f"({sign}{d['delta_pct']}%)")
+        else:
+            print("No coverage changes.")
+        print()
+    elif args.diff and not args.diff.exists():
+        print(f"Warning: diff snapshot file not found: {args.diff}", file=sys.stderr)
 
 
 if __name__ == "__main__":
