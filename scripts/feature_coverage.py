@@ -108,6 +108,23 @@ def summarize_combinations(matrix: dict) -> dict:
             "gap_count": gap_count, "pct": pct}
 
 
+def compute_method_coverage(surface_methods: set, seen_methods: set) -> dict:
+    """Compute what fraction of API surface methods appear in the corpus.
+
+    Args:
+        surface_methods: set of method names from webgl_api_surface.json
+        seen_methods: set of method names found across all corpus files
+
+    Returns:
+        dict with total, exercised, pct, never_seen (sorted list)
+    """
+    total = len(surface_methods)
+    exercised = len(seen_methods & surface_methods)
+    pct = round(exercised * 100 / total, 1) if total else 0
+    never_seen = sorted(surface_methods - seen_methods)
+    return {"total": total, "exercised": exercised, "pct": pct, "never_seen": never_seen}
+
+
 def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
@@ -154,7 +171,8 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
 
     if cache:
         cache.store(filepath.name, content, {"features": fp["features"],
-                                              "feature_depth": fp["feature_depth"]},
+                                              "feature_depth": fp["feature_depth"],
+                                              "methods_per_feature": fp.get("methods_per_feature", {})},
                     config_hash=config_hash)
 
     return fp
@@ -179,6 +197,8 @@ def main():
                         help="Only count seeds whose sibling .json result has passed:true")
     parser.add_argument("--combinations", type=int, default=0, metavar="N",
                         help="Also report N-way combination coverage gaps (2 or 3)")
+    parser.add_argument("--api-surface-coverage", action="store_true",
+                        help="Show per-method API surface coverage report")
     args = parser.parse_args()
 
     surface = json.loads(args.surface.read_text())
@@ -194,6 +214,7 @@ def main():
     feature_counts = {}
     feature_depths = {}  # {feat: {"present": N, "meaningful": N, "deep": N}}
     corpus_fingerprints = {}  # {filename: feature_fingerprint}
+    all_seen_methods = set()
     total = 0
 
     for f in html_files:
@@ -212,6 +233,8 @@ def main():
             if feat not in feature_depths:
                 feature_depths[feat] = {"present": 0, "meaningful": 0, "deep": 0}
             feature_depths[feat][fd] += 1
+        for feat_methods in fp.get("methods_per_feature", {}).values():
+            all_seen_methods.update(feat_methods)
         corpus_fingerprints[str(f)] = {
             "features": fp["features"],
             "methods_per_feature": fp.get("methods_per_feature", {}),
@@ -276,6 +299,18 @@ def main():
             print("Top uncovered combos (up to 10):")
             for combo, _ in gaps:
                 print(f"  - {' + '.join(combo)}")
+        print()
+
+    if args.api_surface_coverage:
+        surface_method_names = set(surface.get("methods", {}).keys())
+        report = compute_method_coverage(surface_method_names, all_seen_methods)
+        print(f"## API Surface Method Coverage")
+        print(f"{report['exercised']}/{report['total']} methods exercised "
+              f"({report['pct']}%)")
+        if report["never_seen"]:
+            print(f"Never-seen methods ({len(report['never_seen'])}):")
+            for m in report["never_seen"]:
+                print(f"  - {m}")
         print()
 
 
