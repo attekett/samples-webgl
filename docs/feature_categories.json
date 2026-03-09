@@ -182,6 +182,7 @@
     },
     "instancing": {
       "description": "Instanced draw calls and per-instance vertex attribute divisors",
+      "overlap_note": "drawArraysInstanced and drawElementsInstanced also appear in draw_calls. This is intentional. instancing is not in SKIP_UBIQUITOUS; draw_calls is — so instancing seeds are visible in the table even though draw_calls is always matched.",
       "methods": [
         "drawArraysInstanced",
         "drawElementsInstanced",
@@ -429,6 +430,7 @@
     },
     "draw_calls": {
       "description": "Draw command invocation and color/depth/stencil buffer clearing",
+      "overlap_note": "drawArraysInstanced and drawElementsInstanced intentionally appear in both draw_calls and instancing: any instanced draw is also a draw call. Seeds using instancing always match draw_calls too.",
       "methods": [
         "drawArrays",
         "drawElements",
