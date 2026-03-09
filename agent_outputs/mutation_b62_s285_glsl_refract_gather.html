@@ -20,8 +20,8 @@ async function main() {
     const vertCount = 6;
     const bufStride = 16;
     const halfSize = texSize / 2;
-    const quadBufSize = vertCount * bufStride;
     const readSize = texSize * texSize * 4;
+    const quadFloats = vertCount * 4;
 
     const bufTarget = gl.ARRAY_BUFFER;
     const texTarget = gl.TEXTURE_2D;
@@ -44,12 +44,12 @@ async function main() {
             -1.0,  1.0, 0.0, 1.0
         ]), usageHint);
         gl.bindBuffer(bufTarget, buf2);
-        gl.bufferData(bufTarget, quadBufSize, gl.DYNAMIC_DRAW);
-        gl.bufferSubData(bufTarget, 0, new Float32Array(32));
+        gl.bufferData(bufTarget, quadFloats * 4, gl.DYNAMIC_DRAW);
+        gl.bufferSubData(bufTarget, 0, new Float32Array(quadFloats));
         gl.bindBuffer(bufTarget, buf1);
         gl.bindBuffer(bufTarget, buf2);
         gl.bindBuffer(bufTarget, buf1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         var texSrc1 = gl.createTexture();
@@ -78,7 +78,7 @@ async function main() {
         gl.bindTexture(texTarget, texSrc1);
         gl.bindTexture(texTarget, texSrc2);
         gl.bindTexture(texTarget, texSrc1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         var texOut1 = gl.createTexture();
@@ -98,7 +98,7 @@ async function main() {
         gl.bindTexture(texTarget, texOut1);
         gl.bindTexture(texTarget, texOut2);
         gl.bindTexture(texTarget, texOut1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         var fbo1 = gl.createFramebuffer();
@@ -114,7 +114,7 @@ async function main() {
         gl.framebufferTexture2D(fbTarget, gl.COLOR_ATTACHMENT0, texTarget, texOut1, 0);
         gl.bindFramebuffer(fbTarget, fbo2);
         gl.bindFramebuffer(fbTarget, fbo1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         var vs = gl.createShader(gl.VERTEX_SHADER);
@@ -133,8 +133,8 @@ void main() {
 }`);
         gl.compileShader(vs);
 
-        var fsRefractGather = gl.createShader(gl.FRAGMENT_SHADER);
-        gl.shaderSource(fsRefractGather, `#version 300 es
+        var fsMain = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsMain, `#version 300 es
 precision highp float;
 precision highp sampler2D;
 uniform sampler2D uTex;
@@ -149,24 +149,35 @@ void main() {
     vec3 ff = faceforward(N, I, Nref);
     vec3 refr = refract(I, ff, 0.9);
     vec2 refractUV = vUV + refr.xy * 0.05;
-    vec4 g0 = textureGather(uTex, vUV, 0);
-    vec4 g1 = textureGather(uTex, vUV, 1);
-    vec4 g2 = textureGather(uTex, vUV, 2);
-    vec4 g3 = textureGatherOffset(uTex, vUV, ivec2(1, 0), 0);
-    vec4 g4 = textureGatherOffset(uTex, vUV, ivec2(0, 1), 1);
-    vec4 g5 = textureGatherOffset(uTex, vUV, ivec2(-1, -1), 2);
-    vec4 sampled = texture(uTex, refractUV);
-    vec4 gathered = (g0 + g1 + g2) * 0.33333;
-    vec4 gathered2 = (g3 + g4 + g5) * 0.33333;
+    vec4 t0 = texture(uTex, refractUV);
+    vec4 t1 = texture(uTex, vUV);
+    vec4 t2 = texelFetch(uTex, ivec2(ivec2(vUV * 32.0)), 0);
     float ffBias = dot(ff, vec3(0.5, 0.5, 0.0)) * 0.5 + 0.5;
-    outColor = mix(sampled, mix(gathered, gathered2, 0.5), ffBias * 0.3);
+    outColor = mix(t0, t1 + t2 * 0.1, ffBias * 0.4);
 }`);
-        gl.compileShader(fsRefractGather);
+        gl.compileShader(fsMain);
 
-        var progRefractGather = gl.createProgram();
-        gl.attachShader(progRefractGather, vs);
-        gl.attachShader(progRefractGather, fsRefractGather);
-        gl.linkProgram(progRefractGather);
+        var progMain = gl.createProgram();
+        gl.attachShader(progMain, vs);
+        gl.attachShader(progMain, fsMain);
+        gl.linkProgram(progMain);
+
+        var fsGather = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsGather, `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D uTex;
+in vec2 vUV;
+out vec4 outColor;
+void main() {
+    vec4 g0 = textureGather(uTex, vUV);
+    vec4 g1 = textureGather(uTex, vUV + vec2(0.01, 0.0));
+    vec4 g2 = textureGather(uTex, vUV + vec2(0.0, 0.01));
+    vec4 g3 = textureGatherOffset(uTex, vUV, ivec2(1, 0));
+    vec4 g4 = textureGatherOffset(uTex, vUV, ivec2(0, 1));
+    vec4 g5 = textureGatherOffset(uTex, vUV, ivec2(-1, -1));
+    outColor = (g0 + g1 + g2 + g3 + g4 + g5) * 0.16667;
+}`);
 
         var fsFill = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fsFill, `#version 300 es
@@ -182,19 +193,19 @@ void main() {
         gl.attachShader(progFill, vs);
         gl.attachShader(progFill, fsFill);
         gl.linkProgram(progFill);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         var vao = gl.createVertexArray();
         gl.bindVertexArray(vao);
         gl.bindBuffer(bufTarget, buf1);
-        var posLoc = gl.getAttribLocation(progRefractGather, 'aPos');
-        var uvLoc = gl.getAttribLocation(progRefractGather, 'aUV');
+        var posLoc = gl.getAttribLocation(progMain, 'aPos');
+        var uvLoc = gl.getAttribLocation(progMain, 'aUV');
         gl.enableVertexAttribArray(posLoc);
         gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, bufStride, 0);
         gl.enableVertexAttribArray(uvLoc);
         gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, bufStride, 8);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(gl.BLEND);
@@ -211,7 +222,7 @@ void main() {
         gl.disable(gl.CULL_FACE);
         gl.enable(gl.CULL_FACE);
         gl.disable(gl.CULL_FACE);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.useProgram(progFill);
@@ -227,14 +238,14 @@ void main() {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(texTarget, texSrc2);
         gl.bindTexture(texTarget, texSrc1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        gl.useProgram(progRefractGather);
+        gl.useProgram(progMain);
         gl.bindVertexArray(vao);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(texTarget, texSrc1);
-        gl.uniform1i(gl.getUniformLocation(progRefractGather, 'uTex'), 0);
+        gl.uniform1i(gl.getUniformLocation(progMain, 'uTex'), 0);
         gl.bindFramebuffer(fbTarget, fbo1);
         gl.viewport(0, 0, texSize, texSize);
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
@@ -248,14 +259,14 @@ void main() {
         gl.bindFramebuffer(fbTarget, fbo1);
         gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(drawMode, 0, vertCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        gl.useProgram(progRefractGather);
+        gl.useProgram(progMain);
         gl.bindVertexArray(vao);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(texTarget, texOut1);
-        gl.uniform1i(gl.getUniformLocation(progRefractGather, 'uTex'), 0);
+        gl.uniform1i(gl.getUniformLocation(progMain, 'uTex'), 0);
         gl.bindFramebuffer(fbTarget, null);
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.05, 0.05, 0.1, 1.0);
@@ -266,7 +277,7 @@ void main() {
         gl.drawArrays(drawMode, 0, 6);
         gl.bindTexture(texTarget, texOut1);
         gl.drawArrays(drawMode, 0, vertCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
@@ -274,7 +285,7 @@ void main() {
         gl.readPixels(0, 0, texSize, texSize, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(readSize));
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo2);
         gl.readPixels(0, 0, 8, 8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(256));
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(texTarget, texSrc1);
@@ -289,13 +300,14 @@ void main() {
         gl.deleteFramebuffer(fbo1);
         gl.deleteFramebuffer(fbo2);
         gl.deleteFramebuffer(fbo3);
-        gl.deleteProgram(progRefractGather);
+        gl.deleteProgram(progMain);
         gl.deleteProgram(progFill);
         gl.deleteShader(vs);
-        gl.deleteShader(fsRefractGather);
+        gl.deleteShader(fsMain);
+        gl.deleteShader(fsGather);
         gl.deleteShader(fsFill);
         gl.deleteVertexArray(vao);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });
