@@ -79,6 +79,14 @@ def is_passed(filepath: Path) -> bool:
         return False
 
 
+def format_depth_summary(depth_counts: dict) -> str:
+    """Format depth count dict as 'P:N M:N D:N' for table display."""
+    p = depth_counts.get("present", 0)
+    m = depth_counts.get("meaningful", 0)
+    d = depth_counts.get("deep", 0)
+    return f"P:{p} M:{m} D:{d}"
+
+
 def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
@@ -161,6 +169,7 @@ def main():
             html_files.extend(sorted(d.rglob("*.html")))
 
     feature_counts = {}
+    feature_depths = {}  # {feat: {"present": N, "meaningful": N, "deep": N}}
     total = 0
 
     for f in html_files:
@@ -174,6 +183,11 @@ def main():
             if feat == "glsl_builtins":
                 continue
             feature_counts[feat] = feature_counts.get(feat, 0) + 1
+            # Accumulate depth level for this feature in this file
+            fd = fp.get("feature_depth", {}).get(feat, "present")
+            if feat not in feature_depths:
+                feature_depths[feat] = {"present": 0, "meaningful": 0, "deep": 0}
+            feature_depths[feat][fd] += 1
 
     if args.json:
         out = {feat: {"seeds": count, "total": total,
@@ -187,8 +201,8 @@ def main():
 
     print(f"## Feature Coverage Matrix ({total} files)")
     print()
-    print(f"| {'Feature Category':<40} | {'Seeds':>7} | {'Coverage':>9} |")
-    print(f"|{'-'*42}|{'-'*9}|{'-'*11}|")
+    print(f"| {'Feature Category':<40} | {'Seeds':>7} | {'Coverage':>9} | {'Depth (P/M/D)':<16} |")
+    print(f"|{'-'*42}|{'-'*9}|{'-'*11}|{'-'*18}|")
 
     for feat, count in sorted(feature_counts.items(), key=lambda x: x[1]):
         if feat in skip:
@@ -198,7 +212,8 @@ def main():
             continue
         pct = count * 100 // total if total else 0
         bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
-        print(f"| {display:<40} | {count:>4}/{total:<3} | {pct:>4}% {bar} |")
+        depth_str = format_depth_summary(feature_depths.get(feat, {}))
+        print(f"| {display:<40} | {count:>4}/{total:<3} | {pct:>4}% {bar} | {depth_str:<16} |")
 
     print()
     if not args.all:
