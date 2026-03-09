@@ -64,6 +64,18 @@ SKIP_UBIQUITOUS = {"attributes", "uniforms", "shader_pipeline", "draw_calls",
                    "viewport_scissor", "buffer_ops", "glsl_builtins"}
 
 
+def is_passed(filepath: Path) -> bool:
+    """Return True if the seed's sibling .json result reports passed: true."""
+    json_path = filepath.with_suffix('.json')
+    if not json_path.exists():
+        return False
+    try:
+        data = json.loads(json_path.read_text())
+        return bool(data.get('passed', False))
+    except Exception:
+        return False
+
+
 def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
@@ -131,6 +143,8 @@ def main():
                         help="Include ubiquitous features (attributes, uniforms, etc.)")
     parser.add_argument("--json", action="store_true",
                         help="Output raw JSON instead of markdown table")
+    parser.add_argument("--passed-only", action="store_true",
+                        help="Only count seeds whose sibling .json result has passed:true")
     args = parser.parse_args()
 
     surface = json.loads(args.surface.read_text())
@@ -147,6 +161,8 @@ def main():
     total = 0
 
     for f in html_files:
+        if args.passed_only and not is_passed(f):
+            continue
         fp = analyze_file(f, surface, cats_config, cache, config_hash=cats_config_hash)
         if fp is None:
             continue
