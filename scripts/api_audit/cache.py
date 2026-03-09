@@ -14,16 +14,18 @@ class FileCache:
     def _hash(self, content: str) -> str:
         return hashlib.sha256(content.encode()).hexdigest()
 
-    def store(self, filename: str, content: str, data: dict):
-        """Layer 1: store per-file parse results keyed by content hash."""
+    def store(self, filename: str, content: str, data: dict, config_hash: str = ""):
+        """Layer 1: store per-file parse results keyed by content + config hash."""
         self._layer1_dir.mkdir(parents=True, exist_ok=True)
-        content_hash = self._hash(content)
+        combined = content + "\x00" + config_hash
+        content_hash = self._hash(combined)
         cache_file = self._layer1_dir / f'{content_hash}.json'
         cache_file.write_text(json.dumps(data))
 
-    def lookup(self, filename: str, content: str) -> dict | None:
+    def lookup(self, filename: str, content: str, config_hash: str = "") -> dict | None:
         """Layer 1: look up cached parse results."""
-        content_hash = self._hash(content)
+        combined = content + "\x00" + config_hash
+        content_hash = self._hash(combined)
         cache_file = self._layer1_dir / f'{content_hash}.json'
         if cache_file.exists():
             return json.loads(cache_file.read_text())

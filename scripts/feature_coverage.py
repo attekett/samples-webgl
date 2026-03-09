@@ -7,6 +7,7 @@ Usage:
     python scripts/feature_coverage.py [--dirs DIR...] [--categories FILE]
 """
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -63,10 +64,10 @@ SKIP_UBIQUITOUS = {"attributes", "uniforms", "shader_pipeline", "draw_calls",
                    "viewport_scissor", "buffer_ops", "glsl_builtins"}
 
 
-def analyze_file(filepath, surface, cats_config, cache=None):
+def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
-        cached = cache.lookup(filepath.name, content)
+        cached = cache.lookup(filepath.name, content, config_hash=config_hash)
         if cached and "features" in cached:
             return cached
 
@@ -109,7 +110,8 @@ def analyze_file(filepath, surface, cats_config, cache=None):
 
     if cache:
         cache.store(filepath.name, content, {"features": fp["features"],
-                                              "feature_depth": fp["feature_depth"]})
+                                              "feature_depth": fp["feature_depth"]},
+                    config_hash=config_hash)
 
     return fp
 
@@ -133,6 +135,7 @@ def main():
 
     surface = json.loads(args.surface.read_text())
     cats_config = json.loads(args.categories.read_text())
+    cats_config_hash = hashlib.sha256(args.categories.read_bytes()).hexdigest()[:16]
     cache = FileCache(args.cache_dir)
 
     html_files = []
@@ -144,7 +147,7 @@ def main():
     total = 0
 
     for f in html_files:
-        fp = analyze_file(f, surface, cats_config, cache)
+        fp = analyze_file(f, surface, cats_config, cache, config_hash=cats_config_hash)
         if fp is None:
             continue
         total += 1
