@@ -87,6 +87,27 @@ def format_depth_summary(depth_counts: dict) -> str:
     return f"P:{p} M:{m} D:{d}"
 
 
+def summarize_combinations(matrix: dict) -> dict:
+    """Summarize n-way combination matrix stats for display.
+
+    Args:
+        matrix: {combo_tuple: {seed_count, topology_connected, ...}}
+
+    Returns:
+        dict with total, connected, covered, gap_count, pct keys.
+    """
+    total = len(matrix)
+    connected = sum(1 for d in matrix.values() if d.get("topology_connected", True))
+    covered = sum(
+        1 for d in matrix.values()
+        if d.get("topology_connected", True) and d["seed_count"] >= 1
+    )
+    gap_count = connected - covered
+    pct = round(covered * 100 / connected, 1) if connected else 0
+    return {"total": total, "connected": connected, "covered": covered,
+            "gap_count": gap_count, "pct": pct}
+
+
 def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
@@ -156,6 +177,8 @@ def main():
                         help="Output raw JSON instead of markdown table")
     parser.add_argument("--passed-only", action="store_true",
                         help="Only count seeds whose sibling .json result has passed:true")
+    parser.add_argument("--combinations", type=int, default=0, metavar="N",
+                        help="Also report N-way combination coverage gaps (2 or 3)")
     args = parser.parse_args()
 
     surface = json.loads(args.surface.read_text())
@@ -170,6 +193,7 @@ def main():
 
     feature_counts = {}
     feature_depths = {}  # {feat: {"present": N, "meaningful": N, "deep": N}}
+    corpus_fingerprints = {}  # {filename: feature_fingerprint}
     total = 0
 
     for f in html_files:
@@ -188,6 +212,11 @@ def main():
             if feat not in feature_depths:
                 feature_depths[feat] = {"present": 0, "meaningful": 0, "deep": 0}
             feature_depths[feat][fd] += 1
+        corpus_fingerprints[str(f)] = {
+            "features": fp["features"],
+            "methods_per_feature": fp.get("methods_per_feature", {}),
+            "feature_depth": fp.get("feature_depth", {}),
+        }
 
     if args.json:
         out = {feat: {"seeds": count, "total": total,
@@ -224,6 +253,30 @@ def main():
                 for f, c in sorted(ubiq.items(), key=lambda x: x[1]))
             print(f"Ubiquitous (excluded from matrix): {ubiq_line}")
             print()
+
+    if args.combinations >= 2:
+        from api_audit.combination_matrix import compute_matrix
+        topology_path = Path("docs/interaction_topology.json")
+        topology = json.loads(topology_path.read_text()) if topology_path.exists() else None
+        matrix = compute_matrix(corpus_fingerprints, n=args.combinations,
+                                interaction_topology=topology,
+                                categories_config=cats_config)
+        summary = summarize_combinations(matrix)
+        n = args.combinations
+        print(f"## {n}-Way Combination Coverage")
+        print(f"Connected combos: {summary['connected']}, "
+              f"covered: {summary['covered']} ({summary['pct']}%), "
+              f"gaps: {summary['gap_count']}")
+        gaps = sorted(
+            [(c, d) for c, d in matrix.items()
+             if d.get("topology_connected", True) and d["seed_count"] == 0],
+            key=lambda x: x[0]
+        )[:10]
+        if gaps:
+            print("Top uncovered combos (up to 10):")
+            for combo, _ in gaps:
+                print(f"  - {' + '.join(combo)}")
+        print()
 
 
 if __name__ == "__main__":
