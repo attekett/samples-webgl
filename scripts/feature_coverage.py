@@ -125,6 +125,25 @@ def compute_method_coverage(surface_methods: set, seen_methods: set) -> dict:
     return {"total": total, "exercised": exercised, "pct": pct, "never_seen": never_seen}
 
 
+def aggregate_glsl_builtins(fingerprints: list) -> dict:
+    """Count how many seeds use each GLSL builtin.
+
+    Args:
+        fingerprints: list of analyze_file() result dicts, each may have
+            a "glsl_builtins" set or list.
+
+    Returns:
+        dict {builtin_name: seed_count}
+    """
+    counts = {}
+    for fp in fingerprints:
+        if fp is None:
+            continue
+        for b in fp.get("glsl_builtins", []):
+            counts[b] = counts.get(b, 0) + 1
+    return counts
+
+
 def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
@@ -170,12 +189,14 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
         extensions=set(ctx.extensions))
 
     if cache:
-        cache.store(filepath.name, content, {"features": fp["features"],
-                                              "feature_depth": fp["feature_depth"],
-                                              "methods_per_feature": fp.get("methods_per_feature", {})},
+        cache.store(filepath.name, content,
+                    {"features": fp["features"],
+                     "feature_depth": fp["feature_depth"],
+                     "methods_per_feature": fp.get("methods_per_feature", {}),
+                     "glsl_builtins": list(glsl)},
                     config_hash=config_hash)
 
-    return fp
+    return {**fp, "glsl_builtins": set(glsl)}
 
 
 def main():
@@ -199,6 +220,8 @@ def main():
                         help="Also report N-way combination coverage gaps (2 or 3)")
     parser.add_argument("--api-surface-coverage", action="store_true",
                         help="Show per-method API surface coverage report")
+    parser.add_argument("--glsl-detail", action="store_true",
+                        help="Show per-GLSL-builtin seed counts")
     args = parser.parse_args()
 
     surface = json.loads(args.surface.read_text())
@@ -239,6 +262,7 @@ def main():
             "features": fp["features"],
             "methods_per_feature": fp.get("methods_per_feature", {}),
             "feature_depth": fp.get("feature_depth", {}),
+            "glsl_builtins": fp.get("glsl_builtins", []),
         }
 
     if args.json:
@@ -311,6 +335,21 @@ def main():
             print(f"Never-seen methods ({len(report['never_seen'])}):")
             for m in report["never_seen"]:
                 print(f"  - {m}")
+        print()
+
+    if args.glsl_detail:
+        glsl_counts = aggregate_glsl_builtins(list(corpus_fingerprints.values()))
+        all_builtins = set()
+        for cat in cats_config.get("categories", {}).values():
+            all_builtins.update(cat.get("glsl_functions", []))
+        print("## GLSL Builtin Coverage")
+        never = sorted(all_builtins - set(glsl_counts))
+        used = sorted(glsl_counts.items(), key=lambda x: x[1], reverse=True)
+        print(f"Used builtins ({len(used)}/{len(all_builtins)}):")
+        for name, count in used:
+            print(f"  {name:<30} {count:>4} seeds")
+        if never:
+            print(f"Never used ({len(never)}): {', '.join(never)}")
         print()
 
 
