@@ -5,11 +5,14 @@ import pytest
 
 
 def write_seed_pair(directory: Path, name: str, passed: bool) -> Path:
-    """Write an HTML seed and its sibling JSON result file."""
+    """Write an HTML seed and its sibling JSON result file (real corpus format)."""
     html = directory / f"{name}.html"
     js_result = directory / f"{name}.json"
     html.write_text("<html><body><script>const gl = null;</script></body></html>")
-    js_result.write_text(json.dumps({"passed": passed, "console_logs": []}))
+    js_result.write_text(json.dumps({
+        "metadata": {"file": name},
+        "results": [{"passed": passed, "browser": "firefox"}]
+    }))
     return html
 
 
@@ -37,4 +40,12 @@ def test_is_passed_malformed_json(tmp_path):
     html = tmp_path / "seed.html"
     html.write_text("<html></html>")
     (tmp_path / "seed.json").write_text("not json {{{")
+    assert is_passed(html) is False
+
+
+def test_is_passed_empty_results(tmp_path):
+    from feature_coverage import is_passed
+    html = tmp_path / "seed.html"
+    html.write_text("<html></html>")
+    (tmp_path / "seed.json").write_text(json.dumps({"results": []}))
     assert is_passed(html) is False

@@ -71,7 +71,10 @@ def is_passed(filepath: Path) -> bool:
         return False
     try:
         data = json.loads(json_path.read_text())
-        return bool(data.get('passed', False))
+        results = data.get('results', [])
+        if not results:
+            return False
+        return bool(results[0].get('passed', False))
     except Exception:
         return False
 
