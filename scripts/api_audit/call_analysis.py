@@ -184,7 +184,35 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
 
     obj = callee.child_by_field_name('object')
     prop = callee.child_by_field_name('property')
-    if obj is None or prop is None or obj.type != 'identifier':
+    if obj is None or prop is None:
+        return
+    if obj.type == 'call_expression':
+        inner_callee = obj.child_by_field_name('function')
+        if inner_callee is not None and inner_callee.type == 'member_expression':
+            inner_obj = inner_callee.child_by_field_name('object')
+            inner_prop = inner_callee.child_by_field_name('property')
+            if (inner_obj and inner_prop
+                    and inner_obj.type == 'identifier'
+                    and _node_text(inner_obj) in context_vars
+                    and _node_text(inner_prop) == 'getExtension'):
+                inner_args = obj.child_by_field_name('arguments')
+                if inner_args:
+                    for child in inner_args.children:
+                        if child.type == 'string':
+                            fragments = [c for c in child.children
+                                         if c.type == 'string_fragment']
+                            if fragments:
+                                ext_name_str = fragments[0].text.decode('utf-8')
+                                ext_info = surface.get('extensions', {}).get(ext_name_str, {})
+                                if ext_info:
+                                    method_name = _node_text(prop)
+                                    ext_methods = ext_info.get('methods', {})
+                                    if method_name in ext_methods:
+                                        result.extension_methods.setdefault(
+                                            ext_name_str, set()).add(method_name)
+                                return
+        return
+    if obj.type != 'identifier':
         return
 
     receiver_name = _node_text(obj)
