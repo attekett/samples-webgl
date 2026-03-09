@@ -35,6 +35,7 @@ def test_chained_extension_method_detected():
     """
     result = _analyze(js)
     assert "OES_draw_buffers_indexed" in result.extension_methods
+    assert isinstance(result.extension_methods["OES_draw_buffers_indexed"], dict)
     assert "enableiOES" in result.extension_methods["OES_draw_buffers_indexed"]
 
 

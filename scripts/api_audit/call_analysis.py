@@ -208,8 +208,11 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
                                     method_name = _node_text(prop)
                                     ext_methods = ext_info.get('methods', {})
                                     if method_name in ext_methods:
+                                        outer_args = call_node.child_by_field_name('arguments')
+                                        outer_arg_nodes = _get_arg_nodes(outer_args) if outer_args else []
+                                        record = CallRecord(arity=len(outer_arg_nodes))
                                         result.extension_methods.setdefault(
-                                            ext_name_str, set()).add(method_name)
+                                            ext_name_str, {}).setdefault(method_name, []).append(record)
                                 return
         return
     if obj.type != 'identifier':
