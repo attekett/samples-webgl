@@ -11,7 +11,7 @@
       }
     ],
     "schema_version": "3.0",
-    "extracted_at": "2026-05-06T20:11:20.197Z"
+    "extracted_at": "2026-05-06T20:14:45.749Z"
   },
   "constants": {
     "DEPTH_BUFFER_BIT": {
@@ -12360,6 +12360,760 @@
     "EXT_conservative_depth": {
       "methods": {},
       "constants": {}
+    },
+    "WEBGL_blend_func_extended": {
+      "methods": {},
+      "constants": {
+        "SRC1_COLOR_WEBGL": {
+          "value": "0x88F9",
+          "kind": "enum",
+          "roles": [
+            "blend_factor"
+          ]
+        },
+        "SRC1_ALPHA_WEBGL": {
+          "value": "0x8589",
+          "kind": "enum",
+          "roles": [
+            "blend_factor"
+          ]
+        },
+        "ONE_MINUS_SRC1_COLOR_WEBGL": {
+          "value": "0x88FA",
+          "kind": "enum",
+          "roles": [
+            "blend_factor"
+          ]
+        },
+        "ONE_MINUS_SRC1_ALPHA_WEBGL": {
+          "value": "0x88FB",
+          "kind": "enum",
+          "roles": [
+            "blend_factor"
+          ]
+        },
+        "MAX_DUAL_SOURCE_DRAW_BUFFERS_WEBGL": {
+          "value": "0x88FC",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        }
+      }
+    },
+    "WEBGL_clip_cull_distance": {
+      "methods": {},
+      "constants": {
+        "MAX_CLIP_DISTANCES_WEBGL": {
+          "value": "0x0D32",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "MAX_CULL_DISTANCES_WEBGL": {
+          "value": "0x82F9",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "MAX_COMBINED_CLIP_AND_CULL_DISTANCES_WEBGL": {
+          "value": "0x82FA",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "CLIP_DISTANCE0_WEBGL": {
+          "value": "0x3000",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        },
+        "CLIP_DISTANCE1_WEBGL": {
+          "value": "0x3001",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        },
+        "CLIP_DISTANCE2_WEBGL": {
+          "value": "0x3002",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        },
+        "CLIP_DISTANCE3_WEBGL": {
+          "value": "0x3003",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        },
+        "CLIP_DISTANCE4_WEBGL": {
+          "value": "0x3004",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        },
+        "CLIP_DISTANCE5_WEBGL": {
+          "value": "0x3005",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        },
+        "CLIP_DISTANCE6_WEBGL": {
+          "value": "0x3006",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        },
+        "CLIP_DISTANCE7_WEBGL": {
+          "value": "0x3007",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        }
+      }
+    },
+    "WEBGL_draw_instanced_base_vertex_base_instance": {
+      "methods": {
+        "drawArraysInstancedBaseInstanceWEBGL": {
+          "overloads": [
+            {
+              "arity": 5,
+              "params": [
+                {
+                  "name": "mode",
+                  "type": "GLenum"
+                },
+                {
+                  "name": "first",
+                  "type": "GLint"
+                },
+                {
+                  "name": "count",
+                  "type": "GLsizei"
+                },
+                {
+                  "name": "instance_count",
+                  "type": "GLsizei"
+                },
+                {
+                  "name": "baseinstance",
+                  "type": "GLuint"
+                }
+              ]
+            }
+          ]
+        },
+        "drawElementsInstancedBaseVertexBaseInstanceWEBGL": {
+          "overloads": [
+            {
+              "arity": 7,
+              "params": [
+                {
+                  "name": "mode",
+                  "type": "GLenum"
+                },
+                {
+                  "name": "count",
+                  "type": "GLsizei"
+                },
+                {
+                  "name": "type",
+                  "type": "GLenum"
+                },
+                {
+                  "name": "offset",
+                  "type": "GLsizei"
+                },
+                {
+                  "name": "instance_count",
+                  "type": "GLsizei"
+                },
+                {
+                  "name": "basevertex",
+                  "type": "GLint"
+                },
+                {
+                  "name": "baseinstance",
+                  "type": "GLuint"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constants": {}
+    },
+    "WEBGL_multi_draw_instanced_base_vertex_base_instance": {
+      "methods": {
+        "multiDrawArraysInstancedBaseInstanceWEBGL": {
+          "overloads": [
+            {
+              "arity": 10,
+              "params": [
+                {
+                  "name": "mode",
+                  "type": "GLenum"
+                },
+                {
+                  "name": "firstsList",
+                  "type": "Int32List"
+                },
+                {
+                  "name": "firstsOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "countsList",
+                  "type": "Int32List"
+                },
+                {
+                  "name": "countsOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "instanceCountsList",
+                  "type": "Int32List"
+                },
+                {
+                  "name": "instanceCountsOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "baseInstancesList",
+                  "type": "Uint32List"
+                },
+                {
+                  "name": "baseInstancesOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "drawcount",
+                  "type": "GLsizei"
+                }
+              ]
+            }
+          ]
+        },
+        "multiDrawElementsInstancedBaseVertexBaseInstanceWEBGL": {
+          "overloads": [
+            {
+              "arity": 13,
+              "params": [
+                {
+                  "name": "mode",
+                  "type": "GLenum"
+                },
+                {
+                  "name": "countsList",
+                  "type": "Int32List"
+                },
+                {
+                  "name": "countsOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "type",
+                  "type": "GLenum"
+                },
+                {
+                  "name": "offsetsList",
+                  "type": "Int32List"
+                },
+                {
+                  "name": "offsetsOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "instanceCountsList",
+                  "type": "Int32List"
+                },
+                {
+                  "name": "instanceCountsOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "baseVerticesList",
+                  "type": "Int32List"
+                },
+                {
+                  "name": "baseVerticesOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "baseInstancesList",
+                  "type": "Uint32List"
+                },
+                {
+                  "name": "baseInstancesOffset",
+                  "type": "GLuint"
+                },
+                {
+                  "name": "drawcount",
+                  "type": "GLsizei"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constants": {}
+    },
+    "WEBGL_polygon_mode": {
+      "methods": {
+        "polygonModeWEBGL": {
+          "overloads": [
+            {
+              "arity": 2,
+              "params": [
+                {
+                  "name": "face",
+                  "type": "GLenum"
+                },
+                {
+                  "name": "mode",
+                  "type": "GLenum"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constants": {
+        "POLYGON_MODE_WEBGL": {
+          "value": "0x0B40",
+          "kind": "enum",
+          "roles": [
+            "polygon_mode"
+          ]
+        },
+        "POLYGON_OFFSET_LINE_WEBGL": {
+          "value": "0x2A02",
+          "kind": "enum",
+          "roles": [
+            "polygon_mode"
+          ]
+        },
+        "LINE_WEBGL": {
+          "value": "0x1B01",
+          "kind": "enum",
+          "roles": [
+            "polygon_mode"
+          ]
+        },
+        "FILL_WEBGL": {
+          "value": "0x1B02",
+          "kind": "enum",
+          "roles": [
+            "polygon_mode"
+          ]
+        }
+      }
+    },
+    "WEBGL_provoking_vertex": {
+      "methods": {
+        "provokingVertexWEBGL": {
+          "overloads": [
+            {
+              "arity": 1,
+              "params": [
+                {
+                  "name": "provokeMode",
+                  "type": "GLenum"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constants": {
+        "FIRST_VERTEX_CONVENTION_WEBGL": {
+          "value": "0x8E4D",
+          "kind": "enum",
+          "roles": [
+            "provoking_vertex_mode"
+          ]
+        },
+        "LAST_VERTEX_CONVENTION_WEBGL": {
+          "value": "0x8E4E",
+          "kind": "enum",
+          "roles": [
+            "provoking_vertex_mode"
+          ]
+        },
+        "PROVOKING_VERTEX_WEBGL": {
+          "value": "0x8E4F",
+          "kind": "enum",
+          "roles": [
+            "provoking_vertex_mode"
+          ]
+        }
+      }
+    },
+    "WEBGL_render_shared_exponent": {
+      "methods": {},
+      "constants": {}
+    },
+    "WEBGL_shader_pixel_local_storage": {
+      "methods": {
+        "isCoherent": {
+          "overloads": [
+            {
+              "arity": 0,
+              "params": []
+            }
+          ]
+        },
+        "framebufferTexturePixelLocalStorageWEBGL": {
+          "overloads": [
+            {
+              "arity": 5,
+              "params": [
+                {
+                  "name": "plane",
+                  "type": "GLint"
+                },
+                {
+                  "name": "texture",
+                  "type": "WebGLTexture?"
+                },
+                {
+                  "name": "level",
+                  "type": "GLint"
+                },
+                {
+                  "name": "layer",
+                  "type": "GLint"
+                },
+                {
+                  "name": "usage",
+                  "type": "GLbitfield"
+                }
+              ]
+            }
+          ]
+        },
+        "framebufferPixelLocalClearValuefvWEBGL": {
+          "overloads": [
+            {
+              "arity": 3,
+              "params": [
+                {
+                  "name": "plane",
+                  "type": "GLint"
+                },
+                {
+                  "name": "value",
+                  "type": "Float32Array"
+                },
+                {
+                  "name": "srcOffset",
+                  "type": "GLuint",
+                  "optional": true,
+                  "default": 0
+                }
+              ]
+            },
+            {
+              "arity": 3,
+              "params": [
+                {
+                  "name": "plane",
+                  "type": "GLint"
+                },
+                {
+                  "name": "value",
+                  "type": "sequence<GLfloat>"
+                },
+                {
+                  "name": "srcOffset",
+                  "type": "GLuint",
+                  "optional": true,
+                  "default": 0
+                }
+              ]
+            }
+          ]
+        },
+        "framebufferPixelLocalClearValueivWEBGL": {
+          "overloads": [
+            {
+              "arity": 3,
+              "params": [
+                {
+                  "name": "plane",
+                  "type": "GLint"
+                },
+                {
+                  "name": "value",
+                  "type": "Int32Array"
+                },
+                {
+                  "name": "srcOffset",
+                  "type": "GLuint",
+                  "optional": true,
+                  "default": 0
+                }
+              ]
+            },
+            {
+              "arity": 3,
+              "params": [
+                {
+                  "name": "plane",
+                  "type": "GLint"
+                },
+                {
+                  "name": "value",
+                  "type": "sequence<GLint>"
+                },
+                {
+                  "name": "srcOffset",
+                  "type": "GLuint",
+                  "optional": true,
+                  "default": 0
+                }
+              ]
+            }
+          ]
+        },
+        "framebufferPixelLocalClearValueuivWEBGL": {
+          "overloads": [
+            {
+              "arity": 3,
+              "params": [
+                {
+                  "name": "plane",
+                  "type": "GLint"
+                },
+                {
+                  "name": "value",
+                  "type": "Uint32Array"
+                },
+                {
+                  "name": "srcOffset",
+                  "type": "GLuint",
+                  "optional": true,
+                  "default": 0
+                }
+              ]
+            },
+            {
+              "arity": 3,
+              "params": [
+                {
+                  "name": "plane",
+                  "type": "GLint"
+                },
+                {
+                  "name": "value",
+                  "type": "sequence<GLuint>"
+                },
+                {
+                  "name": "srcOffset",
+                  "type": "GLuint",
+                  "optional": true,
+                  "default": 0
+                }
+              ]
+            }
+          ]
+        },
+        "beginPixelLocalStorageWEBGL": {
+          "overloads": [
+            {
+              "arity": 1,
+              "params": [
+                {
+                  "name": "loadops",
+                  "type": "sequence<GLenum>"
+                }
+              ]
+            }
+          ]
+        },
+        "endPixelLocalStorageWEBGL": {
+          "overloads": [
+            {
+              "arity": 1,
+              "params": [
+                {
+                  "name": "storeops",
+                  "type": "sequence<GLenum>"
+                }
+              ]
+            }
+          ]
+        },
+        "pixelLocalStorageBarrierWEBGL": {
+          "overloads": [
+            {
+              "arity": 0,
+              "params": []
+            }
+          ]
+        },
+        "getFramebufferPixelLocalStorageParameterWEBGL": {
+          "overloads": [
+            {
+              "arity": 2,
+              "params": [
+                {
+                  "name": "plane",
+                  "type": "GLint"
+                },
+                {
+                  "name": "pname",
+                  "type": "GLenum"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constants": {
+        "MAX_PIXEL_LOCAL_STORAGE_PLANES_WEBGL": {
+          "value": "0x96E0",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "MAX_COMBINED_DRAW_BUFFERS_AND_PIXEL_LOCAL_STORAGE_PLANES_WEBGL": {
+          "value": "0x96E1",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "PIXEL_LOCAL_STORAGE_ACTIVE_PLANES_WEBGL": {
+          "value": "0x96E2",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "LOAD_OP_ZERO_WEBGL": {
+          "value": "0x96E3",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "LOAD_OP_CLEAR_WEBGL": {
+          "value": "0x96E4",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "LOAD_OP_LOAD_WEBGL": {
+          "value": "0x96E5",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "STORE_OP_STORE_WEBGL": {
+          "value": "0x96E6",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_INTERNAL_FORMAT_WEBGL": {
+          "value": "0x96E7",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_TEXTURE_NAME_WEBGL": {
+          "value": "0x96E8",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_TEXTURE_LEVEL_WEBGL": {
+          "value": "0x96E9",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_TEXTURE_LAYER_WEBGL": {
+          "value": "0x96EA",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_USAGE_WEBGL": {
+          "value": "0x96EB",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_CLEAR_VALUE_FLOAT_WEBGL": {
+          "value": "0x96EC",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_CLEAR_VALUE_INT_WEBGL": {
+          "value": "0x96ED",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_CLEAR_VALUE_UNSIGNED_INT_WEBGL": {
+          "value": "0x96EE",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        },
+        "PIXEL_LOCAL_USAGE_ALWAYS_NONCOHERENT_BIT_WEBGL": {
+          "value": "0x1",
+          "kind": "enum",
+          "roles": [
+            "webgl_specific"
+          ]
+        }
+      }
+    },
+    "WEBGL_stencil_texturing": {
+      "methods": {},
+      "constants": {
+        "DEPTH_STENCIL_TEXTURE_MODE_WEBGL": {
+          "value": "0x90EA",
+          "kind": "enum",
+          "roles": [
+            "texture_parameter"
+          ]
+        },
+        "STENCIL_INDEX_WEBGL": {
+          "value": "0x1901",
+          "kind": "enum",
+          "roles": [
+            "texture_parameter"
+          ]
+        }
+      }
     }
   },
   "glsl_builtins": {
