@@ -1243,6 +1243,40 @@ const EXTENSIONS = {
       'DEPTH_STENCIL_TEXTURE_MODE_WEBGL': { value: '0x90EA', kind: 'enum', roles: ['texture_parameter'] },
       'STENCIL_INDEX_WEBGL': { value: '0x1901', kind: 'enum', roles: ['texture_parameter'] }
     }
+  },
+  'OVR_multiview2': {
+    methods: {
+      'framebufferTextureMultiviewOVR': { overloads: [{ arity: 6, params: [
+        { name: 'target', type: 'GLenum' },
+        { name: 'attachment', type: 'GLenum' },
+        { name: 'texture', type: 'WebGLTexture?' },
+        { name: 'level', type: 'GLint' },
+        { name: 'baseViewIndex', type: 'GLint' },
+        { name: 'numViews', type: 'GLsizei' }
+      ] }] }
+    },
+    constants: {
+      'FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR': { value: '0x9630', kind: 'enum', roles: ['get_parameter'] },
+      'FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR': { value: '0x9632', kind: 'enum', roles: ['get_parameter'] },
+      'MAX_VIEWS_OVR': { value: '0x9631', kind: 'enum', roles: ['get_parameter'] },
+      'FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR': { value: '0x9633', kind: 'enum', roles: ['get_parameter'] }
+    }
+  },
+  'OES_sample_variables': {
+    methods: {},
+    constants: {}
+  },
+  'OES_shader_multisample_interpolation': {
+    methods: {},
+    constants: {
+      'MIN_FRAGMENT_INTERPOLATION_OFFSET_OES': { value: '0x8E5B', kind: 'enum', roles: ['get_parameter'] },
+      'MAX_FRAGMENT_INTERPOLATION_OFFSET_OES': { value: '0x8E5C', kind: 'enum', roles: ['get_parameter'] },
+      'FRAGMENT_INTERPOLATION_OFFSET_BITS_OES': { value: '0x8E5D', kind: 'enum', roles: ['get_parameter'] }
+    }
+  },
+  'NV_shader_noperspective_interpolation': {
+    methods: {},
+    constants: {}
   }
 };
 
