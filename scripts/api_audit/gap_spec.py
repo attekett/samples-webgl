@@ -96,3 +96,79 @@ def split_required_bonus_methods(category_def):
 
     required = required_methods + extension_methods + glsl_functions
     return required, bonus_methods
+
+
+SEED_CONSTRAINTS = {
+    "tier1_vars": {"min": 5, "max": 8},
+    "tier3_enums": {"min": 4, "max": 6},
+    "try_catch_blocks": {"min": 6, "max": 10},
+    "line_repetition_patterns": {"min": 3},
+    "total_lines": {"min": 150, "max": 300},
+}
+
+
+def build_recipe(gap, categories_config, interaction_topology,
+                 corpus_features, recipe_id, missing_categories=None):
+    """Build a single recipe from one gap entry.
+
+    Args:
+        gap: dict with keys {combo, priority, seed_count, topology_connected}
+            (from matrix report).
+        categories_config: parsed feature_categories.json
+            (either {"categories": {...}} or the inner dict).
+        interaction_topology: parsed interaction_topology.json
+            (with "edges" list).
+        corpus_features: {filepath: fingerprint} from feature_detection.
+        recipe_id: stable string ID like "gap_001".
+        missing_categories: optional set; if provided, this function appends
+            target features that have no category definition or no methods.
+            Lets the caller surface a single warning at the end.
+
+    Returns:
+        dict matching the recipe schema in the plan header.
+    """
+    categories = _load_categories(categories_config)
+    target = sorted(gap["combo"])
+
+    required = {}
+    bonus = {}
+    for feature in target:
+        cat_def = categories.get(feature)
+        if cat_def is None:
+            if missing_categories is not None:
+                missing_categories.add(feature)
+            required[feature] = []
+            bonus[feature] = []
+            continue
+        req, bon = split_required_bonus_methods(cat_def)
+        if not req and missing_categories is not None:
+            missing_categories.add(feature)
+        required[feature] = req
+        bonus[feature] = bon
+
+    target_set = set(target)
+    edges = []
+    for edge in interaction_topology.get("edges", []):
+        pair = edge.get("pair", [])
+        if len(pair) == 2 and set(pair) <= target_set:
+            edges.append({
+                "pair": list(pair),
+                "relationship": edge.get("relationship", ""),
+            })
+
+    refs = select_references(target, corpus_features, max_refs=3)
+
+    reason = f"Uncovered {len(target)}-way: {' + '.join(target)}"
+
+    return {
+        "recipe_id": recipe_id,
+        "priority": gap.get("priority", "medium"),
+        "target_features": target,
+        "topology_connected": gap.get("topology_connected", True),
+        "reason": reason,
+        "required_methods": required,
+        "bonus_methods": bonus,
+        "topology_edges": edges,
+        "seed_constraints": dict(SEED_CONSTRAINTS),
+        "reference_seeds": refs,
+    }

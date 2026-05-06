@@ -132,3 +132,110 @@ class TestSplitMethods:
         required, bonus = split_required_bonus_methods({})
         assert required == []
         assert bonus == []
+
+
+from api_audit.gap_spec import build_recipe
+
+
+class TestBuildRecipe:
+    def _categories(self):
+        return {
+            "categories": {
+                "fbo": {
+                    "methods": ["createFramebuffer", "bindFramebuffer",
+                                "framebufferTexture2D", "checkFramebufferStatus",
+                                "blitFramebuffer", "readBuffer",
+                                "deleteFramebuffer"],
+                },
+                "sampler": {
+                    "methods": ["createSampler", "bindSampler",
+                                "samplerParameteri", "deleteSampler",
+                                "samplerParameterf"],
+                },
+                "ext_float_textures": {
+                    "methods": ["getExtension"],
+                    "extensions": ["OES_texture_float", "EXT_color_buffer_float"],
+                },
+            }
+        }
+
+    def _topology(self):
+        return {
+            "edges": [
+                {"pair": ["fbo", "sampler"],
+                 "relationship": "Sampler bound to texture read from FBO"},
+                {"pair": ["ext_float_textures", "fbo"],
+                 "relationship": "Float texture as FBO color attachment"},
+            ]
+        }
+
+    def test_recipe_has_required_keys(self):
+        gap = {"combo": ["fbo", "sampler", "ext_float_textures"],
+               "priority": "high", "seed_count": 0}
+        recipe = build_recipe(
+            gap, self._categories(), self._topology(),
+            corpus_features={}, recipe_id="gap_001"
+        )
+        assert recipe["recipe_id"] == "gap_001"
+        assert recipe["priority"] == "high"
+        assert recipe["target_features"] == ["ext_float_textures", "fbo", "sampler"]
+        assert recipe["topology_connected"] is True
+        assert "reason" in recipe
+        assert "required_methods" in recipe
+        assert "bonus_methods" in recipe
+        assert "topology_edges" in recipe
+        assert "seed_constraints" in recipe
+        assert "reference_seeds" in recipe
+
+    def test_recipe_required_methods_per_feature(self):
+        gap = {"combo": ["fbo", "sampler"], "priority": "high", "seed_count": 0}
+        recipe = build_recipe(
+            gap, self._categories(), self._topology(),
+            corpus_features={}, recipe_id="gap_002"
+        )
+        # fbo has 7 methods, top 5 are required
+        assert recipe["required_methods"]["fbo"][:5] == [
+            "createFramebuffer", "bindFramebuffer",
+            "framebufferTexture2D", "checkFramebufferStatus",
+            "blitFramebuffer",
+        ]
+        assert recipe["bonus_methods"]["fbo"] == [
+            "readBuffer", "deleteFramebuffer"
+        ]
+
+    def test_recipe_topology_edges_filtered_to_combo(self):
+        gap = {"combo": ["fbo", "sampler"], "priority": "high", "seed_count": 0}
+        recipe = build_recipe(
+            gap, self._categories(), self._topology(),
+            corpus_features={}, recipe_id="gap_003"
+        )
+        # Only the fbo<->sampler edge involves both target features
+        assert len(recipe["topology_edges"]) == 1
+        assert sorted(recipe["topology_edges"][0]["pair"]) == ["fbo", "sampler"]
+
+    def test_recipe_includes_reference_seeds(self):
+        corpus = {
+            "agent_outputs/seedA.html": {
+                "features": ["fbo", "sampler"],
+                "depth_ratios": {"fbo": 0.8, "sampler": 0.8},
+            },
+        }
+        gap = {"combo": ["fbo", "sampler"], "priority": "high", "seed_count": 0}
+        recipe = build_recipe(
+            gap, self._categories(), self._topology(),
+            corpus_features=corpus, recipe_id="gap_004"
+        )
+        assert recipe["reference_seeds"] == ["agent_outputs/seedA.html"]
+
+    def test_recipe_seed_constraints_are_static(self):
+        gap = {"combo": ["fbo", "sampler"], "priority": "high", "seed_count": 0}
+        recipe = build_recipe(
+            gap, self._categories(), self._topology(),
+            corpus_features={}, recipe_id="gap_005"
+        )
+        c = recipe["seed_constraints"]
+        assert c["tier1_vars"] == {"min": 5, "max": 8}
+        assert c["tier3_enums"] == {"min": 4, "max": 6}
+        assert c["try_catch_blocks"] == {"min": 6, "max": 10}
+        assert c["line_repetition_patterns"] == {"min": 3}
+        assert c["total_lines"] == {"min": 150, "max": 300}
