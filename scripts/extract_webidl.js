@@ -866,6 +866,124 @@ const EXTENSIONS = {
     constants: {
       'COMPLETION_STATUS_KHR': { value: '0x91B1', kind: 'enum', roles: ['shader_parameter'] }
     }
+  },
+  'ANGLE_instanced_arrays': {
+    methods: {
+      'drawArraysInstancedANGLE': { overloads: [{ arity: 4, params: [
+        { name: 'mode', type: 'GLenum' },
+        { name: 'first', type: 'GLint' },
+        { name: 'count', type: 'GLsizei' },
+        { name: 'primcount', type: 'GLsizei' }
+      ] }] },
+      'drawElementsInstancedANGLE': { overloads: [{ arity: 5, params: [
+        { name: 'mode', type: 'GLenum' },
+        { name: 'count', type: 'GLsizei' },
+        { name: 'type', type: 'GLenum' },
+        { name: 'offset', type: 'GLintptr' },
+        { name: 'primcount', type: 'GLsizei' }
+      ] }] },
+      'vertexAttribDivisorANGLE': { overloads: [{ arity: 2, params: [
+        { name: 'index', type: 'GLuint' },
+        { name: 'divisor', type: 'GLuint' }
+      ] }] }
+    },
+    constants: {
+      'VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE': { value: '0x88FE', kind: 'enum', roles: ['get_parameter'] }
+    }
+  },
+  'EXT_disjoint_timer_query': {
+    methods: {
+      'createQueryEXT': { overloads: [{ arity: 0, params: [] }] },
+      'deleteQueryEXT': { overloads: [{ arity: 1, params: [{ name: 'query', type: 'WebGLTimerQueryEXT?' }] }] },
+      'isQueryEXT': { overloads: [{ arity: 1, params: [{ name: 'query', type: 'WebGLTimerQueryEXT?' }] }] },
+      'beginQueryEXT': { overloads: [{ arity: 2, params: [
+        { name: 'target', type: 'GLenum' },
+        { name: 'query', type: 'WebGLTimerQueryEXT' }
+      ] }] },
+      'endQueryEXT': { overloads: [{ arity: 1, params: [{ name: 'target', type: 'GLenum' }] }] },
+      'queryCounterEXT': { overloads: [{ arity: 2, params: [
+        { name: 'query', type: 'WebGLTimerQueryEXT' },
+        { name: 'target', type: 'GLenum' }
+      ] }] },
+      'getQueryEXT': { overloads: [{ arity: 2, params: [
+        { name: 'target', type: 'GLenum' },
+        { name: 'pname', type: 'GLenum' }
+      ] }] },
+      'getQueryObjectEXT': { overloads: [{ arity: 2, params: [
+        { name: 'query', type: 'WebGLTimerQueryEXT' },
+        { name: 'pname', type: 'GLenum' }
+      ] }] }
+    },
+    constants: {
+      'QUERY_COUNTER_BITS_EXT': { value: '0x8864', kind: 'enum', roles: ['get_parameter'] },
+      'CURRENT_QUERY_EXT': { value: '0x8865', kind: 'enum', roles: ['get_parameter'] },
+      'QUERY_RESULT_EXT': { value: '0x8866', kind: 'enum', roles: ['query_object_parameter'] },
+      'QUERY_RESULT_AVAILABLE_EXT': { value: '0x8867', kind: 'enum', roles: ['query_object_parameter'] },
+      'TIME_ELAPSED_EXT': { value: '0x88BF', kind: 'enum', roles: ['query_target'] },
+      'TIMESTAMP_EXT': { value: '0x8E28', kind: 'enum', roles: ['query_target'] },
+      'GPU_DISJOINT_EXT': { value: '0x8FBB', kind: 'enum', roles: ['get_parameter'] }
+    }
+  },
+  'EXT_frag_depth': {
+    methods: {},
+    constants: {}
+  },
+  'EXT_blend_minmax': {
+    methods: {},
+    constants: {
+      'MIN_EXT': { value: '0x8007', kind: 'enum', roles: ['blend_equation'] },
+      'MAX_EXT': { value: '0x8008', kind: 'enum', roles: ['blend_equation'] }
+    }
+  },
+  'WEBGL_compressed_texture_astc': {
+    methods: {
+      'getSupportedProfiles': { overloads: [{ arity: 0, params: [] }] }
+    },
+    constants: {
+      'COMPRESSED_RGBA_ASTC_4x4_KHR': { value: '0x93B0', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_5x4_KHR': { value: '0x93B1', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_5x5_KHR': { value: '0x93B2', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_6x5_KHR': { value: '0x93B3', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_6x6_KHR': { value: '0x93B4', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_8x5_KHR': { value: '0x93B5', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_8x6_KHR': { value: '0x93B6', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_8x8_KHR': { value: '0x93B7', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_10x5_KHR': { value: '0x93B8', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_10x6_KHR': { value: '0x93B9', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_10x8_KHR': { value: '0x93BA', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_10x10_KHR': { value: '0x93BB', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_12x10_KHR': { value: '0x93BC', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_ASTC_12x12_KHR': { value: '0x93BD', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR': { value: '0x93D0', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR': { value: '0x93D1', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR': { value: '0x93D2', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR': { value: '0x93D3', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR': { value: '0x93D4', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR': { value: '0x93D5', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR': { value: '0x93D6', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR': { value: '0x93D7', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR': { value: '0x93D8', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR': { value: '0x93D9', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR': { value: '0x93DA', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR': { value: '0x93DB', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR': { value: '0x93DC', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR': { value: '0x93DD', kind: 'enum', roles: ['compressed_format'] }
+    }
+  },
+  'WEBGL_compressed_texture_etc1': {
+    methods: {},
+    constants: {
+      'COMPRESSED_RGB_ETC1_WEBGL': { value: '0x8D64', kind: 'enum', roles: ['compressed_format'] }
+    }
+  },
+  'WEBGL_compressed_texture_pvrtc': {
+    methods: {},
+    constants: {
+      'COMPRESSED_RGB_PVRTC_4BPPV1_IMG': { value: '0x8C00', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGB_PVRTC_2BPPV1_IMG': { value: '0x8C01', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_PVRTC_4BPPV1_IMG': { value: '0x8C02', kind: 'enum', roles: ['compressed_format'] },
+      'COMPRESSED_RGBA_PVRTC_2BPPV1_IMG': { value: '0x8C03', kind: 'enum', roles: ['compressed_format'] }
+    }
   }
 };
 
