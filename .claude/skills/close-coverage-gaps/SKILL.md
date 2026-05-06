@@ -74,7 +74,13 @@ Design the seed so each edge relationship is concretely implemented.
 
 Follow the **three-zone architecture** from `docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md`:
 
-**File naming**: `agent_outputs/mutation_b59_sN_<descriptive>.html` (use next available batch number)
+**File naming**: `agent_outputs/mutation_bN_sN_<descriptive>.html` — determine N before writing:
+
+```bash
+ls agent_outputs/mutation_b*.html 2>/dev/null | grep -oP 'b\K[0-9]+(?=_s)' | sort -n | tail -1
+```
+
+Use that number if adding to an in-progress batch, or increment by 1 to start a new batch. Seed number (sN) is the next available within that batch.
 
 **Declaration Zone:**
 - 5-8 Tier 1 amplification variables (cascading mutations)
