@@ -90,3 +90,45 @@ class TestSelectReferences:
         }
         refs = select_references(["fbo"], corpus, max_refs=3)
         assert len(refs) == 3
+
+
+from api_audit.gap_spec import split_required_bonus_methods
+
+
+class TestSplitMethods:
+    def test_short_list_all_required(self):
+        cat_def = {"methods": ["createA", "bindA", "deleteA"]}
+        required, bonus = split_required_bonus_methods(cat_def)
+        assert required == ["createA", "bindA", "deleteA"]
+        assert bonus == []
+
+    def test_long_list_split_at_five(self):
+        cat_def = {
+            "methods": ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"]
+        }
+        required, bonus = split_required_bonus_methods(cat_def)
+        assert required == ["m1", "m2", "m3", "m4", "m5"]
+        assert bonus == ["m6", "m7", "m8"]
+
+    def test_extension_methods_added_to_required(self):
+        cat_def = {
+            "methods": ["getExtension"],
+            "extension_methods": ["drawArraysInstancedANGLE"],
+        }
+        required, bonus = split_required_bonus_methods(cat_def)
+        assert "drawArraysInstancedANGLE" in required
+        assert "getExtension" in required
+
+    def test_glsl_functions_added_to_required(self):
+        cat_def = {
+            "methods": [],
+            "glsl_functions": ["texture", "textureLod"],
+        }
+        required, bonus = split_required_bonus_methods(cat_def)
+        assert "texture" in required
+        assert "textureLod" in required
+
+    def test_missing_methods_key_returns_empty(self):
+        required, bonus = split_required_bonus_methods({})
+        assert required == []
+        assert bonus == []

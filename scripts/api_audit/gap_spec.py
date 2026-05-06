@@ -75,3 +75,24 @@ def select_references(target_features, corpus_features, max_refs=3):
         scored.append((overlap, depth_score, filepath))
     scored.sort(reverse=True)
     return [filepath for _, _, filepath in scored[:max_refs]]
+
+
+REQUIRED_METHOD_CAP = 5
+
+
+def split_required_bonus_methods(category_def):
+    """Split a category's methods into required (core) and bonus (optional).
+
+    Heuristic: first REQUIRED_METHOD_CAP methods are required, remainder is
+    bonus. extension_methods and glsl_functions are always required because
+    the category match rules depend on them.
+    """
+    methods = list(category_def.get("methods", []))
+    extension_methods = list(category_def.get("extension_methods", []))
+    glsl_functions = list(category_def.get("glsl_functions", []))
+
+    required_methods = methods[:REQUIRED_METHOD_CAP]
+    bonus_methods = methods[REQUIRED_METHOD_CAP:]
+
+    required = required_methods + extension_methods + glsl_functions
+    return required, bonus_methods
