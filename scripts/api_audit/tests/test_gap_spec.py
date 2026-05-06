@@ -48,3 +48,45 @@ class TestIsRelevant:
 
     def test_normal_mixed_combo_kept(self):
         assert is_relevant(["fbo", "sampler", "texture_ops"], EXT_CATS) is True
+
+
+from api_audit.gap_spec import select_references
+
+
+class TestSelectReferences:
+    def test_picks_seed_with_most_overlap(self):
+        corpus = {
+            "seedA": {"features": ["fbo"], "depth_ratios": {"fbo": 0.5}},
+            "seedB": {"features": ["fbo", "sampler"],
+                      "depth_ratios": {"fbo": 0.5, "sampler": 0.5}},
+            "seedC": {"features": ["fbo", "sampler", "ext_float_textures"],
+                      "depth_ratios": {"fbo": 1.0, "sampler": 1.0, "ext_float_textures": 1.0}},
+        }
+        target = ["fbo", "sampler", "ext_float_textures"]
+        refs = select_references(target, corpus, max_refs=1)
+        assert refs == ["seedC"]
+
+    def test_skips_seeds_with_no_overlap(self):
+        corpus = {
+            "seedX": {"features": ["draw_calls"], "depth_ratios": {"draw_calls": 1.0}},
+        }
+        refs = select_references(["fbo", "sampler"], corpus, max_refs=3)
+        assert refs == []
+
+    def test_breaks_ties_by_depth_score(self):
+        corpus = {
+            "shallow": {"features": ["fbo", "sampler"],
+                        "depth_ratios": {"fbo": 0.1, "sampler": 0.1}},
+            "deep": {"features": ["fbo", "sampler"],
+                     "depth_ratios": {"fbo": 0.9, "sampler": 0.9}},
+        }
+        refs = select_references(["fbo", "sampler"], corpus, max_refs=1)
+        assert refs == ["deep"]
+
+    def test_caps_at_max_refs(self):
+        corpus = {
+            f"seed{i}": {"features": ["fbo"], "depth_ratios": {"fbo": 0.5}}
+            for i in range(10)
+        }
+        refs = select_references(["fbo"], corpus, max_refs=3)
+        assert len(refs) == 3

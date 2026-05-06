@@ -47,3 +47,31 @@ def is_relevant(combo, extension_categories):
     if not non_ext and not (combo_set & SECURITY_RELEVANT):
         return False
     return True
+
+
+def select_references(target_features, corpus_features, max_refs=3):
+    """Pick reference seeds ranked by (overlap_count, depth_score) descending.
+
+    Args:
+        target_features: list[str] — features the recipe wants to cover.
+        corpus_features: dict[str, dict] — {filepath: fingerprint} where each
+            fingerprint has "features" (list[str]) and "depth_ratios"
+            (dict[str, float]).
+        max_refs: int — cap on returned references.
+
+    Returns:
+        list[str] of filepaths sorted from best to worst match. Empty if
+        no seed has any overlap with target_features.
+    """
+    target_set = set(target_features)
+    scored = []
+    for filepath, fp in corpus_features.items():
+        overlap = len(target_set & set(fp.get("features", [])))
+        if overlap == 0:
+            continue
+        depth_score = sum(
+            fp.get("depth_ratios", {}).get(f, 0.0) for f in target_set
+        )
+        scored.append((overlap, depth_score, filepath))
+    scored.sort(reverse=True)
+    return [filepath for _, _, filepath in scored[:max_refs]]
