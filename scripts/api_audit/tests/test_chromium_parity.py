@@ -144,3 +144,13 @@ def test_extension_methods_present(surface, idl_stem, ext_name):
         assert method_name in project_methods, (
             f"{ext_name}: method {method_name} missing from surface"
         )
+
+
+def test_make_xr_compatible_present(surface):
+    """makeXRCompatible is exposed by Chromium but missing from Khronos IDL.
+
+    Validated via the manual augmentation block in extract_webidl.js.
+    """
+    assert "makeXRCompatible" in surface["methods"], (
+        "makeXRCompatible should be in surface.methods after extract_webidl.js runs"
+    )

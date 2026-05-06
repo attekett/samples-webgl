@@ -11,7 +11,7 @@
       }
     ],
     "schema_version": "3.0",
-    "extracted_at": "2026-05-06T20:16:21.042Z"
+    "extracted_at": "2026-05-06T20:17:37.833Z"
   },
   "constants": {
     "DEPTH_BUFFER_BIT": {
@@ -10491,6 +10491,16 @@
               "type": "WebGLVertexArrayObject?"
             }
           ]
+        }
+      ]
+    },
+    "makeXRCompatible": {
+      "webgl_version": "webgl1",
+      "overloads": [
+        {
+          "arity": 0,
+          "params": [],
+          "returnType": "Promise<undefined>"
         }
       ]
     }

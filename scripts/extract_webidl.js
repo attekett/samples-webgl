@@ -1416,6 +1416,18 @@ function run() {
     }
   }
 
+  // Manual augmentation: methods exposed by Chromium but absent from the
+  // Khronos-latest cached IDL files. Source: Chromium
+  // third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.idl.
+  allMethods['makeXRCompatible'] = {
+    webgl_version: 'webgl1',
+    overloads: [{
+      arity: 0,
+      params: [],
+      returnType: 'Promise<undefined>'
+    }]
+  };
+
   // --- Build output ---
   const output = {
     meta: {
