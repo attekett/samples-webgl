@@ -239,3 +239,62 @@ class TestBuildRecipe:
         assert c["try_catch_blocks"] == {"min": 6, "max": 10}
         assert c["line_repetition_patterns"] == {"min": 3}
         assert c["total_lines"] == {"min": 150, "max": 300}
+
+
+from api_audit.gap_spec import plan_batches
+
+
+class TestPlanBatches:
+    def _recipe(self, rid, features, priority="high"):
+        return {
+            "recipe_id": rid,
+            "priority": priority,
+            "target_features": features,
+        }
+
+    def test_high_priority_packed_first(self):
+        recipes = [
+            self._recipe("a", ["fbo"], priority="medium"),
+            self._recipe("b", ["sampler"], priority="high"),
+            self._recipe("c", ["renderbuffer"], priority="high"),
+        ]
+        batches = plan_batches(recipes, max_batches=1, max_per_batch=2)
+        assert len(batches) == 1
+        ids = [r["recipe_id"] for r in batches[0]["recipes"]]
+        # Both high-priority recipes go in batch 1
+        assert "b" in ids and "c" in ids
+        assert "a" not in ids
+
+    def test_feature_concentration_cap(self):
+        # 4 recipes all targeting fbo — only 3 fit per batch
+        recipes = [
+            self._recipe(f"r{i}", ["fbo", f"other{i}"]) for i in range(4)
+        ]
+        batches = plan_batches(recipes, max_batches=2, max_per_batch=5)
+        first_ids = [r["recipe_id"] for r in batches[0]["recipes"]]
+        second_ids = [r["recipe_id"] for r in batches[1]["recipes"]]
+        assert len(first_ids) == 3
+        assert len(second_ids) == 1
+
+    def test_max_per_batch_respected(self):
+        recipes = [
+            self._recipe(f"r{i}", [f"feat{i}"]) for i in range(10)
+        ]
+        batches = plan_batches(recipes, max_batches=2, max_per_batch=3)
+        assert len(batches[0]["recipes"]) == 3
+        assert len(batches[1]["recipes"]) == 3
+
+    def test_max_batches_respected(self):
+        recipes = [
+            self._recipe(f"r{i}", [f"feat{i}"]) for i in range(20)
+        ]
+        batches = plan_batches(recipes, max_batches=2, max_per_batch=3)
+        assert len(batches) == 2
+
+    def test_empty_recipes_returns_empty(self):
+        assert plan_batches([], max_batches=4, max_per_batch=5) == []
+
+    def test_batch_id_starts_at_1(self):
+        recipes = [self._recipe("r1", ["fbo"])]
+        batches = plan_batches(recipes, max_batches=4, max_per_batch=5)
+        assert batches[0]["batch_id"] == 1

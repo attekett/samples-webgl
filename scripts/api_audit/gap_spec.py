@@ -172,3 +172,61 @@ def build_recipe(gap, categories_config, interaction_topology,
         "seed_constraints": dict(SEED_CONSTRAINTS),
         "reference_seeds": refs,
     }
+
+
+PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+MAX_FEATURE_PER_BATCH = 3
+
+
+def plan_batches(recipes, max_batches=4, max_per_batch=5):
+    """Distribute recipes across batches with feature concentration cap.
+
+    Args:
+        recipes: list of recipe dicts (must have "priority" and
+            "target_features" keys).
+        max_batches: int — at most this many batches emitted.
+        max_per_batch: int — at most this many recipes per batch.
+
+    Returns:
+        list[dict] of batches, each shaped:
+            {"batch_id": int, "recipes": [recipe, ...]}
+        Earliest batch first. Recipes that exceed the per-feature cap on
+        a given batch defer to the next.
+    """
+    if not recipes:
+        return []
+
+    sorted_recipes = sorted(
+        recipes,
+        key=lambda r: (PRIORITY_ORDER.get(r.get("priority"), 99),
+                       r.get("recipe_id", "")),
+    )
+
+    batches = []
+    remaining = list(sorted_recipes)
+
+    for batch_idx in range(max_batches):
+        if not remaining:
+            break
+        batch = []
+        feature_counts = {}
+        deferred = []
+        for recipe in remaining:
+            if len(batch) >= max_per_batch:
+                deferred.append(recipe)
+                continue
+            over_limit = any(
+                feature_counts.get(f, 0) >= MAX_FEATURE_PER_BATCH
+                for f in recipe["target_features"]
+            )
+            if over_limit:
+                deferred.append(recipe)
+                continue
+            batch.append(recipe)
+            for f in recipe["target_features"]:
+                feature_counts[f] = feature_counts.get(f, 0) + 1
+        if batch:
+            batches.append({"batch_id": batch_idx + 1, "recipes": batch})
+        remaining = deferred
+
+    return batches
