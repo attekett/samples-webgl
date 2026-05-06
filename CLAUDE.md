@@ -91,6 +91,16 @@ bash scripts/feature_matrix.sh
 
 # Corpus analysis
 bash scripts/analyze_corpus.sh
+
+# Generate recipes for closing 3-way gaps
+PYTHONPATH=scripts ./venv/bin/python -m api_audit \
+  --surface docs/webgl_api_surface.json \
+  --corpus-dirs samples-webgl agent_outputs \
+  --feature-categories docs/feature_categories.json \
+  --interaction-topology docs/interaction_topology.json \
+  --combination-matrix /tmp/matrix.json \
+  --gap-recipes /tmp/recipes.json \
+  --n-way 3
 ```
 
 ## Architecture Overview
