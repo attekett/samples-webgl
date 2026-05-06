@@ -129,6 +129,14 @@ def main():
                         help='Minimum seeds per combination (default: 1)')
     parser.add_argument('--baseline', type=Path, default=None,
                         help='Baseline matrix for incremental merge')
+    parser.add_argument('--gap-recipes', type=Path, default=None,
+                        help='Output gap recipes JSON path')
+    parser.add_argument('--max-recipes', type=int, default=20,
+                        help='Maximum recipes to emit (default: 20)')
+    parser.add_argument('--max-batches', type=int, default=4,
+                        help='Maximum batches to plan (default: 4)')
+    parser.add_argument('--max-per-batch', type=int, default=5,
+                        help='Maximum recipes per batch (default: 5)')
     args = parser.parse_args()
 
     surface = json.loads(args.surface.read_text())
@@ -304,6 +312,32 @@ def main():
                     print(f"  Top gaps ({len(report_matrix['gaps'])} total):")
                     for g in report_matrix['gaps'][:5]:
                         print(f"    {g['priority']}: {g['combo']}")
+
+                if args.gap_recipes:
+                    from api_audit.gap_spec import generate_recipes
+
+                    recipes_data = generate_recipes(
+                        report_matrix,
+                        corpus_features,
+                        categories_config,
+                        topology if topology is not None else {"edges": []},
+                        n_way=n,
+                        max_recipes=args.max_recipes,
+                        max_batches=args.max_batches,
+                        max_per_batch=args.max_per_batch,
+                    )
+                    recipes_data["generated_from_matrix"] = str(args.combination_matrix)
+
+                    args.gap_recipes.parent.mkdir(parents=True, exist_ok=True)
+                    args.gap_recipes.write_text(
+                        json.dumps(recipes_data, indent=2, default=str))
+                    print(f"Gap recipes written to {args.gap_recipes}")
+                    print(f"  {len(recipes_data['recipes'])} recipes "
+                          f"in {len(recipes_data['batches'])} batches")
+                    if recipes_data.get("missing_categories"):
+                        print(f"  Warning: {len(recipes_data['missing_categories'])} "
+                              f"target features lack category definitions: "
+                              f"{', '.join(recipes_data['missing_categories'])}")
 
 
 if __name__ == '__main__':

@@ -451,3 +451,76 @@ class TestGenerateRecipes:
         assert out["batches"] == []
         assert out["total_gaps_considered"] == 0
         assert out["n_way"] == 3
+
+
+import json
+import sys
+from pathlib import Path
+
+
+class TestCLIIntegration:
+    def test_main_writes_recipes_json(self, tmp_path, monkeypatch):
+        # Tiny synthetic corpus
+        corpus = tmp_path / "corpus"
+        corpus.mkdir()
+        (corpus / "seed1.html").write_text(
+            "<html><body><script>"
+            "const gl = canvas.getContext('webgl2');"
+            "const fb = gl.createFramebuffer();"
+            "gl.bindFramebuffer(gl.FRAMEBUFFER, fb);"
+            "const s = gl.createSampler();"
+            "gl.bindSampler(0, s);"
+            "</script></body></html>"
+        )
+
+        # Tiny categories config — two real categories so a 2-way matrix exists
+        cats = {"categories": {
+            "fbo": {"methods": ["createFramebuffer", "bindFramebuffer"],
+                    "min_methods_for_match": 1},
+            "sampler": {"methods": ["createSampler", "bindSampler"],
+                        "min_methods_for_match": 1},
+        }}
+        cats_path = tmp_path / "cats.json"
+        cats_path.write_text(json.dumps(cats))
+
+        topo = {"edges": [{"pair": ["fbo", "sampler"],
+                           "relationship": "synthetic"}]}
+        topo_path = tmp_path / "topo.json"
+        topo_path.write_text(json.dumps(topo))
+
+        # Minimal API surface: only the methods our seed calls
+        surface = {"meta": {}, "constants": {},
+                   "methods": {"createFramebuffer": {}, "bindFramebuffer": {},
+                               "createSampler": {}, "bindSampler": {}},
+                   "extensions": {}, "glsl_builtins": {}}
+        surface_path = tmp_path / "surface.json"
+        surface_path.write_text(json.dumps(surface))
+
+        matrix_path = tmp_path / "matrix.json"
+        recipes_path = tmp_path / "recipes.json"
+
+        monkeypatch.setattr(sys, "argv", [
+            "api_audit",
+            "--surface", str(surface_path),
+            "--corpus-dirs", str(corpus),
+            "--feature-categories", str(cats_path),
+            "--interaction-topology", str(topo_path),
+            "--combination-matrix", str(matrix_path),
+            "--gap-recipes", str(recipes_path),
+            "--cache-dir", str(tmp_path / "cache"),
+            "--n-way", "2",
+            "--max-recipes", "5",
+        ])
+
+        from api_audit.__main__ import main
+        main()
+
+        assert recipes_path.exists()
+        data = json.loads(recipes_path.read_text())
+        assert "recipes" in data
+        assert "batches" in data
+        assert "n_way" in data
+        assert data["n_way"] == 2
+        assert "missing_categories" in data
+        assert "generated_from_matrix" in data
+        assert len(data["recipes"]) <= 5
