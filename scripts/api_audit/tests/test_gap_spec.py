@@ -298,3 +298,156 @@ class TestPlanBatches:
         recipes = [self._recipe("r1", ["fbo"])]
         batches = plan_batches(recipes, max_batches=4, max_per_batch=5)
         assert batches[0]["batch_id"] == 1
+
+
+from api_audit.gap_spec import generate_recipes
+
+
+class TestGenerateRecipes:
+    def _matrix_report(self):
+        return {
+            "total": 100,
+            "covered": 50,
+            "uncovered": 50,
+            "gaps": [
+                {"combo": ["fbo", "sampler", "ext_float_textures"],
+                 "priority": "high", "seed_count": 0,
+                 "topology_connected": True},
+                {"combo": ["shader_pipeline", "draw_calls", "uniforms"],
+                 "priority": "low", "seed_count": 0,
+                 "topology_connected": True},
+                {"combo": ["fbo", "renderbuffer"],
+                 "priority": "high", "seed_count": 0,
+                 "topology_connected": True},
+            ],
+        }
+
+    def _categories(self):
+        return {
+            "categories": {
+                "fbo": {"methods": ["createFramebuffer", "bindFramebuffer"]},
+                "sampler": {"methods": ["createSampler", "bindSampler"]},
+                "ext_float_textures": {"methods": ["getExtension"]},
+                "renderbuffer": {"methods": ["createRenderbuffer"]},
+                "shader_pipeline": {"methods": ["createProgram"]},
+                "draw_calls": {"methods": ["drawArrays"]},
+                "uniforms": {"methods": ["uniform1f"]},
+            }
+        }
+
+    def _topology(self):
+        return {"edges": [
+            {"pair": ["fbo", "sampler"], "relationship": "fbo binds sampler"},
+            {"pair": ["fbo", "renderbuffer"], "relationship": "fbo holds renderbuffer"},
+            {"pair": ["ext_float_textures", "fbo"], "relationship": "float fbo"},
+        ]}
+
+    def test_emits_recipes_and_batches(self):
+        out = generate_recipes(
+            self._matrix_report(), corpus_features={},
+            categories_config=self._categories(),
+            interaction_topology=self._topology(),
+            n_way=3,
+            max_recipes=20, max_batches=4, max_per_batch=5,
+        )
+        assert "recipes" in out
+        assert "batches" in out
+        assert "n_way" in out
+        assert out["n_way"] == 3
+        assert "total_gaps_considered" in out
+        assert "missing_categories" in out
+        assert isinstance(out["recipes"], list)
+        assert isinstance(out["batches"], list)
+
+    def test_filters_irrelevant_gaps(self):
+        out = generate_recipes(
+            self._matrix_report(), corpus_features={},
+            categories_config=self._categories(),
+            interaction_topology=self._topology(),
+            n_way=3,
+        )
+        # All-ubiquitous combo {shader_pipeline, draw_calls, uniforms} dropped
+        ids = [r["target_features"] for r in out["recipes"]]
+        assert ["draw_calls", "shader_pipeline", "uniforms"] not in ids
+        assert sorted(["fbo", "sampler", "ext_float_textures"]) in ids
+
+    def test_assigns_sequential_recipe_ids(self):
+        out = generate_recipes(
+            self._matrix_report(), corpus_features={},
+            categories_config=self._categories(),
+            interaction_topology=self._topology(),
+            n_way=3,
+        )
+        ids = [r["recipe_id"] for r in out["recipes"]]
+        assert ids == sorted(ids)
+        assert ids[0].startswith("gap_")
+
+    def test_high_priority_recipes_emitted_before_low(self):
+        out = generate_recipes(
+            self._matrix_report(), corpus_features={},
+            categories_config=self._categories(),
+            interaction_topology=self._topology(),
+            n_way=3,
+        )
+        priorities = [r["priority"] for r in out["recipes"]]
+        # Both relevant gaps in this fixture are "high" — confirm none are low
+        assert "low" not in priorities
+
+    def test_max_recipes_caps_output(self):
+        # Build a matrix with 10 relevant gaps
+        gaps = [
+            {"combo": ["fbo", f"feat{i}"], "priority": "high", "seed_count": 0,
+             "topology_connected": True}
+            for i in range(10)
+        ]
+        cats = {"categories": {"fbo": {"methods": ["createFramebuffer"]}}}
+        for i in range(10):
+            cats["categories"][f"feat{i}"] = {"methods": [f"createF{i}"]}
+        topo = {"edges": [
+            {"pair": ["fbo", f"feat{i}"], "relationship": ""}
+            for i in range(10)
+        ]}
+        out = generate_recipes(
+            {"gaps": gaps}, corpus_features={},
+            categories_config=cats,
+            interaction_topology=topo,
+            n_way=2,
+            max_recipes=3,
+        )
+        assert len(out["recipes"]) == 3
+
+    def test_total_gaps_considered_counts_input(self):
+        out = generate_recipes(
+            self._matrix_report(), corpus_features={},
+            categories_config=self._categories(),
+            interaction_topology=self._topology(),
+            n_way=3,
+        )
+        assert out["total_gaps_considered"] == 3
+
+    def test_missing_categories_surfaced(self):
+        # Gap targets a feature with no category definition
+        gaps = [{"combo": ["fbo", "nonexistent_feature"],
+                 "priority": "high", "seed_count": 0,
+                 "topology_connected": True}]
+        cats = {"categories": {"fbo": {"methods": ["createFramebuffer"]}}}
+        topo = {"edges": [{"pair": ["fbo", "nonexistent_feature"],
+                           "relationship": "synthetic"}]}
+        out = generate_recipes(
+            {"gaps": gaps}, corpus_features={},
+            categories_config=cats,
+            interaction_topology=topo, n_way=2,
+        )
+        assert "nonexistent_feature" in out["missing_categories"]
+
+    def test_empty_gaps_returns_empty_recipes(self):
+        out = generate_recipes(
+            {"gaps": []}, corpus_features={},
+            categories_config=self._categories(),
+            interaction_topology=self._topology(),
+            n_way=3,
+        )
+        assert out["recipes"] == []
+        assert out["batches"] == []
+        assert out["total_gaps_considered"] == 0
+        assert out["n_way"] == 3

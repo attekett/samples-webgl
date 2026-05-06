@@ -230,3 +230,63 @@ def plan_batches(recipes, max_batches=4, max_per_batch=5):
         remaining = deferred
 
     return batches
+
+
+def generate_recipes(matrix_report, corpus_features, categories_config,
+                     interaction_topology, n_way, max_recipes=20,
+                     max_batches=4, max_per_batch=5):
+    """Top-level entry: matrix report → recipes JSON.
+
+    Args:
+        matrix_report: dict from generate_matrix_report() — must contain a
+            "gaps" list. Each gap has {combo, priority, seed_count,
+            topology_connected}.
+        corpus_features: {filepath: fingerprint} for reference selection.
+        categories_config: parsed feature_categories.json.
+        interaction_topology: parsed interaction_topology.json.
+        n_way: int — N for the N-way analysis the matrix was built with.
+            Passed in from the CLI (do not derive from gap shapes — gap
+            list could be empty or hand-built).
+        max_recipes: int — emit at most this many recipes after filtering.
+        max_batches: int — at most this many batches.
+        max_per_batch: int — at most this many recipes per batch.
+
+    Returns:
+        dict with keys:
+            n_way, total_gaps_considered, recipes, batches,
+            missing_categories (sorted list — features the recipes target
+            that have no entry in categories_config or no methods).
+    """
+    gaps_in = matrix_report.get("gaps", [])
+    extension_categories = derive_extension_categories(categories_config)
+
+    relevant = [g for g in gaps_in
+                if is_relevant(g["combo"], extension_categories)]
+
+    missing = set()
+    recipes = []
+    for idx, gap in enumerate(relevant[:max_recipes], start=1):
+        recipe_id = f"gap_{idx:03d}"
+        recipe = build_recipe(
+            gap, categories_config, interaction_topology,
+            corpus_features, recipe_id,
+            missing_categories=missing,
+        )
+        recipes.append(recipe)
+
+    batches_full = plan_batches(
+        recipes, max_batches=max_batches, max_per_batch=max_per_batch,
+    )
+    batches = [
+        {"batch_id": b["batch_id"],
+         "recipe_ids": [r["recipe_id"] for r in b["recipes"]]}
+        for b in batches_full
+    ]
+
+    return {
+        "n_way": n_way,
+        "total_gaps_considered": len(gaps_in),
+        "recipes": recipes,
+        "batches": batches,
+        "missing_categories": sorted(missing),
+    }
