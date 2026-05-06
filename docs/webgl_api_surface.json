@@ -11,7 +11,7 @@
       }
     ],
     "schema_version": "3.0",
-    "extracted_at": "2026-05-06T20:09:25.137Z"
+    "extracted_at": "2026-05-06T20:11:20.197Z"
   },
   "constants": {
     "DEPTH_BUFFER_BIT": {
@@ -12163,6 +12163,203 @@
           ]
         }
       }
+    },
+    "EXT_clip_control": {
+      "methods": {
+        "clipControlEXT": {
+          "overloads": [
+            {
+              "arity": 2,
+              "params": [
+                {
+                  "name": "origin",
+                  "type": "GLenum"
+                },
+                {
+                  "name": "depth",
+                  "type": "GLenum"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constants": {
+        "LOWER_LEFT_EXT": {
+          "value": "0x8CA1",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "UPPER_LEFT_EXT": {
+          "value": "0x8CA2",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "NEGATIVE_ONE_TO_ONE_EXT": {
+          "value": "0x935E",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "ZERO_TO_ONE_EXT": {
+          "value": "0x935F",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "CLIP_ORIGIN_EXT": {
+          "value": "0x935C",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        },
+        "CLIP_DEPTH_MODE_EXT": {
+          "value": "0x935D",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        }
+      }
+    },
+    "EXT_depth_clamp": {
+      "methods": {},
+      "constants": {
+        "DEPTH_CLAMP_EXT": {
+          "value": "0x864F",
+          "kind": "enum",
+          "roles": [
+            "capability"
+          ]
+        }
+      }
+    },
+    "EXT_polygon_offset_clamp": {
+      "methods": {
+        "polygonOffsetClampEXT": {
+          "overloads": [
+            {
+              "arity": 3,
+              "params": [
+                {
+                  "name": "factor",
+                  "type": "GLfloat"
+                },
+                {
+                  "name": "units",
+                  "type": "GLfloat"
+                },
+                {
+                  "name": "clamp",
+                  "type": "GLfloat"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "constants": {
+        "POLYGON_OFFSET_CLAMP_EXT": {
+          "value": "0x8E1B",
+          "kind": "enum",
+          "roles": [
+            "get_parameter"
+          ]
+        }
+      }
+    },
+    "EXT_render_snorm": {
+      "methods": {},
+      "constants": {}
+    },
+    "EXT_texture_compression_bptc": {
+      "methods": {},
+      "constants": {
+        "COMPRESSED_RGBA_BPTC_UNORM_EXT": {
+          "value": "0x8E8C",
+          "kind": "enum",
+          "roles": [
+            "compressed_format"
+          ]
+        },
+        "COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT": {
+          "value": "0x8E8D",
+          "kind": "enum",
+          "roles": [
+            "compressed_format"
+          ]
+        },
+        "COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT": {
+          "value": "0x8E8E",
+          "kind": "enum",
+          "roles": [
+            "compressed_format"
+          ]
+        },
+        "COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT": {
+          "value": "0x8E8F",
+          "kind": "enum",
+          "roles": [
+            "compressed_format"
+          ]
+        }
+      }
+    },
+    "EXT_texture_compression_rgtc": {
+      "methods": {},
+      "constants": {
+        "COMPRESSED_RED_RGTC1_EXT": {
+          "value": "0x8DBB",
+          "kind": "enum",
+          "roles": [
+            "compressed_format"
+          ]
+        },
+        "COMPRESSED_SIGNED_RED_RGTC1_EXT": {
+          "value": "0x8DBC",
+          "kind": "enum",
+          "roles": [
+            "compressed_format"
+          ]
+        },
+        "COMPRESSED_RED_GREEN_RGTC2_EXT": {
+          "value": "0x8DBD",
+          "kind": "enum",
+          "roles": [
+            "compressed_format"
+          ]
+        },
+        "COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT": {
+          "value": "0x8DBE",
+          "kind": "enum",
+          "roles": [
+            "compressed_format"
+          ]
+        }
+      }
+    },
+    "EXT_texture_mirror_clamp_to_edge": {
+      "methods": {},
+      "constants": {
+        "MIRROR_CLAMP_TO_EDGE_EXT": {
+          "value": "0x8743",
+          "kind": "enum",
+          "roles": [
+            "texture_parameter"
+          ]
+        }
+      }
+    },
+    "EXT_conservative_depth": {
+      "methods": {},
+      "constants": {}
     }
   },
   "glsl_builtins": {
