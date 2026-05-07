@@ -94,6 +94,9 @@
     {"pair": ["pixel_ops", "texture_arrays"], "relationship": "pixel unpack for array texture upload"},
     {"pair": ["sampler", "texture_arrays"], "relationship": "samplers configure array texture filtering"},
     {"pair": ["shader_pipeline", "texture_arrays"], "relationship": "sampler2DArray in shaders"},
-    {"pair": ["ubo", "uniforms"], "relationship": "UBO and uniform data both feed shader uniforms"}
+    {"pair": ["ubo", "uniforms"], "relationship": "UBO and uniform data both feed shader uniforms"},
+    {"pair": ["rasterizer_state", "depth_stencil"], "relationship": "cull/wind affect which fragments reach depth/stencil tests"},
+    {"pair": ["rasterizer_state", "blending"], "relationship": "cull/wind affect which fragments reach the blender"},
+    {"pair": ["pipeline_state", "query"], "relationship": "queries observe pipeline state changes (enable/disable affect what they count)"}
   ]
 }

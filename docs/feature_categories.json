@@ -26,6 +26,7 @@
     },
     "transform_feedback": {
       "description": "Transform feedback capture and playback of vertex shader outputs",
+      "overlap_note": "bindBufferBase, bindBufferRange, getIndexedParameter also appear in ubo. Both features use indexed buffer bindings, so the overlap is intentional.",
       "methods": [
         "beginTransformFeedback",
         "endTransformFeedback",
@@ -35,7 +36,11 @@
         "deleteTransformFeedback",
         "pauseTransformFeedback",
         "resumeTransformFeedback",
-        "getTransformFeedbackVarying"
+        "getTransformFeedbackVarying",
+        "bindBufferBase",
+        "bindBufferRange",
+        "getIndexedParameter",
+        "isTransformFeedback"
       ],
       "constants": [
         "TRANSFORM_FEEDBACK",
@@ -58,7 +63,9 @@
         "readBuffer",
         "invalidateFramebuffer",
         "invalidateSubFramebuffer",
-        "isFramebuffer"
+        "isFramebuffer",
+        "getFramebufferAttachmentParameter",
+        "drawingBufferStorage"
       ],
       "constants": [
         "FRAMEBUFFER",
@@ -84,7 +91,8 @@
         "copyTexImage2D",
         "copyTexSubImage2D",
         "isTexture",
-        "getTexParameter"
+        "getTexParameter",
+        "activeTexture"
       ],
       "constants": [
         "TEXTURE_2D",
@@ -209,13 +217,17 @@
     },
     "ubo": {
       "description": "Uniform buffer object binding and block configuration",
+      "overlap_note": "bindBufferBase, bindBufferRange, getIndexedParameter also appear in transform_feedback. Both features use indexed buffer bindings, so the overlap is intentional.",
       "methods": [
         "getUniformBlockIndex",
         "uniformBlockBinding",
         "getActiveUniformBlockParameter",
         "getActiveUniformBlockName",
         "getUniformIndices",
-        "getActiveUniforms"
+        "getActiveUniforms",
+        "bindBufferBase",
+        "bindBufferRange",
+        "getIndexedParameter"
       ],
       "constants": [
         "UNIFORM_BUFFER",
@@ -320,7 +332,8 @@
         "renderbufferStorage",
         "renderbufferStorageMultisample",
         "getRenderbufferParameter",
-        "isRenderbuffer"
+        "isRenderbuffer",
+        "getInternalformatParameter"
       ],
       "constants": [
         "RENDERBUFFER"
@@ -348,7 +361,10 @@
         "getProgramParameter",
         "getProgramInfoLog",
         "isProgram",
-        "getAttachedShaders"
+        "getAttachedShaders",
+        "bindAttribLocation",
+        "getFragDataLocation",
+        "getShaderPrecisionFormat"
       ],
       "constants": [
         "VERTEX_SHADER",
@@ -468,6 +484,47 @@
       "constants": [
         "SCISSOR_TEST"
       ],
+      "min_methods_for_match": 1
+    },
+    "rasterizer_state": {
+      "description": "Per-fragment rasterization state: face culling, winding order, line width, polygon offset, multisample coverage",
+      "methods": [
+        "cullFace",
+        "frontFace",
+        "lineWidth",
+        "polygonOffset",
+        "sampleCoverage"
+      ],
+      "constants": [
+        "CULL_FACE",
+        "FRONT",
+        "BACK",
+        "FRONT_AND_BACK",
+        "CW",
+        "CCW",
+        "POLYGON_OFFSET_FILL",
+        "SAMPLE_COVERAGE",
+        "SAMPLE_ALPHA_TO_COVERAGE"
+      ],
+      "min_methods_for_match": 1
+    },
+    "pipeline_state": {
+      "description": "Generic pipeline-state toggling, error/state inspection, and context introspection (effectively ubiquitous)",
+      "methods": [
+        "enable",
+        "disable",
+        "isEnabled",
+        "hint",
+        "finish",
+        "flush",
+        "getError",
+        "getExtension",
+        "getSupportedExtensions",
+        "getContextAttributes",
+        "getParameter",
+        "isContextLost"
+      ],
+      "constants": [],
       "min_methods_for_match": 1
     },
     "ext_float_textures": {
