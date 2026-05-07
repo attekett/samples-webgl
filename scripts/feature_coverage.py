@@ -50,6 +50,8 @@ DISPLAY_NAMES = {
     "shader_pipeline":              "Shader Pipeline",
     "draw_calls":                   "Draw Calls",
     "viewport_scissor":             "Viewport/Scissor",
+    "rasterizer_state":             "Rasterizer State",
+    "pipeline_state":               "Pipeline State",
     "ext_color_buffer_float":       "EXT: Color Buffer Float",
     "ext_draw_buffers_indexed":     "EXT: Draw Buffers Indexed",
     "ext_float_textures":           "EXT: Float Textures",
@@ -61,7 +63,8 @@ DISPLAY_NAMES = {
 
 # Ordered display groups (omit ubiquitous features from the matrix by default)
 SKIP_UBIQUITOUS = {"attributes", "uniforms", "shader_pipeline", "draw_calls",
-                   "viewport_scissor", "buffer_ops", "glsl_builtins"}
+                   "viewport_scissor", "buffer_ops", "glsl_builtins",
+                   "pipeline_state"}
 
 
 def is_passed(filepath: Path) -> bool:
