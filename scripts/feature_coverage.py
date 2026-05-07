@@ -20,7 +20,7 @@ from api_audit.parse import parse_js
 from api_audit.context import detect_context
 from api_audit.const_propagation import resolve_constants
 from api_audit.call_analysis import analyze_calls
-from api_audit.glsl import extract_glsl_builtins
+from api_audit.glsl import extract_glsl_builtins, extract_glsl_variables
 from api_audit.feature_detection import detect_features
 from api_audit.cache import FileCache
 
@@ -144,6 +144,25 @@ def aggregate_glsl_builtins(fingerprints: list) -> dict:
     return counts
 
 
+def aggregate_glsl_variables(fingerprints: list) -> dict:
+    """Count how many seeds reference each GLSL built-in variable.
+
+    Args:
+        fingerprints: list of analyze_file() result dicts, each may have
+            a "glsl_variables" set or list.
+
+    Returns:
+        dict {variable_name: seed_count}
+    """
+    counts = {}
+    for fp in fingerprints:
+        if fp is None:
+            continue
+        for v in fp.get("glsl_variables", []):
+            counts[v] = counts.get(v, 0) + 1
+    return counts
+
+
 def diff_coverage_snapshots(prev: dict, curr: dict) -> dict:
     """Compute delta between two coverage snapshots.
 
@@ -174,9 +193,11 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
         cached = cache.lookup(filepath.name, content, config_hash=config_hash)
-        if cached and "features" in cached and "all_methods" in cached:
+        if (cached and "features" in cached and "all_methods" in cached
+                and "glsl_variables" in cached):
             return {**cached, "all_methods": set(cached.get("all_methods", [])),
-                    "glsl_builtins": set(cached.get("glsl_builtins", []))}
+                    "glsl_builtins": set(cached.get("glsl_builtins", [])),
+                    "glsl_variables": set(cached.get("glsl_variables", []))}
 
     script = extract_script(content)
     if not script.strip():
@@ -192,6 +213,7 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
         category_glsl.extend(cat.get("glsl_functions", []))
     glsl = extract_glsl_builtins(root, ctx, consts, surface,
                                  extra_builtins=category_glsl)
+    glsl_vars = extract_glsl_variables(root, ctx, consts, surface)
 
     result = {
         "methods": {k: len(v) for k, v in calls.methods.items()},
@@ -230,10 +252,12 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
                      "feature_depth": fp["feature_depth"],
                      "methods_per_feature": fp.get("methods_per_feature", {}),
                      "all_methods": sorted(all_methods),
-                     "glsl_builtins": list(glsl)},
+                     "glsl_builtins": list(glsl),
+                     "glsl_variables": sorted(glsl_vars)},
                     config_hash=config_hash)
 
-    return {**fp, "glsl_builtins": set(glsl), "all_methods": all_methods}
+    return {**fp, "glsl_builtins": set(glsl), "all_methods": all_methods,
+            "glsl_variables": set(glsl_vars)}
 
 
 def main():
@@ -259,6 +283,8 @@ def main():
                         help="Show per-method API surface coverage report")
     parser.add_argument("--glsl-detail", action="store_true",
                         help="Show per-GLSL-builtin seed counts")
+    parser.add_argument("--glsl-vars-detail", action="store_true",
+                        help="Show per-GLSL-built-in-variable seed counts")
     parser.add_argument("--snapshot", type=Path, metavar="FILE",
                         help="Save current coverage to FILE as JSON snapshot")
     parser.add_argument("--diff", type=Path, metavar="PREV_SNAPSHOT",
@@ -303,6 +329,7 @@ def main():
             "methods_per_feature": fp.get("methods_per_feature", {}),
             "feature_depth": fp.get("feature_depth", {}),
             "glsl_builtins": fp.get("glsl_builtins", []),
+            "glsl_variables": fp.get("glsl_variables", []),
         }
 
     snapshot = {feat: {"seeds": count, "total": total,
@@ -383,6 +410,23 @@ def main():
             print(f"Never-seen methods ({len(report['never_seen'])}):")
             for m in report["never_seen"]:
                 print(f"  - {m}")
+        print()
+
+    if args.glsl_vars_detail:
+        var_counts = aggregate_glsl_variables(list(corpus_fingerprints.values()))
+        all_vars = set()
+        var_categories = surface.get("glsl_builtin_variables", {})
+        for category_names in var_categories.values():
+            all_vars.update(category_names)
+        used = sorted(var_counts.items(), key=lambda x: x[1], reverse=True)
+        used_in_known = set(var_counts) & all_vars
+        never = sorted(all_vars - set(var_counts))
+        print("## GLSL Built-in Variable Coverage")
+        print(f"Used variables ({len(used_in_known)}/{len(all_vars)}):")
+        for name, count in used:
+            print(f"  {name:<40} {count:>4} seeds")
+        if never:
+            print(f"Never used ({len(never)}): {', '.join(never)}")
         print()
 
     if args.glsl_detail:

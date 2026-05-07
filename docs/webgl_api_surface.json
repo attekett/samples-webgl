@@ -11692,5 +11692,41 @@
       "acosh",
       "atanh"
     ]
+  },
+  "glsl_builtin_variables": {
+    "vertex_inputs": [
+      "gl_VertexID",
+      "gl_InstanceID"
+    ],
+    "vertex_outputs": [
+      "gl_Position",
+      "gl_PointSize",
+      "gl_PerVertex"
+    ],
+    "fragment_inputs": [
+      "gl_FragCoord",
+      "gl_FrontFacing",
+      "gl_PointCoord"
+    ],
+    "fragment_outputs": [
+      "gl_FragDepth"
+    ],
+    "uniforms": [
+      "gl_DepthRange",
+      "gl_DepthRangeParameters"
+    ],
+    "constants": [
+      "gl_MaxVertexAttribs",
+      "gl_MaxVertexUniformVectors",
+      "gl_MaxVertexOutputVectors",
+      "gl_MaxFragmentInputVectors",
+      "gl_MaxVertexTextureImageUnits",
+      "gl_MaxCombinedTextureImageUnits",
+      "gl_MaxTextureImageUnits",
+      "gl_MaxFragmentUniformVectors",
+      "gl_MaxDrawBuffers",
+      "gl_MinProgramTexelOffset",
+      "gl_MaxProgramTexelOffset"
+    ]
   }
 }

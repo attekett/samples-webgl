@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const bufSize = texSize * texSize * 4;
+    const vertexCount = 6;
+    const sentinelNoError = gl.NO_ERROR;
+    const sentinelOOM = gl.OUT_OF_MEMORY;
+    const sentinelLost = gl.CONTEXT_LOST_WEBGL;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const bufferUsage = gl.STATIC_DRAW;
+    const errEnum = gl.NO_ERROR;
+
+    let vs, fs, program, vao;
+
+    try {
+        vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+in vec3 aPos;
+out vec3 vPos;
+void main() {
+    vPos = aPos;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vs);
+        const e0 = gl.getError();
+        if (e0 === gl.NO_ERROR) { gl.colorMask(true, true, true, true); }
+        if (e0 !== gl.OUT_OF_MEMORY) { gl.depthMask(true); }
+        if (e0 !== gl.CONTEXT_LOST_WEBGL) { gl.stencilMask(0xff); }
+    } catch(e) {}
+
+    try {
+        fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+precision highp float;
+in vec3 vPos;
+layout(location = 0) out vec4 fragColor;
+void main() {
+    fragColor = vec4(vPos * 0.5 + 0.5, 1.0);
+}`);
+        gl.compileShader(fs);
+        const e1 = gl.getError();
+        const okFs = (e1 === gl.NO_ERROR);
+        const oomFs = (e1 === gl.OUT_OF_MEMORY);
+        const lostFs = (e1 === gl.CONTEXT_LOST_WEBGL);
+    } catch(e) {}
+
+    try {
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+        let drained = 0;
+        while (gl.getError() !== gl.NO_ERROR && drained < 8) { drained++; }
+        const final = gl.getError();
+        if (final === gl.NO_ERROR) { gl.useProgram(program); }
+        if (final !== gl.OUT_OF_MEMORY) { gl.useProgram(program); }
+        if (final !== gl.CONTEXT_LOST_WEBGL) { gl.useProgram(program); }
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        const buf = gl.createBuffer();
+        const buf2 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, buf);
+        gl.bindBuffer(bufferTarget, buf2);
+        gl.bindBuffer(bufferTarget, buf);
+
+        const verts = new Float32Array([
+            -1, -1, 0,
+             1, -1, 0,
+             1,  1, 0,
+            -1, -1, 0,
+             1,  1, 0,
+            -1,  1, 0
+        ]);
+        gl.bufferData(bufferTarget, verts, bufferUsage);
+
+        const posLoc = gl.getAttribLocation(program, 'aPos');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 12, 0);
+        const e2 = gl.getError();
+        if (e2 === gl.NO_ERROR) { gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 12, 0); }
+        if (e2 === gl.OUT_OF_MEMORY) { gl.bindBuffer(bufferTarget, null); }
+        if (e2 === gl.CONTEXT_LOST_WEBGL) { gl.bindVertexArray(null); }
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertexCount);
+
+        const errors = [];
+        for (let i = 0; i < 4; i++) {
+            const code = gl.getError();
+            errors.push(code);
+            if (code === gl.NO_ERROR) { break; }
+            if (code === gl.OUT_OF_MEMORY) { break; }
+            if (code === gl.CONTEXT_LOST_WEBGL) { break; }
+        }
+        const allClean = errors.every(e => e === gl.NO_ERROR);
+        const anyOOM = errors.some(e => e === gl.OUT_OF_MEMORY);
+        const anyLost = errors.some(e => e === gl.CONTEXT_LOST_WEBGL);
+    } catch(e) {}
+
+    try {
+        const finalCheck = gl.getError();
+        const lostExt = gl.getExtension('WEBGL_lose_context');
+        const stillNoErr = (gl.getError() === gl.NO_ERROR);
+        const stillNotOOM = (gl.getError() !== gl.OUT_OF_MEMORY);
+        const stillNotLost = (gl.getError() !== gl.CONTEXT_LOST_WEBGL);
+
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindVertexArray(null);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        gl.deleteProgram(program);
+        gl.deleteVertexArray(vao);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
