@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **WebGL/WebGL2 fuzzing corpus project** containing **367 validated test files** (301 in `agent_outputs/`, 66 in `samples-webgl/`) designed for mutation-based fuzzing with Radamsa. The corpus was built over 8 iterative rounds using gap-driven feature combination analysis.
+This is a **WebGL/WebGL2 fuzzing corpus project** containing **405 validated test files** designed for mutation-based fuzzing with Radamsa. The corpus is split between `agent_outputs/` (38 mutation seeds, batches b55–b66) and `samples-webgl/` (367 files across themed subdirectories — `mutations/`, `seeds/`, `creative/`, `webgl2/`, `extensions/`, etc.).
 
 **Critical distinction**: This is NOT a conformance test suite. Test cases are "high-biomass" seeds for mutation-based fuzzing, featuring "spaghetti-like" valid resource usage patterns that mutators can corrupt into security vulnerabilities.
 
-**Corpus status**: Production-ready. All critical, high, and medium 3-way feature combination gaps are closed. All coverage thresholds exceeded. See `docs/plans/2026-01-28-round8-completion-summary.md` for final metrics.
+**Corpus status**: Production-ready. All critical, high, and medium 3-way feature combination gaps are closed. WebGL 2.0 reference card is 100% covered across methods, constants, GLSL functions, and GLSL built-in variables. See `docs/plans/2026-01-28-round8-completion-summary.md` for the round-8 milestone and recent commits (b62–b66) for follow-up coverage work.
 
 ## Project-Specific Rules
 
@@ -86,11 +86,21 @@ After running tests, check the generated `.json` file for success criteria:
 ### Coverage Analysis
 
 ```bash
-# Feature combination matrix analysis
+# Feature combination matrix analysis (legacy shell wrapper)
 bash scripts/feature_matrix.sh
 
-# Corpus analysis
+# Corpus statistics (file count, lines, try-catch density, gl.* call density)
 bash scripts/analyze_corpus.sh
+
+# Primary coverage tool (AST-based, replaces grep-based feature_matrix.sh)
+python3 scripts/feature_coverage.py                       # Feature matrix with depth (P/M/D)
+python3 scripts/feature_coverage.py --combinations 3      # 3-way feature combination gaps
+python3 scripts/feature_coverage.py --api-surface-coverage # Per-method WebGL2 API coverage
+python3 scripts/feature_coverage.py --glsl-detail          # Per-GLSL-builtin seed counts
+python3 scripts/feature_coverage.py --glsl-vars-detail     # Per-GLSL-built-in-variable seed counts
+python3 scripts/feature_coverage.py --passed-only          # Filter to seeds that pass at runtime
+python3 scripts/feature_coverage.py --snapshot FILE        # Save coverage to JSON for diffing
+python3 scripts/feature_coverage.py --diff PREV_SNAPSHOT   # Compare against an earlier snapshot
 ```
 
 ## Architecture Overview
@@ -172,25 +182,27 @@ Tests maximize "fuzzing biomass" for Radamsa mutation. See **docs/plans/2026-01-
 
 ### Test Categories
 
-**`agent_outputs/` (301 files):**
-- **Mutation seeds** (`mutation_bN_sN_*`): 259 seeds across 54 batches targeting specific feature combinations
-- **High-biomass seeds** (`seed_*`): 16 hypercomplex seeds combining 4-8+ WebGL2 features
-- **Creative tests** (`creative_*`): 4 advanced visual effect demos
-- **Edge cases** (`edge_cases_*`): 4 error path and boundary tests
-- **WebGL2 features** (`webgl2_*`): 5 core feature tests
-- **Extensions** (`extensions_*`): 2 extension-specific seeds
-- **Integrated** (`integrated_*`): 2 multi-feature integration tests
-- **Rendering/Multipass**: 3 pipeline tests
+**`agent_outputs/` (38 files):** Recent agent-generated mutation seeds, batches b55–b66, targeting specific feature-combination and reference-card coverage gaps. New seeds typically land here.
 
-**`samples-webgl/` (66 files):**
-- **Creative**: 13 visual effect demos
-- **WebGL2 core**: 11 feature tests
-- **Extensions**: 12 extension tests
-- **Multipass**: 5 rendering pipeline tests
-- **Errors**: 5 error handling tests
-- **Limits**: 4 WebGL limit tests
-- **Integrated**: 5 combination tests
-- **Other** (compute, texture, shaders, rendering, resource): 11 tests
+**`samples-webgl/` (367 files):** Bulk corpus, organized into themed subdirectories.
+
+| Subdirectory | Files | Purpose |
+|---|---|---|
+| `mutations/` | 259 | Mutation seeds, batches b1–b54 (the corpus core) |
+| `seeds/` | 21 | Hypercomplex / high-biomass seeds combining many features |
+| `creative/` | 18 | Visual effect demos |
+| `webgl2/` | 16 | WebGL2 core feature tests |
+| `extensions/` | 14 | Extension-specific seeds |
+| `integrated/` | 7 | Multi-feature integration tests |
+| `multipass/` | 6 | Rendering pipeline tests |
+| `errors/` | 5 | Error path and boundary tests |
+| `rendering/` | 4 | Rendering pipeline tests |
+| `limits/` | 4 | WebGL limit tests |
+| `edge_cases/` | 4 | Error path and boundary tests |
+| `texture_tech/` | 3 | Texture technique tests |
+| `compute/` | 3 | Compute-style patterns |
+| `shaders/` | 2 | Shader-focused tests |
+| `resource/` | 1 | Resource lifecycle test |
 
 ### Error Handling Strategy
 
@@ -234,29 +246,35 @@ Python-based Playwright test runner (~960 lines) that:
 | `cleanup_js_comments.py` | Strip comments from HTML test files |
 | `check_gl.py` | WebGL capability detection via Playwright |
 | `verify_firefox.py` | Firefox WebGL validation with ASAN logging |
-| `scripts/feature_matrix.sh` | Feature combination matrix analysis |
-| `scripts/analyze_corpus.sh` | Corpus statistics and analysis |
+| `scripts/feature_coverage.py` | Primary AST-based coverage tool (matrix, combinations, API surface, GLSL functions/variables, snapshots) |
+| `scripts/feature_matrix.sh` | Legacy shell wrapper around feature_coverage.py |
+| `scripts/analyze_corpus.sh` | Corpus statistics (file count, line count, try-catch/gl.* call density) |
+| `scripts/api_audit/` | Python package: tree-sitter-based JS parsing, GLSL extraction, feature detection, combination matrix |
 
 ## Corpus Statistics
 
 | Metric | Value |
 |--------|-------|
-| Total HTML test files | 367 (301 + 66) |
-| Mutation seed batches | 54 (b1-b54) |
-| Mutation seeds | 259 |
-| Iterative rounds completed | 8 |
-| Feature categories covered | 18 |
-| Average seed complexity | ~260 lines |
-| Test result JSON files | ~370 |
-| Screenshots | ~383 |
+| Total HTML test files | 405 (38 in `agent_outputs/`, 367 in `samples-webgl/`) |
+| Mutation seed batches | 66 (b1–b66; b1–b54 in `samples-webgl/mutations/`, b55–b66 in `agent_outputs/`) |
+| Mutation seeds | 297 |
+| Iterative rounds completed | 8 (round 8 complete; ongoing follow-up batches b62–b66 closing PDF reference gaps) |
+| Feature categories tracked | 23 (matrix) + 6 ubiquitous |
+| Average seed complexity | ~250 lines |
+| Total `gl.*` API calls | ~40,700 (avg 100/seed) |
+| Try-catch blocks | ~3,700 (avg 7.3/seed) |
 
-### Coverage Milestones (Rounds 6-8)
+Run `bash scripts/analyze_corpus.sh` for live numbers.
+
+### Coverage Milestones
 
 - All critical 2-way feature gaps closed
 - All critical/high/medium 3-way feature gaps closed (83% reduction)
-- Transform Feedback: 20.8% coverage (exceeded 20% threshold)
-- Pixel Operations: 20.1% coverage (exceeded 20% threshold)
-- Texture Arrays: 21.6% coverage (exceeded 20% threshold)
+- WebGL 2.0 reference card: **100% coverage** across methods (178/178), constants (235/235), GLSL builtin functions (44/44), GLSL builtin variables (22/22)
+- API surface: **225/225 methods exercised (100%)** across the corpus
+- GLSL builtins: **54/54** (function union of surface + categories)
+- 3-way feature combinations: **467/467 covered (100%)** topology-connected combos
+- Per-category coverage thresholds (Transform Feedback, Pixel Operations, Texture Arrays, etc.) all exceeded
 
 ## Browser Compatibility
 
@@ -279,19 +297,43 @@ Python-based Playwright test runner (~960 lines) that:
 9. **Strip all `console.log(e)` statements** - replace with `catch(e) {}`
 10. Final validation run - verify `passed: true` and `console_logs: []`
 11. Commit clean seed file (no console.log statements)
-12. Run `scripts/feature_matrix.sh` to update coverage analysis
+12. Run `python3 scripts/feature_coverage.py` to verify category coverage; add `--combinations 3` to check that the new seed closes its target gap
 
 ## File Organization
 
 ```
 samples-webgl/
-├── agent_outputs/           # Generated seeds (301 HTML + ~307 JSON results)
-├── samples-webgl/           # Baseline test corpus (66 HTML + 61 JSON results)
-├── screenshots/             # Visual output from test execution (~383 PNGs)
+├── agent_outputs/           # Recent agent-generated seeds (38 HTML, batches b55–b66)
+├── samples-webgl/           # Bulk corpus (367 HTML across themed subdirs)
+│   ├── mutations/           # 259 mutation seeds, batches b1–b54
+│   ├── seeds/               # 21 hypercomplex / high-biomass seeds
+│   ├── creative/            # 18 visual effect demos
+│   ├── webgl2/              # 16 WebGL2 core feature tests
+│   ├── extensions/          # 14 extension-specific seeds
+│   ├── integrated/          # 7 multi-feature integration tests
+│   ├── multipass/           # 6 rendering pipeline tests
+│   ├── errors/              # 5 error path tests
+│   ├── rendering/           # 4 rendering pipeline tests
+│   ├── limits/              # 4 WebGL limit tests
+│   ├── edge_cases/          # 4 boundary tests
+│   ├── texture_tech/        # 3 texture technique tests
+│   ├── compute/             # 3 compute-style pattern tests
+│   ├── shaders/             # 2 shader-focused tests
+│   └── resource/            # 1 resource lifecycle test
+├── screenshots/             # Visual output from test execution
 ├── docs/
-│   ├── plans/               # Design docs and round completion summaries (15 files)
+│   ├── plans/               # Design docs and round completion summaries
+│   ├── snapshots/           # Coverage snapshots (JSON, used by --snapshot/--diff)
+│   ├── feature_categories.json    # AST-based feature category definitions
+│   ├── webgl_api_surface.json     # WebGL2 API surface (methods, constants, GLSL builtins/variables)
+│   ├── interaction_topology.json  # Connected-combo topology for n-way matrix
 │   └── *.md                 # Reference docs (Radamsa guide, spec docs, etc.)
-├── scripts/                 # Analysis tools (feature_matrix.sh, analyze_corpus.sh)
+├── scripts/
+│   ├── feature_coverage.py  # Primary coverage tool
+│   ├── feature_matrix.sh    # Legacy shell wrapper
+│   ├── analyze_corpus.sh    # Corpus statistics
+│   └── api_audit/           # Python package: parsing, GLSL, feature detection, combination matrix
+├── tests/fixtures/          # Synthetic seeds used by api_audit unit tests
 ├── old_docs/                # Archived documentation
 ├── venv/                    # Python virtual environment (auto-created)
 ├── webgl_test_runner.py     # Main test runner
