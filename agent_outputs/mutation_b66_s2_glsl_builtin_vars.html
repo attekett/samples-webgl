@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const instanceCount = 8;
+    const vertexCount = 6;
+    const drawMode = gl.TRIANGLES;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+
+    let vs, fs, program, vao, vbuf;
+
+    try {
+        vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+out gl_PerVertex {
+    vec4 gl_Position;
+    float gl_PointSize;
+};
+in vec3 aPos;
+out float vDepthDiff;
+out float vFar;
+out float vNear;
+flat out int vId;
+flat out int vInstId;
+flat out int vMaxAttribs;
+flat out int vMaxVtxUniforms;
+flat out int vMaxVtxOutputs;
+flat out int vMaxVtxTextures;
+flat out int vMinTexelOffset;
+void main() {
+    int vid = gl_VertexID;
+    int iid = gl_InstanceID;
+    int maxAttribs = gl_MaxVertexAttribs;
+    int maxVtxUniforms = gl_MaxVertexUniformVectors;
+    int maxVtxOutputs = gl_MaxVertexOutputVectors;
+    int maxVtxTextures = gl_MaxVertexTextureImageUnits;
+    int minTexelOff = gl_MinProgramTexelOffset;
+    float[16] depthSamples;
+    for (int i = 0; i < 16; i++) {
+        depthSamples[i] = gl_DepthRange.diff * float(i) / 16.0;
+    }
+    float scale = 1.0 + float(iid) * 0.01;
+    vec2 instanceOffset = vec2(float(iid % 4) * 0.05, float(iid / 4) * 0.05);
+    gl_Position = vec4(aPos.xy * scale + instanceOffset, aPos.z, 1.0);
+    gl_PointSize = float(maxAttribs) * 0.5 + float(vid);
+    vDepthDiff = gl_DepthRange.diff;
+    vFar = gl_DepthRange.far;
+    vNear = gl_DepthRange.near;
+    vId = vid;
+    vInstId = iid;
+    vMaxAttribs = maxAttribs;
+    vMaxVtxUniforms = maxVtxUniforms;
+    vMaxVtxOutputs = maxVtxOutputs;
+    vMaxVtxTextures = maxVtxTextures;
+    vMinTexelOffset = minTexelOff;
+}`);
+        gl.compileShader(vs);
+        const vsLog = gl.getShaderInfoLog(vs);
+        const vsOk = gl.getShaderParameter(vs, gl.COMPILE_STATUS);
+    } catch(e) {}
+
+    try {
+        fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+precision highp float;
+in float vDepthDiff;
+in float vFar;
+in float vNear;
+flat in int vId;
+flat in int vInstId;
+flat in int vMaxAttribs;
+flat in int vMaxVtxUniforms;
+flat in int vMaxVtxOutputs;
+flat in int vMaxVtxTextures;
+flat in int vMinTexelOffset;
+layout(location = 0) out vec4 fragColor;
+void main() {
+    gl_DepthRangeParameters dr = gl_DepthRange;
+    int maxFragInputs = gl_MaxFragmentInputVectors;
+    int maxFragUniforms = gl_MaxFragmentUniformVectors;
+    int maxTexImage = gl_MaxTextureImageUnits;
+    int maxCombinedTex = gl_MaxCombinedTextureImageUnits;
+    int maxDrawBufs = gl_MaxDrawBuffers;
+    int maxTexelOff = gl_MaxProgramTexelOffset;
+
+    float facing = gl_FrontFacing ? 1.0 : -1.0;
+    vec4 fc = gl_FragCoord;
+    vec2 pc = gl_PointCoord;
+    float depthMix = (gl_FragCoord.z - dr.near) / max(dr.diff, 0.0001);
+
+    float lim = float(maxFragInputs) + float(maxFragUniforms) +
+                float(maxTexImage) + float(maxCombinedTex) +
+                float(maxDrawBufs) + float(maxTexelOff);
+    float idMix = float(vId) / 32.0 + float(vInstId) / 32.0;
+    float vtxLim = float(vMaxAttribs + vMaxVtxUniforms + vMaxVtxOutputs +
+                         vMaxVtxTextures - vMinTexelOffset);
+
+    fragColor = vec4(
+        clamp(fc.x / 256.0 * facing, 0.0, 1.0),
+        clamp(pc.x + depthMix, 0.0, 1.0),
+        clamp(idMix + vtxLim / lim, 0.0, 1.0),
+        1.0
+    );
+    gl_FragDepth = clamp(gl_FragCoord.z + vDepthDiff * 0.001, 0.0, 1.0);
+}`);
+        gl.compileShader(fs);
+        const fsLog = gl.getShaderInfoLog(fs);
+        const fsOk = gl.getShaderParameter(fs, gl.COMPILE_STATUS);
+    } catch(e) {}
+
+    try {
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        const linkOk = gl.getProgramParameter(program, gl.LINK_STATUS);
+        const linkLog = gl.getProgramInfoLog(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        vbuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vbuf);
+        const verts = new Float32Array([
+            -0.5, -0.5, 0,
+             0.5, -0.5, 0,
+             0.5,  0.5, 0,
+            -0.5, -0.5, 0,
+             0.5,  0.5, 0,
+            -0.5,  0.5, 0
+        ]);
+        gl.bufferData(bufferTarget, verts, bufferUsage);
+
+        const posLoc = gl.getAttribLocation(program, 'aPos');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 12, 0);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.depthRange(0.0, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.CULL_FACE);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArraysInstanced(drawMode, 0, vertexCount, instanceCount);
+
+        gl.depthRange(0.1, 0.9);
+        gl.drawArraysInstanced(drawMode, 0, vertexCount, instanceCount);
+
+        gl.depthRange(0.25, 0.75);
+        gl.drawArraysInstanced(drawMode, 0, vertexCount, instanceCount);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.useProgram(null);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        gl.deleteProgram(program);
+        gl.deleteBuffer(vbuf);
+        gl.deleteVertexArray(vao);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
