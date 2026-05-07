@@ -36,3 +36,29 @@ def test_compute_method_coverage_empty_surface():
     assert result["total"] == 0
     assert result["pct"] == 0
     assert result["never_seen"] == []
+
+
+def test_analyze_file_returns_uncategorized_methods(api_surface, feature_categories, tmp_path):
+    """Methods called in a seed but not tied to any feature category must
+    still appear in the file's all_methods set, so the API surface coverage
+    report can see them."""
+    from feature_coverage import analyze_file
+    seed = tmp_path / "uncategorized.html"
+    seed.write_text("""<!DOCTYPE html><html><body>
+    <canvas id="c"></canvas><script>
+    const gl = document.getElementById('c').getContext('webgl2');
+    gl.enable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.cullFace(gl.BACK);
+    gl.frontFace(gl.CCW);
+    gl.lineWidth(1.0);
+    gl.polygonOffset(0, 0);
+    gl.getError();
+    gl.getExtension('OES_texture_float');
+    </script></body></html>""")
+    fp = analyze_file(seed, api_surface, feature_categories)
+    assert fp is not None
+    assert "all_methods" in fp
+    for m in ("enable", "disable", "cullFace", "frontFace", "lineWidth",
+              "polygonOffset", "getError", "getExtension"):
+        assert m in fp["all_methods"], f"{m} missing from all_methods"

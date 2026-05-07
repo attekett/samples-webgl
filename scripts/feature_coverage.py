@@ -174,8 +174,9 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     content = filepath.read_text()
     if cache:
         cached = cache.lookup(filepath.name, content, config_hash=config_hash)
-        if cached and "features" in cached:
-            return cached
+        if cached and "features" in cached and "all_methods" in cached:
+            return {**cached, "all_methods": set(cached.get("all_methods", [])),
+                    "glsl_builtins": set(cached.get("glsl_builtins", []))}
 
     script = extract_script(content)
     if not script.strip():
@@ -185,7 +186,12 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     consts = resolve_constants(root)
     ctx = detect_context(root, consts)
     calls = analyze_calls(root, ctx, consts, surface)
-    glsl = extract_glsl_builtins(root, ctx, consts, surface)
+
+    category_glsl = []
+    for cat in cats_config.get("categories", {}).values():
+        category_glsl.extend(cat.get("glsl_functions", []))
+    glsl = extract_glsl_builtins(root, ctx, consts, surface,
+                                 extra_builtins=category_glsl)
 
     result = {
         "methods": {k: len(v) for k, v in calls.methods.items()},
@@ -214,15 +220,20 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
         cats_config,
         extensions=set(ctx.extensions))
 
+    all_methods = set(result["methods"].keys())
+    for ext_methods in result["extension_methods"].values():
+        all_methods.update(ext_methods.keys())
+
     if cache:
         cache.store(filepath.name, content,
                     {"features": fp["features"],
                      "feature_depth": fp["feature_depth"],
                      "methods_per_feature": fp.get("methods_per_feature", {}),
+                     "all_methods": sorted(all_methods),
                      "glsl_builtins": list(glsl)},
                     config_hash=config_hash)
 
-    return {**fp, "glsl_builtins": set(glsl)}
+    return {**fp, "glsl_builtins": set(glsl), "all_methods": all_methods}
 
 
 def main():
@@ -286,8 +297,7 @@ def main():
             if feat not in feature_depths:
                 feature_depths[feat] = {"present": 0, "meaningful": 0, "deep": 0}
             feature_depths[feat][fd] += 1
-        for feat_methods in fp.get("methods_per_feature", {}).values():
-            all_seen_methods.update(feat_methods)
+        all_seen_methods.update(fp.get("all_methods", set()))
         corpus_fingerprints[str(f)] = {
             "features": fp["features"],
             "methods_per_feature": fp.get("methods_per_feature", {}),
@@ -380,11 +390,13 @@ def main():
         all_builtins = set()
         for cat in cats_config.get("categories", {}).values():
             all_builtins.update(cat.get("glsl_functions", []))
+        for category_names in surface.get("glsl_builtins", {}).values():
+            all_builtins.update(category_names)
         print("## GLSL Builtin Coverage")
+        used_in_known = set(glsl_counts) & all_builtins
         never = sorted(all_builtins - set(glsl_counts))
         used = sorted(glsl_counts.items(), key=lambda x: x[1], reverse=True)
-        covered_defined = set(glsl_counts) & all_builtins
-        print(f"Used builtins ({len(covered_defined)}/{len(all_builtins)}):")
+        print(f"Used builtins ({len(used_in_known)}/{len(all_builtins)}):")
         for name, count in used:
             print(f"  {name:<30} {count:>4} seeds")
         if never:
