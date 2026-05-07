@@ -1,0 +1,157 @@
+{
+  "attributes": {
+    "seeds": 370,
+    "total": 410,
+    "pct": 90.2
+  },
+  "blending": {
+    "seeds": 163,
+    "total": 410,
+    "pct": 39.8
+  },
+  "buffer_ops": {
+    "seeds": 395,
+    "total": 410,
+    "pct": 96.3
+  },
+  "draw_calls": {
+    "seeds": 407,
+    "total": 410,
+    "pct": 99.3
+  },
+  "pipeline_state": {
+    "seeds": 410,
+    "total": 410,
+    "pct": 100.0
+  },
+  "shader_pipeline": {
+    "seeds": 400,
+    "total": 410,
+    "pct": 97.6
+  },
+  "uniforms": {
+    "seeds": 201,
+    "total": 410,
+    "pct": 49.0
+  },
+  "vao": {
+    "seeds": 174,
+    "total": 410,
+    "pct": 42.4
+  },
+  "viewport_scissor": {
+    "seeds": 317,
+    "total": 410,
+    "pct": 77.3
+  },
+  "transform_feedback": {
+    "seeds": 110,
+    "total": 410,
+    "pct": 26.8
+  },
+  "ubo": {
+    "seeds": 108,
+    "total": 410,
+    "pct": 26.3
+  },
+  "depth_stencil": {
+    "seeds": 130,
+    "total": 410,
+    "pct": 31.7
+  },
+  "ext_color_buffer_float": {
+    "seeds": 52,
+    "total": 410,
+    "pct": 12.7
+  },
+  "fbo": {
+    "seeds": 226,
+    "total": 410,
+    "pct": 55.1
+  },
+  "instancing": {
+    "seeds": 69,
+    "total": 410,
+    "pct": 16.8
+  },
+  "renderbuffer": {
+    "seeds": 76,
+    "total": 410,
+    "pct": 18.5
+  },
+  "texture_ops": {
+    "seeds": 288,
+    "total": 410,
+    "pct": 70.2
+  },
+  "pixel_ops": {
+    "seeds": 63,
+    "total": 410,
+    "pct": 15.4
+  },
+  "mrt": {
+    "seeds": 78,
+    "total": 410,
+    "pct": 19.0
+  },
+  "integer_textures": {
+    "seeds": 48,
+    "total": 410,
+    "pct": 11.7
+  },
+  "sync": {
+    "seeds": 55,
+    "total": 410,
+    "pct": 13.4
+  },
+  "query": {
+    "seeds": 69,
+    "total": 410,
+    "pct": 16.8
+  },
+  "texture_3d": {
+    "seeds": 114,
+    "total": 410,
+    "pct": 27.8
+  },
+  "texture_arrays": {
+    "seeds": 55,
+    "total": 410,
+    "pct": 13.4
+  },
+  "rasterizer_state": {
+    "seeds": 55,
+    "total": 410,
+    "pct": 13.4
+  },
+  "sampler": {
+    "seeds": 72,
+    "total": 410,
+    "pct": 17.6
+  },
+  "ext_compressed_textures": {
+    "seeds": 8,
+    "total": 410,
+    "pct": 2.0
+  },
+  "ext_float_textures": {
+    "seeds": 14,
+    "total": 410,
+    "pct": 3.4
+  },
+  "ext_texture_filter_anisotropic": {
+    "seeds": 14,
+    "total": 410,
+    "pct": 3.4
+  },
+  "ext_disjoint_timer_query": {
+    "seeds": 2,
+    "total": 410,
+    "pct": 0.5
+  },
+  "ext_draw_buffers_indexed": {
+    "seeds": 6,
+    "total": 410,
+    "pct": 1.5
+  }
+}

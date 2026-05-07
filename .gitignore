@@ -15,6 +15,7 @@ screenshots/
 !docs/interaction_topology.json
 !docs/feature_categories.json
 !docs/webgl_api_surface.json
+!docs/snapshots/*.json
 *.log
 
 # IDE
