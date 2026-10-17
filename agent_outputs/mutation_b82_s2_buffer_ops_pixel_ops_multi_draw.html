@@ -153,7 +153,12 @@ void main() {
 
         const readBuf = new Uint8Array(16 * 16 * 4);
         gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
-        gl.readPixels(0, 0, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, readBuf);
+        var packBuf = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuf);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, readBuf.byteLength, gl.STREAM_READ);
+        gl.readPixels(0, 0, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, readBuf);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
 
         var copyTex = gl.createTexture();
         gl.bindTexture(texTarget, copyTex);

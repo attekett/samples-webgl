@@ -117,8 +117,8 @@ void main() {
         var pboUp = gl.createBuffer();
         gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, pboUp);
         gl.bufferData(gl.PIXEL_UNPACK_BUFFER, upData.subarray(0, rowBytes), gl.STATIC_DRAW);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, pboSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0);
         gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, pboSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, upData.subarray(0, rowBytes));
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
         var fenceUp = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.flush();

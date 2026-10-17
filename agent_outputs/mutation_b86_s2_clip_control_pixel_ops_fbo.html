@@ -184,7 +184,12 @@ void main() {
         gl.drawElements(drawMode, quadVerts * (layerCount - 1), gl.UNSIGNED_SHORT, quadVerts * 2);
 
         pixelBuf = new Uint8Array(texSize * texSize * 4);
-        gl.readPixels(0, 0, texSize, texSize, gl.RGBA, gl.UNSIGNED_BYTE, pixelBuf);
+        var packBuf = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuf);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, pixelBuf.byteLength, gl.STREAM_READ);
+        gl.readPixels(0, 0, texSize, texSize, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, pixelBuf);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
 
         gl.bindTexture(texTarget, copyTex);
         gl.copyTexSubImage2D(texTarget, 0, 0, 0, 0, 0, copySize, copySize);

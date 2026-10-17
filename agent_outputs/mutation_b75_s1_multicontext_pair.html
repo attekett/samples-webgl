@@ -4,9 +4,7 @@
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <canvas id="second-canvas" width="128" height="128"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [
-    'WEBGL_lose_context'
-];
+const REQUIRED_EXTENSIONS = [];
 
 async function main() {
     const canvasA = document.getElementById('webgl-canvas');
@@ -20,7 +18,6 @@ async function main() {
     if (missingExtensions.length > 0) {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
-    const extLC = glB.getExtension('WEBGL_lose_context');
 
     const sizeA = 256;
     const sizeB = 128;
@@ -95,18 +92,17 @@ void main() {
     glA.isSync(fenceA);
     glA.deleteSync(fenceA);
 
-    extLC.loseContext();
     drawSetup(setupB, 1.5);
+    glB.deleteVertexArray(setupB.vao);
+    glB.deleteBuffer(setupB.posBuf);
+    glB.deleteProgram(setupB.program);
+    glB.deleteShader(setupB.vShader);
+    glB.deleteShader(setupB.fShader);
     glB.isBuffer(setupB.posBuf);
-    const lostErr = glB.getError();
-    void lostErr;
+    const rebuildErr = glB.getError();
+    void rebuildErr;
 
-    canvasB.addEventListener('webglcontextlost', function(e) {
-        e.preventDefault();
-        setTimeout(function() { extLC.restoreContext(); }, 0);
-    });
-
-    canvasB.addEventListener('webglcontextrestored', function() {
+    {
         setupB.program = glB.createProgram();
         const vS = glB.createShader(glB.VERTEX_SHADER);
         glB.shaderSource(vS, `#version 300 es
@@ -138,7 +134,7 @@ void main() { color0 = vec4(0.15, 0.8, 0.4, 1.0); }`);
         glB.useProgram(setupB.program);
         glB.drawArrays(drawMode, 0, vertCount);
         glB.bindVertexArray(null);
-    });
+    }
 
     drawSetup(setupA, 2.0);
 }

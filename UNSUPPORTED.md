@@ -78,9 +78,9 @@ This file documents WebGL extensions that are not supported in the current test 
 - **Alternative**: Use standard query types (ANY_SAMPLES_PASSED, TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN)
 
 ### WEBGL_clip_cull_distance
-- **Status**: Not exposed by the local Chrome 155 ANGLE-Vulkan lane or Firefox (2026-10-17); seeds throw `UNSUPPORTED_EXTENSIONS`
+- **Status**: Not exposed by Firefox or the Chrome 155 ANGLE-Vulkan lane; exposed by Chrome with ANGLE's OpenGL backend (2026-10-17)
 - **Used in**: `mutation_b76_s5`, `mutation_b84_s1`–`s5`, `mutation_b93_s1`, `mutation_b98_s9`
-- **Validation**: Re-run in a browser that exposes it
+- **Validation**: Run Chromium with `--browser-config config/angle_gl.json`
 
 ### Chromium-only extensions
 - **Status**: `EXT_clip_control`, `EXT_conservative_depth`, `EXT_polygon_offset_clamp`, `EXT_texture_mirror_clamp_to_edge`, `WEBGL_stencil_texturing`, `OES_sample_variables`, `OES_shader_multisample_interpolation`, and `NV_shader_noperspective_interpolation` are missing in Firefox but available in Chrome with `--browser-config config/angle_vulkan.json`

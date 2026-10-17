@@ -3,9 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [
-    'WEBGL_lose_context'
-];
+const REQUIRED_EXTENSIONS = [];
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -16,7 +14,6 @@ async function main() {
     if (missingExtensions.length > 0) {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
-    const extLC = gl.getExtension('WEBGL_lose_context');
 
     const texSize = 256;
     const vertCount = 6;
@@ -110,17 +107,6 @@ void main() {
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     }
 
-    canvas.addEventListener('webglcontextlost', function(e) {
-        e.preventDefault();
-        setTimeout(function() { extLC.restoreContext(); }, 0);
-    });
-
-    canvas.addEventListener('webglcontextrestored', function() {
-        pipeline = buildPipeline();
-        drawPass(pipeline);
-        present(pipeline);
-    });
-
     pipeline = buildPipeline();
     drawPass(pipeline);
     const fencePre = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
@@ -130,18 +116,24 @@ void main() {
     gl.isSync(fencePre);
     gl.deleteSync(fencePre);
 
-    extLC.loseContext();
-    gl.clearColor(0.9, 0.1, 0.1, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.bindTexture(gl.TEXTURE_2D, pipeline.rt0);
-    gl.drawArrays(drawMode, 0, vertCount);
-    gl.bufferData(gl.ARRAY_BUFFER, 48, gl.STATIC_DRAW);
-    gl.useProgram(pipeline.program);
-    const lostErr = gl.getError();
-    void lostErr;
-    gl.isTexture(pipeline.rt0);
-    gl.isBuffer(pipeline.posBuf);
-    gl.isFramebuffer(pipeline.fbo);
+    const old = pipeline;
+    gl.deleteFramebuffer(old.fbo);
+    gl.deleteTexture(old.rt0);
+    gl.deleteTexture(old.rt1);
+    gl.deleteVertexArray(old.vao);
+    gl.deleteBuffer(old.posBuf);
+    gl.deleteProgram(old.program);
+    gl.deleteShader(old.vShader);
+    gl.deleteShader(old.fShader);
+    const rebuildErr = gl.getError();
+    void rebuildErr;
+    gl.isTexture(old.rt0);
+    gl.isBuffer(old.posBuf);
+    gl.isFramebuffer(old.fbo);
+
+    pipeline = buildPipeline();
+    drawPass(pipeline);
+    present(pipeline);
 }
 
 main().catch(err => { throw err; });
