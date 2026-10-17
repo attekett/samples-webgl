@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = ['WEBGL_multi_draw'];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error('WebGL2 not supported');
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length) throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    const multiDraw = gl.getExtension('WEBGL_multi_draw');
+    window.__done = false;
+
+    const canvasSize = 256;
+    const vertexCount = 3;
+    const cycleCount = 3;
+    const bufferSize = 9 * 1024 * 1024;
+    const smallSize = 24;
+    const firsts = new Int32Array([0, 0]);
+    const counts = new Int32Array([0, vertexCount]);
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.DYNAMIC_DRAW;
+    const drawMode = gl.TRIANGLES;
+    const floatType = gl.FLOAT;
+
+    let programA, programB, vertexBuffer, colorBuffer, vaoA, vaoB;
+
+    try {
+        const vertexA = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexA, `#version 300 es
+layout(location = 0) in vec2 aPosition;
+layout(location = 2) in vec3 aColor;
+out vec3 vColor;
+void main() {
+    gl_Position = vec4(aPosition * 0.42 + vec2(-0.46, 0.0), 0.0, 1.0);
+    vColor = aColor;
+}`);
+        gl.compileShader(vertexA);
+        const vertexB = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexB, `#version 300 es
+layout(location = 2) in vec2 aPosition;
+out vec3 vColor;
+void main() {
+    gl_Position = vec4(aPosition * 0.42 + vec2(0.46, 0.0), 0.0, 1.0);
+    vColor = vec3(0.2, 0.8, 0.95);
+}`);
+        gl.compileShader(vertexB);
+        const fragment = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragment, `#version 300 es
+precision highp float;
+in vec3 vColor;
+out vec4 fragColor;
+void main() { fragColor = vec4(vColor, 1.0); }`);
+        gl.compileShader(fragment);
+        programA = gl.createProgram();
+        gl.attachShader(programA, vertexA);
+        gl.attachShader(programA, fragment);
+        gl.linkProgram(programA);
+        programB = gl.createProgram();
+        gl.attachShader(programB, vertexB);
+        gl.attachShader(programB, fragment);
+        gl.linkProgram(programB);
+    } catch(e) {}
+
+    try {
+        vertexBuffer = gl.createBuffer();
+        colorBuffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vertexBuffer);
+        gl.bufferData(bufferTarget, bufferSize, bufferUsage);
+        gl.bufferSubData(bufferTarget, 0, new Float32Array([-0.8, -0.8, 0.8, -0.8, 0.0, 0.8]));
+        gl.bindBuffer(bufferTarget, colorBuffer);
+        gl.bufferData(bufferTarget, new Float32Array([0.95, 0.3, 0.5, 0.3, 0.95, 0.5, 0.95, 0.8, 0.2]), gl.STATIC_DRAW);
+        gl.bindBuffer(bufferTarget, vertexBuffer);
+    } catch(e) {}
+
+    try {
+        vaoA = gl.createVertexArray();
+        vaoB = gl.createVertexArray();
+        gl.bindVertexArray(vaoA);
+        gl.bindBuffer(bufferTarget, vertexBuffer);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, floatType, false, 8, 0);
+        gl.bindBuffer(bufferTarget, colorBuffer);
+        gl.enableVertexAttribArray(2);
+        gl.vertexAttribPointer(2, 3, floatType, false, 12, 0);
+        gl.bindVertexArray(vaoB);
+        gl.bindBuffer(bufferTarget, vertexBuffer);
+        gl.enableVertexAttribArray(2);
+        gl.vertexAttribPointer(2, 2, floatType, false, 8, 0);
+        gl.bindVertexArray(vaoA);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, canvasSize, canvasSize);
+        gl.clearColor(0.04, 0.05, 0.12, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(programA);
+        gl.bindVertexArray(vaoA);
+        gl.drawArrays(drawMode, 0, vertexCount);
+        gl.finish();
+    } catch(e) {}
+
+    for (let cycle = 0; cycle < cycleCount; cycle++) {
+        try {
+            gl.bindVertexArray(vaoA);
+            gl.disableVertexAttribArray(0);
+            gl.vertexAttrib4f(0, -0.5, -0.5, 0.0, 1.0);
+            multiDraw.multiDrawArraysWEBGL(drawMode, firsts, 0, counts, 0, 2);
+            gl.enableVertexAttribArray(0);
+            gl.drawArrays(drawMode, 0, vertexCount);
+        } catch(e) {}
+
+        try {
+            gl.bindVertexArray(vaoB);
+            gl.useProgram(programB);
+            multiDraw.multiDrawArraysWEBGL(drawMode, new Int32Array([0]), 0, new Int32Array([0]), 0, 1);
+            gl.bindBuffer(bufferTarget, vertexBuffer);
+            gl.bufferData(bufferTarget, smallSize, bufferUsage);
+            gl.bufferData(bufferTarget, bufferSize, bufferUsage);
+            gl.bufferSubData(bufferTarget, 0, new Float32Array([-0.8, -0.8, 0.8, -0.8, 0.0, 0.8]));
+            gl.drawArrays(drawMode, 0, vertexCount);
+            gl.finish();
+        } catch(e) {}
+
+        try {
+            gl.bindVertexArray(vaoA);
+            gl.useProgram(programA);
+            gl.bindBuffer(bufferTarget, colorBuffer);
+            gl.bufferData(bufferTarget, new Float32Array([0.2, 0.7, 0.9, 0.8, 0.3, 0.9, 0.9, 0.8, 0.2]), gl.STATIC_DRAW);
+            gl.drawArrays(drawMode, 0, 3);
+        } catch(e) {}
+    }
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.deleteVertexArray(vaoB);
+        gl.deleteVertexArray(vaoA);
+        gl.deleteBuffer(colorBuffer);
+        gl.deleteBuffer(vertexBuffer);
+    } catch(e) {}
+    if (gl.isContextLost()) throw new Error('WebGL context lost');
+    if (gl.getError() !== gl.NO_ERROR) throw new Error('WebGL operation failed');
+    window.__done = true;
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[2026-10-16 16:06:07] Starting Grizzly (248077)
+[2026-10-16 16:06:07] Browser display mode: headless
+[2026-10-16 16:06:07] Ignoring: log-limit, timeout
+[2026-10-16 16:06:07] Using time limit: 10s, timeout: 25s
+[2026-10-16 16:06:08] HTTPS support requires NSS certutil.
+[2026-10-16 16:06:08] Target does not support HTTPS, using HTTP
+[2026-10-16 16:06:08] Results will be stored in '/tmp/webgl-grizzly-campaign-20261016/firefox/webgl-mutator-fast/out/results'
+[2026-10-16 16:06:08] 1000 iteration(s) will be attempted
+[2026-10-16 16:06:08] Runtime is limited to 45s
+[2026-10-16 16:06:11] I0001-R00
+[2026-10-16 16:06:12] I0002-R00
+[2026-10-16 16:06:12] I0004-R00
+[2026-10-16 16:06:13] I0008-R00
+[2026-10-16 16:06:14] I0016-R00
+[2026-10-16 16:06:17] I0032-R00
+[2026-10-16 16:06:23] I0064-R00
+[2026-10-16 16:06:35] I0128-R00
+[2026-10-16 16:06:53] Hit runtime limit (45s)
+[2026-10-16 16:06:53] Shutting down...
+[2026-10-16 16:06:54] Done.

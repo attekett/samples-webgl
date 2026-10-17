@@ -12,11 +12,15 @@ build/
 # Test outputs
 screenshots/
 *.json
+!config/angle_vulkan.json
 !docs/interaction_topology.json
 !docs/feature_categories.json
 !docs/webgl_api_surface.json
 !docs/snapshots/*.json
+!agent_outputs/webgl_mutator_eval_2026-10-16.json
+!agent_outputs/webgl_mutator_eval_extension_2026-10-16.json
 *.log
+!agent_outputs/webgl_grizzly_eval_2026-10-16/*.log
 
 # IDE
 .vscode/

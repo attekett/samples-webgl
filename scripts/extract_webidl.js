@@ -560,6 +560,7 @@ function extractMethods(parsedIdl, webglVersion) {
 
       const overload = {
         arity: arity,
+        webgl_version: version,
         params: params.map(p => {
           const entry = { name: p.name, type: p.type };
           if (p.optional) entry.optional = true;
@@ -571,13 +572,15 @@ function extractMethods(parsedIdl, webglVersion) {
         methods[methodName] = { webgl_version: version, overloads: [] };
       }
 
-      const isDuplicate = methods[methodName].overloads.some(existing => {
+      const existingOverload = methods[methodName].overloads.find(existing => {
         if (existing.params.length !== overload.params.length) return false;
         return existing.params.every((p, i) => p.type === overload.params[i].type);
       });
 
-      if (!isDuplicate) {
+      if (!existingOverload) {
         methods[methodName].overloads.push(overload);
+      } else {
+        existingOverload.webgl_version = Math.min(existingOverload.webgl_version, version);
       }
 
       if (version < methods[methodName].webgl_version) {
@@ -795,7 +798,7 @@ const EXTENSIONS = {
   },
   'WEBGL_multi_draw': {
     methods: {
-      'multiDrawArraysWEBGL': { overloads: [{ arity: 5, params: [
+      'multiDrawArraysWEBGL': { overloads: [{ arity: 6, params: [
         { name: 'mode', type: 'GLenum' },
         { name: 'firstsList', type: 'Int32Array or sequence<GLint>' },
         { name: 'firstsOffset', type: 'GLuint' },
@@ -803,7 +806,7 @@ const EXTENSIONS = {
         { name: 'countsOffset', type: 'GLuint' },
         { name: 'drawcount', type: 'GLsizei' }
       ] }] },
-      'multiDrawElementsWEBGL': { overloads: [{ arity: 6, params: [
+      'multiDrawElementsWEBGL': { overloads: [{ arity: 7, params: [
         { name: 'mode', type: 'GLenum' },
         { name: 'countsList', type: 'Int32Array or sequence<GLsizei>' },
         { name: 'countsOffset', type: 'GLuint' },
@@ -812,7 +815,7 @@ const EXTENSIONS = {
         { name: 'offsetsOffset', type: 'GLuint' },
         { name: 'drawcount', type: 'GLsizei' }
       ] }] },
-      'multiDrawArraysInstancedWEBGL': { overloads: [{ arity: 7, params: [
+      'multiDrawArraysInstancedWEBGL': { overloads: [{ arity: 8, params: [
         { name: 'mode', type: 'GLenum' },
         { name: 'firstsList', type: 'Int32Array or sequence<GLint>' },
         { name: 'firstsOffset', type: 'GLuint' },
@@ -822,7 +825,7 @@ const EXTENSIONS = {
         { name: 'instanceCountsOffset', type: 'GLuint' },
         { name: 'drawcount', type: 'GLsizei' }
       ] }] },
-      'multiDrawElementsInstancedWEBGL': { overloads: [{ arity: 8, params: [
+      'multiDrawElementsInstancedWEBGL': { overloads: [{ arity: 9, params: [
         { name: 'mode', type: 'GLenum' },
         { name: 'countsList', type: 'Int32Array or sequence<GLsizei>' },
         { name: 'countsOffset', type: 'GLuint' },
@@ -899,11 +902,34 @@ const GLSL_BUILTINS = {
   ]
 };
 
+const GLSL_BUILTIN_VARIABLES = {
+  vertex_inputs: ['gl_VertexID', 'gl_InstanceID'],
+  vertex_outputs: ['gl_Position', 'gl_PointSize', 'gl_PerVertex'],
+  fragment_inputs: ['gl_FragCoord', 'gl_FrontFacing', 'gl_PointCoord'],
+  fragment_outputs: ['gl_FragDepth'],
+  uniforms: ['gl_DepthRange', 'gl_DepthRangeParameters'],
+  constants: [
+    'gl_MaxVertexAttribs', 'gl_MaxVertexUniformVectors', 'gl_MaxVertexOutputVectors',
+    'gl_MaxFragmentInputVectors', 'gl_MaxVertexTextureImageUnits',
+    'gl_MaxCombinedTextureImageUnits', 'gl_MaxTextureImageUnits',
+    'gl_MaxFragmentUniformVectors', 'gl_MaxDrawBuffers',
+    'gl_MinProgramTexelOffset', 'gl_MaxProgramTexelOffset'
+  ]
+};
+
 // ============================================================
 // Main extraction
 // ============================================================
 
 function run() {
+  for (const [name, method] of Object.entries(EXTENSIONS.WEBGL_multi_draw.methods)) {
+    for (const overload of method.overloads) {
+      if (overload.arity !== overload.params.length) {
+        throw new Error(`WEBGL_multi_draw arity mismatch: ${name}`);
+      }
+    }
+  }
+
   const w1Path = path.join(CACHE_DIR, 'webgl1.idl');
   const w2Path = path.join(CACHE_DIR, 'webgl2.idl');
 
@@ -1000,6 +1026,11 @@ function run() {
         });
         if (!isDuplicate) {
           allMethods[name].overloads.push(overload);
+        } else {
+          const existing = allMethods[name].overloads.find(item =>
+            item.params.length === overload.params.length &&
+            item.params.every((p, i) => p.type === overload.params[i].type));
+          existing.webgl_version = Math.min(existing.webgl_version, overload.webgl_version);
         }
       }
     }
@@ -1012,13 +1043,14 @@ function run() {
         { name: 'webgl1.idl', sha256: w1Hash },
         { name: 'webgl2.idl', sha256: w2Hash }
       ],
-      schema_version: '3.0',
+      schema_version: '3.1',
       extracted_at: new Date().toISOString()
     },
     constants: allConstants,
     methods: allMethods,
     extensions: EXTENSIONS,
-    glsl_builtins: GLSL_BUILTINS
+    glsl_builtins: GLSL_BUILTINS,
+    glsl_builtin_variables: GLSL_BUILTIN_VARIABLES
   };
 
   // --- Write output ---
@@ -1037,7 +1069,7 @@ function run() {
 
   console.log('=== WebGL API Surface Extraction ===');
   console.log(`Output: ${OUTPUT_PATH}`);
-  console.log(`Schema version: 3.0`);
+  console.log(`Schema version: 3.1`);
   console.log('');
   console.log(`Constants: ${constantCount}`);
   console.log(`Methods:   ${methodCount} (${totalOverloads} overloads)`);

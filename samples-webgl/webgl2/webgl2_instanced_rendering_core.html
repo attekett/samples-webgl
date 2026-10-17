@@ -199,6 +199,7 @@ async function main() {
  if (error !== gl.NO_ERROR) {
  throw new Error(`WebGL Error: ${error}`);
  }
+ window.__done = true;
 }
 
 main().catch(err => {

@@ -654,6 +654,21 @@
       ],
       "min_glsl_for_match": 1,
       "min_methods_for_match": 0
+    },
+    "WEBGL_multi_draw": {
+      "description": "WEBGL_multi_draw batched array, indexed, and instanced draws",
+      "methods": [],
+      "constants": [],
+      "extensions": [
+        "WEBGL_multi_draw"
+      ],
+      "extension_methods": [
+        "multiDrawArraysWEBGL",
+        "multiDrawElementsWEBGL",
+        "multiDrawArraysInstancedWEBGL",
+        "multiDrawElementsInstancedWEBGL"
+      ],
+      "min_methods_for_match": 1
     }
   }
 }

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    window.__done = false;
+    const gl = document.getElementById('webgl-canvas').getContext('webgl2');
+    if (!gl) throw new Error('WebGL2 not supported');
+    const missing = REQUIRED_EXTENSIONS.filter(name => !gl.getExtension(name));
+    if (missing.length) throw new Error(`UNSUPPORTED_EXTENSIONS: ${missing.join(', ')}`);
+
+    const gridSize = 9;
+    const pointCount = gridSize * gridSize;
+    const outputBytes = pointCount * 4 * 4;
+    const canvasSize = 256;
+    const bufferUsage = gl.DYNAMIC_COPY;
+    const drawMode = gl.POINTS;
+    const feedbackTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const attributeType = gl.FLOAT;
+    let captureProgram, displayProgram, inputBuffer, outputBuffer, inputArray, outputArray, feedback;
+
+    try {
+        const captureVertex = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(captureVertex, `#version 300 es
+layout(location=0) in vec2 aSeed;
+out vec4 vParticle;
+void main() {
+    vec2 wave = aSeed + vec2(0.08*sin(8.0*aSeed.y), 0.07*cos(8.0*aSeed.x));
+    vParticle = vec4(wave, aSeed*0.5+0.5);
+    gl_Position = vec4(wave, 0.0, 1.0);
+}`);
+        gl.compileShader(captureVertex);
+        const captureFragment = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(captureFragment, `#version 300 es
+precision highp float;
+out vec4 color;
+void main() { color = vec4(1.0); }`);
+        gl.compileShader(captureFragment);
+        captureProgram = gl.createProgram();
+        gl.attachShader(captureProgram, captureVertex);
+        gl.attachShader(captureProgram, captureFragment);
+        gl.transformFeedbackVaryings(captureProgram, ['vParticle'], gl.SEPARATE_ATTRIBS);
+        gl.linkProgram(captureProgram);
+        if (!gl.getProgramParameter(captureProgram, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(captureProgram));
+    } catch (error) { throw error; }
+
+    try {
+        const displayVertex = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(displayVertex, `#version 300 es
+layout(location=0) in vec4 aParticle;
+out vec3 vColor;
+void main() {
+    gl_Position = vec4(aParticle.xy, 0.0, 1.0);
+    gl_PointSize = 9.0 + 5.0*aParticle.z;
+    vColor = vec3(aParticle.z, 0.35+0.55*aParticle.w, 1.0-aParticle.z*0.45);
+}`);
+        gl.compileShader(displayVertex);
+        const displayFragment = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(displayFragment, `#version 300 es
+precision highp float;
+in vec3 vColor;
+out vec4 color;
+void main() {
+    float radius = length(gl_PointCoord-vec2(0.5));
+    float edge = smoothstep(0.5, 0.32, radius);
+    color = vec4(vColor*edge, 1.0);
+}`);
+        gl.compileShader(displayFragment);
+        displayProgram = gl.createProgram();
+        gl.attachShader(displayProgram, displayVertex);
+        gl.attachShader(displayProgram, displayFragment);
+        gl.linkProgram(displayProgram);
+        if (!gl.getProgramParameter(displayProgram, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(displayProgram));
+    } catch (error) { throw error; }
+
+    try {
+        const seeds = new Float32Array(pointCount * 2);
+        for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+                const index = (y * gridSize + x) * 2;
+                seeds[index] = -0.86 + x * 1.72 / (gridSize - 1);
+                seeds[index+1] = -0.86 + y * 1.72 / (gridSize - 1);
+            }
+        }
+        inputBuffer = gl.createBuffer();
+        outputBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, inputBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, seeds, gl.STATIC_DRAW);
+        gl.bindBuffer(feedbackTarget, outputBuffer);
+        gl.bufferData(feedbackTarget, outputBytes, bufferUsage);
+    } catch (error) { throw error; }
+
+    try {
+        inputArray = gl.createVertexArray();
+        outputArray = gl.createVertexArray();
+        gl.bindVertexArray(inputArray);
+        gl.bindBuffer(gl.ARRAY_BUFFER, inputBuffer);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, attributeType, false, 0, 0);
+        gl.bindVertexArray(outputArray);
+        gl.bindBuffer(gl.ARRAY_BUFFER, outputBuffer);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 4, attributeType, false, 0, 0);
+        feedback = gl.createTransformFeedback();
+    } catch (error) { throw error; }
+
+    try {
+        gl.useProgram(captureProgram);
+        gl.bindVertexArray(inputArray);
+        gl.bindBuffer(gl.ARRAY_BUFFER, inputBuffer);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, feedback);
+        gl.bindBufferBase(feedbackTarget, 0, outputBuffer);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(drawMode);
+        gl.drawArrays(drawMode, 0, pointCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindBufferBase(feedbackTarget, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    } catch (error) { throw error; }
+
+    try {
+        gl.viewport(0, 0, canvasSize, canvasSize);
+        gl.clearColor(0.03, 0.06, 0.13, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(displayProgram);
+        gl.bindVertexArray(outputArray);
+        gl.drawArrays(drawMode, 0, pointCount);
+    } catch (error) { throw error; }
+
+    if (gl.getError() !== gl.NO_ERROR) throw new Error('WebGL operation failed');
+    window.__done = true;
+}
+
+main().catch(error => { throw error; });
+</script>
+</body>
+</html>

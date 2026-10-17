@@ -269,7 +269,7 @@ void main() {
  // Render each VAO with different configurations
  for (let i = 0; i < vaos.length; i++) {
    gl.bindVertexArray(vaos[i]);
-   gl.uniform1f(uTime, performance.now() * 0.001);
+   gl.uniform1f(uTime, 0.25);
    gl.uniform1f(uVAOIndex, i);
 
    // Additional state changes per VAO
@@ -293,6 +293,7 @@ void main() {
  if (error !== gl.NO_ERROR) {
  throw new Error(`WebGL Error: ${error}`);
  }
+ window.__done = true;
 }
 
 main().catch(err => {

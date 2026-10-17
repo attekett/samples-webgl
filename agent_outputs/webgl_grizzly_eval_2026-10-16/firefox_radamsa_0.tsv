@@ -1,0 +1,18 @@
+selected	batch-_3vb0gre.txt	fuzz-121.html
+result	batch-_3vb0gre.txt	fuzz-121.html	explicit	0.497846	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-_3vb0gre.txt	fuzz-86.html
+result	batch-_3vb0gre.txt	fuzz-86.html	unmarked	0.153764	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-_3vb0gre.txt	fuzz-137.html
+result	batch-_3vb0gre.txt	fuzz-137.html	unmarked	0.168384	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-_3vb0gre.txt	fuzz-105.html
+result	batch-_3vb0gre.txt	fuzz-105.html	explicit	0.461819	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-_3vb0gre.txt	fuzz-76.html
+result	batch-_3vb0gre.txt	fuzz-76.html	explicit	0.453499	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-_3vb0gre.txt	fuzz-189.html
+result	batch-_3vb0gre.txt	fuzz-189.html	unmarked	0.165751	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-_3vb0gre.txt	fuzz-50.html
+result	batch-_3vb0gre.txt	fuzz-50.html	unmarked	0.147506	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-_3vb0gre.txt	fuzz-168.html
+result	batch-_3vb0gre.txt	fuzz-168.html	unmarked	0.147270	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-_3vb0gre.txt	fuzz-87.html
+result	batch-_3vb0gre.txt	fuzz-87.html	explicit	0.461985	served	-	-	-	-	-	-	-	-	-	-	-	-

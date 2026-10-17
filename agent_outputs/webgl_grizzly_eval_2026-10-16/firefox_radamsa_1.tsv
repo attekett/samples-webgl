@@ -1,0 +1,268 @@
+selected	batch-cgyj2ugd.txt	fuzz-198.html
+result	batch-cgyj2ugd.txt	fuzz-198.html	explicit	0.715718	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-103.html
+result	batch-cgyj2ugd.txt	fuzz-103.html	explicit	0.476504	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-140.html
+result	batch-cgyj2ugd.txt	fuzz-140.html	unmarked	0.162955	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-136.html
+result	batch-cgyj2ugd.txt	fuzz-136.html	explicit	0.440515	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-177.html
+result	batch-cgyj2ugd.txt	fuzz-177.html	unmarked	0.155741	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-84.html
+result	batch-cgyj2ugd.txt	fuzz-84.html	unmarked	0.156838	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-173.html
+result	batch-cgyj2ugd.txt	fuzz-173.html	unmarked	0.153129	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-30.html
+result	batch-cgyj2ugd.txt	fuzz-30.html	explicit	0.455057	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-41.html
+result	batch-cgyj2ugd.txt	fuzz-41.html	explicit	0.459758	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-83.html
+result	batch-cgyj2ugd.txt	fuzz-83.html	unmarked	0.157024	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-9.html
+result	batch-cgyj2ugd.txt	fuzz-9.html	explicit	0.441331	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-48.html
+result	batch-cgyj2ugd.txt	fuzz-48.html	unmarked	0.149475	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-197.html
+result	batch-cgyj2ugd.txt	fuzz-197.html	unmarked	0.157303	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-189.html
+result	batch-cgyj2ugd.txt	fuzz-189.html	unmarked	0.156721	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-132.html
+result	batch-cgyj2ugd.txt	fuzz-132.html	unmarked	0.164341	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-187.html
+result	batch-cgyj2ugd.txt	fuzz-187.html	unmarked	0.161747	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-31.html
+result	batch-cgyj2ugd.txt	fuzz-31.html	unmarked	0.149507	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-89.html
+result	batch-cgyj2ugd.txt	fuzz-89.html	unmarked	0.148808	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-44.html
+result	batch-cgyj2ugd.txt	fuzz-44.html	explicit	0.451875	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-20.html
+result	batch-cgyj2ugd.txt	fuzz-20.html	unmarked	0.148438	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-42.html
+result	batch-cgyj2ugd.txt	fuzz-42.html	explicit	0.106947	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-66.html
+result	batch-cgyj2ugd.txt	fuzz-66.html	explicit	0.192327	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-58.html
+result	batch-cgyj2ugd.txt	fuzz-58.html	unmarked	0.151510	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-200.html
+result	batch-cgyj2ugd.txt	fuzz-200.html	unmarked	0.141727	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-26.html
+result	batch-cgyj2ugd.txt	fuzz-26.html	unmarked	0.137124	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-170.html
+result	batch-cgyj2ugd.txt	fuzz-170.html	unmarked	0.143082	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-35.html
+result	batch-cgyj2ugd.txt	fuzz-35.html	unmarked	0.229522	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-63.html
+result	batch-cgyj2ugd.txt	fuzz-63.html	unmarked	0.152801	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-57.html
+result	batch-cgyj2ugd.txt	fuzz-57.html	explicit	0.465777	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-161.html
+result	batch-cgyj2ugd.txt	fuzz-161.html	explicit	0.462614	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-27.html
+result	batch-cgyj2ugd.txt	fuzz-27.html	unmarked	0.197351	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-69.html
+result	batch-cgyj2ugd.txt	fuzz-69.html	explicit	0.175089	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-137.html
+result	batch-cgyj2ugd.txt	fuzz-137.html	unmarked	0.171930	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-150.html
+result	batch-cgyj2ugd.txt	fuzz-150.html	explicit	0.461573	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-88.html
+result	batch-cgyj2ugd.txt	fuzz-88.html	explicit	0.441116	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-159.html
+result	batch-cgyj2ugd.txt	fuzz-159.html	unmarked	0.152389	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-97.html
+result	batch-cgyj2ugd.txt	fuzz-97.html	unmarked	0.162050	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-169.html
+result	batch-cgyj2ugd.txt	fuzz-169.html	explicit	0.450821	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-13.html
+result	batch-cgyj2ugd.txt	fuzz-13.html	unmarked	0.143358	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-77.html
+result	batch-cgyj2ugd.txt	fuzz-77.html	explicit	0.158716	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-28.html
+result	batch-cgyj2ugd.txt	fuzz-28.html	explicit	0.501124	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-182.html
+result	batch-cgyj2ugd.txt	fuzz-182.html	explicit	0.157454	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-127.html
+result	batch-cgyj2ugd.txt	fuzz-127.html	unmarked	0.154842	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-163.html
+result	batch-cgyj2ugd.txt	fuzz-163.html	explicit	0.452643	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-185.html
+result	batch-cgyj2ugd.txt	fuzz-185.html	unmarked	0.149421	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-160.html
+result	batch-cgyj2ugd.txt	fuzz-160.html	unmarked	0.163506	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-6.html
+result	batch-cgyj2ugd.txt	fuzz-6.html	explicit	0.457004	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-180.html
+result	batch-cgyj2ugd.txt	fuzz-180.html	unmarked	0.143654	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-56.html
+result	batch-cgyj2ugd.txt	fuzz-56.html	unmarked	0.142531	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-191.html
+result	batch-cgyj2ugd.txt	fuzz-191.html	unmarked	0.151422	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-162.html
+result	batch-cgyj2ugd.txt	fuzz-162.html	unmarked	0.157599	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-78.html
+result	batch-cgyj2ugd.txt	fuzz-78.html	explicit	0.455063	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-184.html
+result	batch-cgyj2ugd.txt	fuzz-184.html	unmarked	0.163165	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-46.html
+result	batch-cgyj2ugd.txt	fuzz-46.html	explicit	0.445113	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-155.html
+result	batch-cgyj2ugd.txt	fuzz-155.html	explicit	0.484587	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-51.html
+result	batch-cgyj2ugd.txt	fuzz-51.html	unmarked	0.161032	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-121.html
+result	batch-cgyj2ugd.txt	fuzz-121.html	explicit	0.188500	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-188.html
+result	batch-cgyj2ugd.txt	fuzz-188.html	explicit	0.465368	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-29.html
+result	batch-cgyj2ugd.txt	fuzz-29.html	explicit	0.167500	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-67.html
+result	batch-cgyj2ugd.txt	fuzz-67.html	unmarked	0.159343	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-175.html
+result	batch-cgyj2ugd.txt	fuzz-175.html	explicit	0.492104	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-60.html
+result	batch-cgyj2ugd.txt	fuzz-60.html	explicit	0.168021	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-113.html
+result	batch-cgyj2ugd.txt	fuzz-113.html	explicit	0.151482	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-181.html
+result	batch-cgyj2ugd.txt	fuzz-181.html	unmarked	0.191261	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-22.html
+result	batch-cgyj2ugd.txt	fuzz-22.html	explicit	0.189424	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-74.html
+result	batch-cgyj2ugd.txt	fuzz-74.html	unmarked	0.141713	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-145.html
+result	batch-cgyj2ugd.txt	fuzz-145.html	explicit	0.472717	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-183.html
+result	batch-cgyj2ugd.txt	fuzz-183.html	unmarked	0.155114	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-59.html
+result	batch-cgyj2ugd.txt	fuzz-59.html	unmarked	0.152954	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-167.html
+result	batch-cgyj2ugd.txt	fuzz-167.html	explicit	0.454485	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-196.html
+result	batch-cgyj2ugd.txt	fuzz-196.html	unmarked	0.147821	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-21.html
+result	batch-cgyj2ugd.txt	fuzz-21.html	unmarked	0.435690	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-195.html
+result	batch-cgyj2ugd.txt	fuzz-195.html	explicit	0.142627	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-3.html
+result	batch-cgyj2ugd.txt	fuzz-3.html	unmarked	0.426408	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-116.html
+result	batch-cgyj2ugd.txt	fuzz-116.html	unmarked	0.139513	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-23.html
+result	batch-cgyj2ugd.txt	fuzz-23.html	explicit	0.468761	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-174.html
+result	batch-cgyj2ugd.txt	fuzz-174.html	unmarked	0.136215	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-192.html
+result	batch-cgyj2ugd.txt	fuzz-192.html	unmarked	0.140190	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-108.html
+result	batch-cgyj2ugd.txt	fuzz-108.html	unmarked	0.141661	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-199.html
+result	batch-cgyj2ugd.txt	fuzz-199.html	explicit	0.192803	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-90.html
+result	batch-cgyj2ugd.txt	fuzz-90.html	explicit	0.468364	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-80.html
+result	batch-cgyj2ugd.txt	fuzz-80.html	explicit	0.190110	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-190.html
+result	batch-cgyj2ugd.txt	fuzz-190.html	explicit	0.472730	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-193.html
+result	batch-cgyj2ugd.txt	fuzz-193.html	explicit	0.455189	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-32.html
+result	batch-cgyj2ugd.txt	fuzz-32.html	unmarked	0.138799	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-34.html
+result	batch-cgyj2ugd.txt	fuzz-34.html	explicit	0.458443	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-178.html
+result	batch-cgyj2ugd.txt	fuzz-178.html	unmarked	0.149632	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-126.html
+result	batch-cgyj2ugd.txt	fuzz-126.html	explicit	0.478747	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-172.html
+result	batch-cgyj2ugd.txt	fuzz-172.html	unmarked	0.157212	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-166.html
+result	batch-cgyj2ugd.txt	fuzz-166.html	unmarked	0.148261	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-101.html
+result	batch-cgyj2ugd.txt	fuzz-101.html	explicit	0.444175	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-153.html
+result	batch-cgyj2ugd.txt	fuzz-153.html	explicit	0.465518	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-168.html
+result	batch-cgyj2ugd.txt	fuzz-168.html	unmarked	0.145411	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-36.html
+result	batch-cgyj2ugd.txt	fuzz-36.html	explicit	0.458302	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-39.html
+result	batch-cgyj2ugd.txt	fuzz-39.html	unmarked	0.145130	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-105.html
+result	batch-cgyj2ugd.txt	fuzz-105.html	unmarked	0.145835	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-11.html
+result	batch-cgyj2ugd.txt	fuzz-11.html	explicit	0.441613	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-176.html
+result	batch-cgyj2ugd.txt	fuzz-176.html	unmarked	0.146888	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-17.html
+result	batch-cgyj2ugd.txt	fuzz-17.html	explicit	0.506630	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-144.html
+result	batch-cgyj2ugd.txt	fuzz-144.html	unmarked	0.143642	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-16.html
+result	batch-cgyj2ugd.txt	fuzz-16.html	explicit	0.456827	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-120.html
+result	batch-cgyj2ugd.txt	fuzz-120.html	unmarked	0.137066	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-33.html
+result	batch-cgyj2ugd.txt	fuzz-33.html	explicit	0.457573	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-12.html
+result	batch-cgyj2ugd.txt	fuzz-12.html	unmarked	0.138516	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-165.html
+result	batch-cgyj2ugd.txt	fuzz-165.html	explicit	0.468153	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-152.html
+result	batch-cgyj2ugd.txt	fuzz-152.html	unmarked	0.171906	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-73.html
+result	batch-cgyj2ugd.txt	fuzz-73.html	explicit	0.193948	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-131.html
+result	batch-cgyj2ugd.txt	fuzz-131.html	explicit	0.510135	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-82.html
+result	batch-cgyj2ugd.txt	fuzz-82.html	explicit	0.472764	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-111.html
+result	batch-cgyj2ugd.txt	fuzz-111.html	explicit	0.192808	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-164.html
+result	batch-cgyj2ugd.txt	fuzz-164.html	unmarked	0.146129	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-19.html
+result	batch-cgyj2ugd.txt	fuzz-19.html	explicit	0.459479	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-154.html
+result	batch-cgyj2ugd.txt	fuzz-154.html	explicit	0.445298	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-114.html
+result	batch-cgyj2ugd.txt	fuzz-114.html	explicit	0.151066	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-117.html
+result	batch-cgyj2ugd.txt	fuzz-117.html	explicit	0.457087	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-157.html
+result	batch-cgyj2ugd.txt	fuzz-157.html	unmarked	0.158431	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-61.html
+result	batch-cgyj2ugd.txt	fuzz-61.html	unmarked	0.158738	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-156.html
+result	batch-cgyj2ugd.txt	fuzz-156.html	explicit	0.441021	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-194.html
+result	batch-cgyj2ugd.txt	fuzz-194.html	explicit	0.206736	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-186.html
+result	batch-cgyj2ugd.txt	fuzz-186.html	unmarked	0.148173	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-171.html
+result	batch-cgyj2ugd.txt	fuzz-171.html	explicit	0.450460	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-8.html
+result	batch-cgyj2ugd.txt	fuzz-8.html	unmarked	0.143782	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-125.html
+result	batch-cgyj2ugd.txt	fuzz-125.html	explicit	0.452617	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-104.html
+result	batch-cgyj2ugd.txt	fuzz-104.html	explicit	0.188812	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-149.html
+result	batch-cgyj2ugd.txt	fuzz-149.html	explicit	0.454011	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-96.html
+result	batch-cgyj2ugd.txt	fuzz-96.html	explicit	0.141271	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-141.html
+result	batch-cgyj2ugd.txt	fuzz-141.html	explicit	0.470673	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-179.html
+result	batch-cgyj2ugd.txt	fuzz-179.html	explicit	0.462624	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-45.html
+result	batch-cgyj2ugd.txt	fuzz-45.html	explicit	0.443323	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-94.html
+result	batch-cgyj2ugd.txt	fuzz-94.html	explicit	0.451939	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-70.html
+result	batch-cgyj2ugd.txt	fuzz-70.html	explicit	0.562622	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-37.html
+result	batch-cgyj2ugd.txt	fuzz-37.html	explicit	0.195815	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-53.html
+result	batch-cgyj2ugd.txt	fuzz-53.html	explicit	0.536822	served	-	-	-	-	-	-	-	-	-	-	-	-
+selected	batch-cgyj2ugd.txt	fuzz-130.html
+result	batch-cgyj2ugd.txt	fuzz-130.html	explicit	0.159472	served	-	-	-	-	-	-	-	-	-	-	-	-

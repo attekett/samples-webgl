@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    window.__done = false;
+    const gl = document.getElementById('webgl-canvas').getContext('webgl2');
+    if (!gl) throw new Error('WebGL2 not supported');
+    const missing = REQUIRED_EXTENSIONS.filter(name => !gl.getExtension(name));
+    if (missing.length) throw new Error(`UNSUPPORTED_EXTENSIONS: ${missing.join(', ')}`);
+
+    const canvasSize = 256;
+    const patternSize = 8;
+    const halfWidth = canvasSize / 2;
+    const vertexCount = 6;
+    const textureTarget = gl.TEXTURE_2D;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const textureFormat = gl.RGBA8;
+    let program, pattern, framebuffer, nearest, linear, quad;
+
+    try {
+        const vertex = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertex, `#version 300 es
+layout(location=0) in vec2 aPosition;
+out vec2 vUV;
+void main() {
+    vUV = aPosition * 0.5 + 0.5;
+    gl_Position = vec4(aPosition, 0.0, 1.0);
+}`);
+        gl.compileShader(vertex);
+        const fragment = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragment, `#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform int uPass;
+uniform sampler2D uPattern;
+out vec4 color;
+void main() {
+    float checker = mod(floor(gl_FragCoord.x) + floor(gl_FragCoord.y), 2.0);
+    vec4 generated = vec4(mix(vec3(0.08, 0.16, 0.68), vec3(1.0, 0.72, 0.12), checker), 1.0);
+    color = uPass == 0 ? generated : texture(uPattern, vUV);
+}`);
+        gl.compileShader(fragment);
+        program = gl.createProgram();
+        gl.attachShader(program, vertex);
+        gl.attachShader(program, fragment);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    } catch (error) { throw error; }
+
+    try {
+        quad = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, quad);
+        gl.bufferData(bufferTarget, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    } catch (error) { throw error; }
+
+    try {
+        pattern = gl.createTexture();
+        gl.bindTexture(textureTarget, pattern);
+        gl.texStorage2D(textureTarget, 1, textureFormat, patternSize, patternSize);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        framebuffer = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, textureTarget, pattern, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Framebuffer incomplete');
+        gl.bindTexture(textureTarget, null);
+    } catch (error) { throw error; }
+
+    try {
+        nearest = gl.createSampler();
+        linear = gl.createSampler();
+        gl.samplerParameteri(nearest, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.samplerParameteri(nearest, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.samplerParameteri(linear, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.samplerParameteri(linear, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.samplerParameteri(nearest, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(linear, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(nearest, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(linear, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    } catch (error) { throw error; }
+
+    try {
+        gl.useProgram(program);
+        gl.uniform1i(gl.getUniformLocation(program, 'uPattern'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uPass'), 0);
+        gl.viewport(0, 0, patternSize, patternSize);
+        gl.drawArrays(drawMode, 0, vertexCount);
+    } catch (error) { throw error; }
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.uniform1i(gl.getUniformLocation(program, 'uPass'), 1);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(textureTarget, pattern);
+        gl.bindSampler(0, nearest);
+        gl.viewport(0, 0, halfWidth, canvasSize);
+        gl.drawArrays(drawMode, 0, vertexCount);
+        gl.bindSampler(0, linear);
+        gl.viewport(halfWidth, 0, halfWidth, canvasSize);
+        gl.drawArrays(drawMode, 0, vertexCount);
+        gl.bindSampler(0, null);
+    } catch (error) { throw error; }
+
+    if (gl.getError() !== gl.NO_ERROR) throw new Error('WebGL operation failed');
+    window.__done = true;
+}
+
+main().catch(error => { throw error; });
+</script>
+</body>
+</html>

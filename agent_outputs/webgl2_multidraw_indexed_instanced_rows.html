@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = ['WEBGL_multi_draw'];
+
+async function main() {
+    window.__done = false;
+    const gl = document.getElementById('webgl-canvas').getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error('WebGL2 not supported');
+    const missing = REQUIRED_EXTENSIONS.filter(name => !gl.getExtension(name));
+    if (missing.length) throw new Error(`UNSUPPORTED_EXTENSIONS: ${missing.join(', ')}`);
+    const multiDraw = gl.getExtension('WEBGL_multi_draw');
+
+    const canvasSize = 256;
+    const vertexCount = 6;
+    const subdrawCount = 2;
+    const firsts = new Int32Array([0, 3]);
+    const counts = new Int32Array([3, 3]);
+    const offsets = new Int32Array([0, 6]);
+    const instanceCounts = new Int32Array([2, 3]);
+    const drawMode = gl.TRIANGLES;
+    const indexType = gl.UNSIGNED_SHORT;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const textureTarget = gl.TEXTURE_2D;
+    let program, vertices, indices, vao, texture, framebuffer;
+
+    try {
+        const vertex = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertex, `#version 300 es
+layout(location=0) in vec2 aPosition;
+layout(location=1) in vec3 aColor;
+uniform float uRow;
+out vec3 vColor;
+void main() {
+    gl_Position = vec4(aPosition.x*0.78 + float(gl_InstanceID)*0.07,
+                       aPosition.y*0.18 + uRow, 0.0, 1.0);
+    vColor = aColor*(0.75+0.12*float(gl_InstanceID));
+}`);
+        gl.compileShader(vertex);
+        const fragment = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragment, `#version 300 es
+precision highp float;
+in vec3 vColor;
+out vec4 color;
+void main() { color = vec4(vColor, 1.0); }`);
+        gl.compileShader(fragment);
+        program = gl.createProgram();
+        gl.attachShader(program, vertex);
+        gl.attachShader(program, fragment);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    } catch (error) { throw error; }
+
+    try {
+        vertices = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vertices);
+        gl.bufferData(bufferTarget, new Float32Array([
+            -0.95,-0.8, 0.95,0.25,0.3,  -0.35,-0.8, 0.95,0.25,0.3,  -0.65,0.9, 0.95,0.25,0.3,
+             0.10,-0.8, 0.2,0.7,1.0,     0.70,-0.8, 0.2,0.7,1.0,     0.40,0.9, 0.2,0.7,1.0
+        ]), gl.STATIC_DRAW);
+        indices = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indices);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0,1,2,3,4,5]), gl.STATIC_DRAW);
+    } catch (error) { throw error; }
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(bufferTarget, vertices);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 20, 0);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 20, 8);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indices);
+    } catch (error) { throw error; }
+
+    try {
+        texture = gl.createTexture();
+        gl.bindTexture(textureTarget, texture);
+        gl.texStorage2D(textureTarget, 1, gl.RGBA8, canvasSize, canvasSize);
+        framebuffer = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, textureTarget, texture, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Framebuffer incomplete');
+    } catch (error) { throw error; }
+
+    try {
+        gl.viewport(0, 0, canvasSize, canvasSize);
+        gl.clearColor(0.035, 0.06, 0.13, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+        const row = gl.getUniformLocation(program, 'uRow');
+        gl.uniform1f(row, 0.58);
+        multiDraw.multiDrawElementsWEBGL(drawMode, counts, 0, indexType, offsets, 0, subdrawCount);
+        gl.uniform1f(row, 0.0);
+        multiDraw.multiDrawArraysInstancedWEBGL(drawMode, firsts, 0, counts, 0, instanceCounts, 0, subdrawCount);
+        gl.uniform1f(row, -0.58);
+        multiDraw.multiDrawElementsInstancedWEBGL(drawMode, counts, 0, indexType, offsets, 0, instanceCounts, 0, subdrawCount);
+    } catch (error) { throw error; }
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, framebuffer);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, canvasSize, canvasSize, 0, 0, canvasSize, canvasSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    } catch (error) { throw error; }
+
+    if (gl.getError() !== gl.NO_ERROR) throw new Error('WebGL operation failed');
+    window.__done = true;
+}
+
+main().catch(error => { throw error; });
+</script>
+</body>
+</html>

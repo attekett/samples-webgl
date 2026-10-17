@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    window.__done = false;
+    const gl = document.getElementById('webgl-canvas').getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error('WebGL2 not supported');
+    const missing = REQUIRED_EXTENSIONS.filter(name => !gl.getExtension(name));
+    if (missing.length) throw new Error(`UNSUPPORTED_EXTENSIONS: ${missing.join(', ')}`);
+
+    const canvasSize = 256;
+    const tileCount = 6;
+    const tileScale = 0.28;
+    const tileBytes = 32;
+    const alignment = gl.getParameter(gl.UNIFORM_BUFFER_OFFSET_ALIGNMENT);
+    const tileStride = Math.ceil(tileBytes / alignment) * alignment;
+    const bufferTarget = gl.UNIFORM_BUFFER;
+    const bufferUsage = gl.DYNAMIC_DRAW;
+    const drawMode = gl.TRIANGLES;
+    const textureTarget = gl.TEXTURE_2D;
+    let program, vertexBuffer, paletteBuffer, colorTexture, framebuffer;
+
+    try {
+        const vertex = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertex, `#version 300 es
+layout(location=0) in vec2 aPosition;
+layout(std140) uniform Tile { vec4 transform; vec4 tint; };
+out vec2 vPosition;
+out vec4 vTint;
+void main() {
+    float c = cos(transform.w);
+    float s = sin(transform.w);
+    vec2 rotated = vec2(c*aPosition.x-s*aPosition.y, s*aPosition.x+c*aPosition.y);
+    gl_Position = vec4(rotated*transform.z+transform.xy, 0.0, 1.0);
+    vPosition = aPosition;
+    vTint = tint;
+}`);
+        gl.compileShader(vertex);
+        const fragment = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragment, `#version 300 es
+precision highp float;
+in vec2 vPosition;
+in vec4 vTint;
+out vec4 color;
+void main() {
+    float glow = 0.62 + 0.38*(1.0-length(vPosition)*0.7);
+    color = vec4(vTint.rgb*glow, 1.0);
+}`);
+        gl.compileShader(fragment);
+        program = gl.createProgram();
+        gl.attachShader(program, vertex);
+        gl.attachShader(program, fragment);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    } catch (error) { throw error; }
+
+    try {
+        vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    } catch (error) { throw error; }
+
+    try {
+        paletteBuffer = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, paletteBuffer);
+        gl.bufferData(bufferTarget, tileStride * tileCount, bufferUsage);
+        const positions = [-0.57,0.55, 0.0,0.55, 0.57,0.55, -0.57,-0.55, 0.0,-0.55, 0.57,-0.55];
+        const colors = [0.97,0.26,0.28, 1.0,0.69,0.18, 0.35,0.93,0.48,
+                        0.24,0.72,0.95, 0.64,0.42,0.96, 0.98,0.42,0.73];
+        for (let i = 0; i < tileCount; i++) {
+            gl.bufferSubData(bufferTarget, i * tileStride, new Float32Array([
+                positions[2*i], positions[2*i+1], tileScale, i*0.24,
+                colors[3*i], colors[3*i+1], colors[3*i+2], 1.0
+            ]));
+        }
+        gl.uniformBlockBinding(program, gl.getUniformBlockIndex(program, 'Tile'), 1);
+    } catch (error) { throw error; }
+
+    try {
+        colorTexture = gl.createTexture();
+        gl.bindTexture(textureTarget, colorTexture);
+        gl.texStorage2D(textureTarget, 1, gl.RGBA8, canvasSize, canvasSize);
+        framebuffer = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, textureTarget, colorTexture, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('Framebuffer incomplete');
+    } catch (error) { throw error; }
+
+    try {
+        gl.viewport(0, 0, canvasSize, canvasSize);
+        gl.clearColor(0.05, 0.07, 0.13, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(program);
+        for (let i = 0; i < tileCount; i++) {
+            gl.bindBufferRange(bufferTarget, 1, paletteBuffer, i * tileStride, tileBytes);
+            gl.drawArrays(drawMode, 0, 6);
+        }
+    } catch (error) { throw error; }
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, framebuffer);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, canvasSize, canvasSize, 0, 0, canvasSize, canvasSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    } catch (error) { throw error; }
+
+    if (gl.getError() !== gl.NO_ERROR) throw new Error('WebGL operation failed');
+    window.__done = true;
+}
+
+main().catch(error => { throw error; });
+</script>
+</body>
+</html>
