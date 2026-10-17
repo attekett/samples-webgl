@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw',
+    'WEBGL_compressed_texture_s3tc',
+    'OES_texture_float_linear'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+    const extS3 = gl.getExtension('WEBGL_compressed_texture_s3tc');
+    const extFL = gl.getExtension('OES_texture_float_linear');
+
+    const texSize = 256;
+    const tileCount = 36;
+    const chunk = 12;
+    const atlasSize = 16;
+    const atlasLayers = 6;
+    const volDim = 8;
+    const noiseSize = 16;
+    const readSize = 16;
+    const bufSize = tileCount * 4 * 4 * 4;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const atlasTarget = gl.TEXTURE_2D_ARRAY;
+    const volTarget = gl.TEXTURE_3D;
+    const planeTarget = gl.TEXTURE_2D;
+    const fanMode = gl.TRIANGLE_FAN;
+    const attachA = gl.COLOR_ATTACHMENT0;
+    const attachB = gl.COLOR_ATTACHMENT1;
+
+    var vsTile, fsTile, progTile, vsQuad, fsQuad, progQuad;
+    var vaoTile, vaoQuad;
+    var tileBuf, quadBuf, packBuf;
+    var atlasTex, dxt1Tex, volTex, noiseTex, colorTex, maskTex;
+    var sAtlas, fbo;
+    var plainFirsts = new Int32Array(tileCount);
+    var plainCounts = new Int32Array(tileCount);
+    var tileData = new Float32Array(tileCount * 16);
+
+    try {
+        vsTile = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vsTile, `#version 300 es
+#extension GL_ANGLE_multi_draw : require
+precision highp float;
+in vec2 aPos;
+in vec2 aUv;
+uniform int uChunkBase;
+out vec2 vUv;
+flat out int vLayer;
+void main() {
+    vUv = aUv;
+    vLayer = (uChunkBase + gl_DrawID) % 6;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vsTile);
+        fsTile = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsTile, `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2DArray;
+in vec2 vUv;
+flat in int vLayer;
+uniform sampler2DArray uAtlas;
+uniform sampler2D uDxt1;
+layout(location = 0) out vec4 oColor;
+layout(location = 1) out vec4 oMask;
+void main() {
+    vec2 dx = dFdx(vUv);
+    vec2 dy = dFdy(vUv);
+    vec4 a = textureGrad(uAtlas, vec3(vUv, float(vLayer)), dx, dy);
+    vec4 b = texture(uDxt1, vUv);
+    vec3 c = clamp(mix(a.rgb, b.rgb, 0.35) + 0.2 + 0.1 * float(vLayer), 0.0, 1.0);
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    oColor = vec4(c, 1.0);
+    oMask = vec4(vec3(smoothstep(0.2, 0.8, l)), 1.0);
+}`);
+        gl.compileShader(fsTile);
+        progTile = gl.createProgram();
+        gl.attachShader(progTile, vsTile);
+        gl.attachShader(progTile, fsTile);
+        gl.linkProgram(progTile);
+        gl.validateProgram(progTile);
+
+        vsQuad = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vsQuad, `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vsQuad);
+        fsQuad = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsQuad, `#version 300 es
+precision highp float;
+precision highp sampler3D;
+in vec2 vUv;
+uniform sampler2D uColor;
+uniform sampler2D uMask;
+uniform sampler3D uVol;
+uniform sampler2D uNoise;
+out vec4 outColor;
+void main() {
+    vec3 sz = vec3(textureSize(uVol, 0));
+    vec4 col = texture(uColor, vUv);
+    vec4 m = texture(uMask, vUv);
+    vec4 v = texture(uVol, vec3(vUv, 2.5 / sz.z));
+    vec4 n = texture(uNoise, vUv * 4.0);
+    vec3 rgb = mix(col.rgb, v.rgb, 0.25 * (1.0 - m.r)) + 0.08 * abs(n.rgb);
+    outColor = vec4(rgb, 1.0);
+}`);
+        gl.compileShader(fsQuad);
+        progQuad = gl.createProgram();
+        gl.attachShader(progQuad, vsQuad);
+        gl.attachShader(progQuad, fsQuad);
+        gl.linkProgram(progQuad);
+        gl.validateProgram(progQuad);
+    } catch(e) {}
+
+    try {
+        let x = 0, y = 0, dx = 1, dy = 0;
+        const seen = new Set();
+        for (let i = 0; i < tileCount; i++) {
+            seen.add(y * 6 + x);
+            const ring = Math.min(x, y, 5 - x, 5 - y);
+            const half = 0.16 - 0.035 * ring;
+            const cx = -1 + (x + 0.5) / 3;
+            const cy = -1 + (y + 0.5) / 3;
+            tileData.set([
+                cx - half, cy - half, 0, 0,
+                cx + half, cy - half, 1, 0,
+                cx + half, cy + half, 1, 1,
+                cx - half, cy + half, 0, 1
+            ], i * 16);
+            plainFirsts[i] = i * 4;
+            plainCounts[i] = 4;
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx > 5 || ny < 0 || ny > 5 || seen.has(ny * 6 + nx)) {
+                const t = dx; dx = -dy; dy = t;
+            }
+            x += dx; y += dy;
+        }
+        tileBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, tileBuf);
+        gl.bufferData(bufferTarget, bufSize, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(bufferTarget, tileBuf);
+        gl.bufferSubData(bufferTarget, 0, tileData);
+        quadBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.bufferData(bufferTarget, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        packBuf = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuf);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, readSize * readSize * 4, gl.STREAM_READ);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+
+        vaoTile = gl.createVertexArray();
+        gl.bindVertexArray(vaoTile);
+        const locP = gl.getAttribLocation(progTile, 'aPos');
+        const locU = gl.getAttribLocation(progTile, 'aUv');
+        gl.bindBuffer(bufferTarget, tileBuf);
+        gl.enableVertexAttribArray(locP);
+        gl.vertexAttribPointer(locP, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(locU);
+        gl.vertexAttribPointer(locU, 2, gl.FLOAT, false, 16, 8);
+        gl.bindVertexArray(null);
+
+        vaoQuad = gl.createVertexArray();
+        gl.bindVertexArray(vaoQuad);
+        const locQ = gl.getAttribLocation(progQuad, 'aPos');
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.enableVertexAttribArray(locQ);
+        gl.vertexAttribPointer(locQ, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        const dxt5 = new Uint8Array(atlasSize * atlasSize * atlasLayers);
+        for (let i = 0; i < dxt5.length; i++) dxt5[i] = (i * 37 + (i >> 3) * 11) & 0xFF;
+        gl.activeTexture(gl.TEXTURE0);
+        atlasTex = gl.createTexture();
+        gl.bindTexture(atlasTarget, atlasTex);
+        gl.bindTexture(atlasTarget, null);
+        gl.bindTexture(atlasTarget, atlasTex);
+        gl.compressedTexImage3D(atlasTarget, 0, extS3.COMPRESSED_RGBA_S3TC_DXT5_EXT, atlasSize, atlasSize, atlasLayers, 0, dxt5);
+        const patch = new Uint8Array(64);
+        for (let i = 0; i < 64; i++) patch[i] = (i * 73 + 29) & 0xFF;
+        gl.compressedTexSubImage3D(atlasTarget, 0, 4, 4, 2, 8, 8, 1, extS3.COMPRESSED_RGBA_S3TC_DXT5_EXT, patch);
+
+        sAtlas = gl.createSampler();
+        gl.samplerParameteri(sAtlas, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.samplerParameteri(sAtlas, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.samplerParameteri(sAtlas, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(sAtlas, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(sAtlas, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+
+        gl.activeTexture(gl.TEXTURE1);
+        dxt1Tex = gl.createTexture();
+        gl.bindTexture(planeTarget, dxt1Tex);
+        const dxt1 = new Uint8Array(8 * 4);
+        for (let i = 0; i < dxt1.length; i++) dxt1[i] = (i * 53 + 17) & 0xFF;
+        gl.compressedTexImage2D(planeTarget, 0, extS3.COMPRESSED_RGB_S3TC_DXT1_EXT, 8, 8, 0, dxt1);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    } catch(e) {}
+
+    try {
+        gl.activeTexture(gl.TEXTURE4);
+        volTex = gl.createTexture();
+        gl.bindTexture(volTarget, volTex);
+        const volData = new Uint8Array(volDim * volDim * volDim * 4);
+        for (let i = 0; i < volData.length; i++) volData[i] = (i * 5) & 0xFF;
+        gl.texImage3D(volTarget, 0, gl.RGBA8, volDim, volDim, volDim, 0, gl.RGBA, gl.UNSIGNED_BYTE, volData);
+        gl.texParameteri(volTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(volTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(volTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(volTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(volTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+
+        gl.activeTexture(gl.TEXTURE5);
+        noiseTex = gl.createTexture();
+        gl.bindTexture(planeTarget, noiseTex);
+        const noise = new Float32Array(noiseSize * noiseSize * 4);
+        for (let i = 0; i < noise.length; i++) noise[i] = ((i * 31) % 17) / 17;
+        gl.texImage2D(planeTarget, 0, gl.RGBA32F, noiseSize, noiseSize, 0, gl.RGBA, gl.FLOAT, noise);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(planeTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(planeTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    } catch(e) {}
+
+    try {
+        colorTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(planeTarget, colorTex);
+        gl.texImage2D(planeTarget, 0, gl.RGBA8, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        maskTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(planeTarget, maskTex);
+        gl.texImage2D(planeTarget, 0, gl.RGBA8, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, attachA, planeTarget, colorTex, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, attachB, planeTarget, maskTex, 0);
+        gl.drawBuffers([attachA, attachB]);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(0, 0, texSize, texSize);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.clearColor(0.1, 0.05, 0.2, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(progTile);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(atlasTarget, atlasTex);
+        gl.bindSampler(0, sAtlas);
+        gl.uniform1i(gl.getUniformLocation(progTile, 'uAtlas'), 0);
+        gl.uniform1i(gl.getUniformLocation(progTile, 'uDxt1'), 1);
+        gl.bindVertexArray(vaoTile);
+        const locBase = gl.getUniformLocation(progTile, 'uChunkBase');
+        for (let k = 0; k < 3; k++) {
+            gl.uniform1i(locBase, k * chunk);
+            extMD.multiDrawArraysWEBGL(fanMode, plainFirsts, k * chunk, plainCounts, k * chunk, chunk);
+        }
+        gl.bindVertexArray(null);
+        gl.bindSampler(0, null);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.readBuffer(attachB);
+        gl.activeTexture(gl.TEXTURE4);
+        gl.bindTexture(volTarget, volTex);
+        gl.copyTexSubImage3D(volTarget, 0, 0, 0, 2, 0, 0, volDim, volDim);
+        gl.readBuffer(attachA);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(progQuad);
+        gl.uniform1i(gl.getUniformLocation(progQuad, 'uColor'), 2);
+        gl.uniform1i(gl.getUniformLocation(progQuad, 'uMask'), 3);
+        gl.uniform1i(gl.getUniformLocation(progQuad, 'uVol'), 4);
+        gl.uniform1i(gl.getUniformLocation(progQuad, 'uNoise'), 5);
+        gl.bindVertexArray(vaoQuad);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.bindVertexArray(null);
+
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuf);
+        gl.readPixels(120, 120, readSize, readSize, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+        const out = new Uint8Array(readSize * readSize * 4);
+        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, out);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw',
+    'EXT_disjoint_timer_query_webgl2'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+    const extT = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+
+    const ringCount = 6;
+    const ringSegs = 32;
+    const ringVerts = (ringSegs + 1) * 2;
+    const fboSize = 256;
+    const occluderCount = 3;
+    const ringStepBytes = ringVerts * 2;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const colorFormat = gl.RGBA8;
+    const depthFormat = gl.DEPTH24_STENCIL8;
+    const occlusionTarget = gl.ANY_SAMPLES_PASSED_CONSERVATIVE;
+    const drawMode = gl.TRIANGLE_STRIP;
+
+    var tfVS, tfFS, tfProg, ringVS, ringFS, ringProg;
+    var ringBuf, ringIdx, paramBuf, tintUbo;
+    var vao, tf;
+    var fbo, colorTex, depthRb;
+    var qTime, qStampA, qStampB, qOcc;
+    var locPos, locParam, locScale, locBias, blockIndex;
+
+    try {
+        tfVS = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(tfVS, `#version 300 es
+precision highp float;
+out vec4 vParam;
+void main() {
+    float i = float(gl_VertexID);
+    vParam = vec4(1.0 - 0.12 * i, i * 0.9, 0.55 - 0.05 * i, 0.1 - 0.12 * i);
+    gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+    gl_PointSize = 1.0;
+}`);
+        gl.compileShader(tfVS);
+        tfFS = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(tfFS, `#version 300 es
+precision highp float;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = vec4(1.0);
+}`);
+        gl.compileShader(tfFS);
+        gl.getShaderParameter(tfVS, gl.COMPILE_STATUS);
+        tfProg = gl.createProgram();
+        gl.attachShader(tfProg, tfVS);
+        gl.attachShader(tfProg, tfFS);
+        gl.transformFeedbackVaryings(tfProg, ['vParam'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(tfProg);
+        gl.getProgramParameter(tfProg, gl.LINK_STATUS);
+    } catch(e) {}
+
+    try {
+        ringVS = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(ringVS, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec4 aParam;
+uniform float uScale;
+uniform float uBias;
+layout(std140) uniform Tint { vec4 uTint; };
+out vec4 vColor;
+void main() {
+    float len = length(aPos);
+    vec3 hue = 0.5 + 0.5 * cos(6.2831 * (len * 1.5 + aParam.y * 0.1 + vec3(0.0, 0.33, 0.67)));
+    vColor = vec4(hue * uTint.rgb, uTint.a * aParam.z);
+    gl_Position = vec4(aPos * aParam.x * uScale, aParam.w + uBias, 1.0);
+}`);
+        gl.compileShader(ringVS);
+        ringFS = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(ringFS, `#version 300 es
+precision highp float;
+in vec4 vColor;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(ringFS);
+        gl.getShaderParameter(ringVS, gl.COMPILE_STATUS);
+        ringProg = gl.createProgram();
+        gl.attachShader(ringProg, ringVS);
+        gl.attachShader(ringProg, ringFS);
+        gl.linkProgram(ringProg);
+        gl.getProgramParameter(ringProg, gl.LINK_STATUS);
+        locPos = gl.getAttribLocation(ringProg, 'aPos');
+        locParam = gl.getAttribLocation(ringProg, 'aParam');
+        locScale = gl.getUniformLocation(ringProg, 'uScale');
+        locBias = gl.getUniformLocation(ringProg, 'uBias');
+        blockIndex = gl.getUniformBlockIndex(ringProg, 'Tint');
+        gl.uniformBlockBinding(ringProg, blockIndex, 0);
+    } catch(e) {}
+
+    try {
+        const ringData = new Float32Array(ringCount * ringVerts * 2);
+        for (let r = 0; r < ringCount; r++) {
+            const outer = 0.95 - r * 0.15;
+            const inner = outer - 0.1;
+            for (let s = 0; s <= ringSegs; s++) {
+                const a = (s / ringSegs) * Math.PI * 2;
+                const o = (r * ringVerts + s * 2) * 2;
+                ringData[o] = Math.cos(a) * inner;
+                ringData[o + 1] = Math.sin(a) * inner;
+                ringData[o + 2] = Math.cos(a) * outer;
+                ringData[o + 3] = Math.sin(a) * outer;
+            }
+        }
+        ringBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, ringBuf);
+        gl.bufferData(bufferTarget, ringData, gl.STATIC_DRAW);
+
+        const idxData = new Uint16Array(ringCount * ringVerts);
+        for (let i = 0; i < idxData.length; i++) idxData[i] = i;
+        ringIdx = gl.createBuffer();
+        gl.bindBuffer(elemTarget, ringIdx);
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+        gl.bindBuffer(elemTarget, null);
+
+        paramBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, paramBuf);
+        gl.bufferData(bufferTarget, ringCount * 16, gl.DYNAMIC_COPY);
+        gl.bindBuffer(bufferTarget, null);
+
+        tintUbo = gl.createBuffer();
+        gl.bindBuffer(gl.UNIFORM_BUFFER, tintUbo);
+        gl.bufferData(gl.UNIFORM_BUFFER, new Float32Array([1.0, 0.9, 0.8, 1.0]), gl.DYNAMIC_DRAW);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, tintUbo);
+    } catch(e) {}
+
+    try {
+        tf = gl.createTransformFeedback();
+        qTime = gl.createQuery();
+        qStampA = gl.createQuery();
+        qStampB = gl.createQuery();
+        qOcc = gl.createQuery();
+        gl.isQuery(qTime);
+        gl.isTransformFeedback(tf);
+    } catch(e) {}
+
+    try {
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        colorTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, colorTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, colorFormat, fboSize, fboSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTex, 0);
+        depthRb = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depthRb);
+        gl.renderbufferStorage(gl.RENDERBUFFER, depthFormat, fboSize, fboSize);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depthRb);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, depthRb);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_DEPTH_SIZE);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(bufferTarget, ringBuf);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, paramBuf);
+        gl.enableVertexAttribArray(locParam);
+        gl.vertexAttribPointer(locParam, 4, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locParam, 1);
+        gl.bindBuffer(elemTarget, ringIdx);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProg);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, paramBuf);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, ringCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depthRb);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depthRb);
+        gl.viewport(0, 0, fboSize, fboSize);
+        gl.depthMask(true);
+        gl.stencilMask(0xff);
+        gl.clearBufferfv(gl.COLOR, 0, new Float32Array([0.05, 0.07, 0.12, 1.0]));
+        gl.clearBufferfi(gl.DEPTH_STENCIL, 0, 1.0, 0);
+        gl.useProgram(ringProg);
+        gl.bindVertexArray(vao);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, tintUbo);
+        gl.uniform1f(locScale, 1.0);
+        gl.uniform1f(locBias, 0.0);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilFunc(gl.ALWAYS, 1, 0xff);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.depthMask(false);
+        gl.depthMask(true);
+        gl.stencilMask(0x0f);
+        gl.stencilMask(0xff);
+        extT.queryCounterEXT(qStampA, extT.TIMESTAMP_EXT);
+        gl.beginQuery(extT.TIME_ELAPSED_EXT, qTime);
+        extMD.multiDrawElementsInstancedWEBGL(drawMode, new Int32Array(ringCount).fill(ringVerts), 0, gl.UNSIGNED_SHORT, new Int32Array([0, 1, 2, 3, 4, 5]).map(i => i * ringStepBytes), 0, new Int32Array([1, 1, 2, 2, 3, 3]), 0, ringCount);
+        gl.endQuery(extT.TIME_ELAPSED_EXT);
+        gl.beginQuery(extT.TIME_ELAPSED_EXT, qTime);
+        gl.beginQuery(occlusionTarget, qOcc);
+        gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
+        gl.uniform1f(locScale, 1.06);
+        gl.uniform1f(locBias, -0.2);
+        gl.bindBuffer(gl.UNIFORM_BUFFER, tintUbo);
+        gl.bufferSubData(gl.UNIFORM_BUFFER, 0, new Float32Array([1.0, 0.5, 0.3, 1.0]));
+        extMD.multiDrawArraysWEBGL(drawMode, new Int32Array([0, 2, 4]).map(i => i * ringVerts), 0, new Int32Array(occluderCount).fill(ringVerts), 0, occluderCount);
+        gl.endQuery(occlusionTarget);
+        gl.endQuery(extT.TIME_ELAPSED_EXT);
+        extT.queryCounterEXT(qStampB, extT.TIMESTAMP_EXT);
+        gl.bindVertexArray(null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.getQueryParameter(qTime, gl.QUERY_RESULT_AVAILABLE);
+        gl.getQueryParameter(qOcc, gl.QUERY_RESULT_AVAILABLE);
+        gl.getQueryParameter(qStampB, gl.QUERY_RESULT_AVAILABLE);
+        gl.getParameter(extT.GPU_DISJOINT_EXT);
+        gl.getQuery(extT.TIME_ELAPSED_EXT, extT.QUERY_COUNTER_BITS_EXT);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.STENCIL_TEST);
+        gl.disable(gl.BLEND);
+        gl.clearColor(0.05, 0.07, 0.12, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(0, 64, 256, 192);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.disable(gl.SCISSOR_TEST);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = ['WEBGL_multi_draw', 'EXT_disjoint_timer_query_webgl2'];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', {antialias: false});
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+    const extT = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+
+    const curveCount = 8;
+    const curvePts = 64;
+    const gridLines = 16;
+    const quadSize = 128;
+    const lineBytes = curveCount * curvePts * 8;
+    const seedCount = curveCount * curvePts;
+    const arrTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const uboTarget = gl.UNIFORM_BUFFER;
+    const timeTarget = extT.TIME_ELAPSED_EXT;
+    const primTarget = gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN;
+    const curveMode = gl.LINE_STRIP;
+    const gridMode = gl.LINES;
+    const indexType = gl.UNSIGNED_SHORT;
+
+    const tfVS = `#version 300 es
+in float aSeed;
+out vec2 vLine;
+void main() {
+    int c = gl_VertexID / 64;
+    int k = gl_VertexID % 64;
+    float t = float(k) / 63.0 * 6.2831853;
+    float fc = float(c);
+    vLine = 0.9 * vec2(sin((2.0 + fc) * t + aSeed), sin((3.0 + mod(fc, 3.0)) * t + fc * 0.7));
+    gl_Position = vec4(vLine, 0.0, 1.0);
+}`;
+    const tfFS = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+    fragColor = vec4(1.0);
+}`;
+    const drawVS = `#version 300 es
+in vec2 aPos;
+in vec4 aColor;
+layout(std140) uniform Frame {
+    vec4 uTint;
+    vec4 uParam;
+};
+uniform float uDepth;
+uniform float uHead;
+out vec4 vColor;
+void main() {
+    vec2 p = aPos * uParam.x;
+    if (uHead > 0.5) {
+        p = 0.8 * vec2(cos(aColor.w * 6.2831853), sin(aColor.w * 6.2831853));
+    }
+    gl_Position = vec4(p, uDepth, 1.0);
+    gl_PointSize = 6.0;
+    vColor = vec4(aColor.rgb * uTint.rgb, 1.0);
+}`;
+    const drawFS = `#version 300 es
+precision highp float;
+in vec4 vColor;
+out vec4 fragColor;
+void main() {
+    fragColor = vColor;
+}`;
+
+    try {
+        var seedBuf = gl.createBuffer();
+        var lineBuf = gl.createBuffer();
+        var colorBuf = gl.createBuffer();
+        var seeds = new Float32Array(seedCount);
+        for (var i = 0; i < seedCount; i++) seeds[i] = (i % curvePts) * 0.01;
+        gl.bindBuffer(arrTarget, seedBuf);
+        gl.bufferData(arrTarget, seeds, gl.STATIC_DRAW);
+        gl.bindBuffer(tfTarget, lineBuf);
+        gl.bufferData(tfTarget, lineBytes, gl.DYNAMIC_COPY);
+        gl.bindBuffer(tfTarget, null);
+        gl.bindBuffer(arrTarget, colorBuf);
+        gl.bufferData(arrTarget, new Float32Array([
+            1.0, 0.3, 0.2, 0.0,  0.2, 1.0, 0.3, 0.125,
+            0.3, 0.4, 1.0, 0.25, 1.0, 1.0, 0.2, 0.375,
+            1.0, 0.2, 1.0, 0.5,  0.2, 1.0, 1.0, 0.625,
+            1.0, 0.6, 0.2, 0.75, 0.6, 0.6, 1.0, 0.875
+        ]), gl.STATIC_DRAW);
+        gl.bindBuffer(arrTarget, null);
+    } catch(e) {}
+
+    try {
+        var gridVBO = gl.createBuffer();
+        var gridIBO = gl.createBuffer();
+        var gridPos = [];
+        for (var g = 0; g < gridLines / 2; g++) {
+            var u = -0.9 + g * 1.8 / (gridLines / 2 - 1);
+            gridPos.push(u, -0.9, u, 0.9);
+        }
+        for (var h = 0; h < gridLines / 2; h++) {
+            var v = -0.9 + h * 1.8 / (gridLines / 2 - 1);
+            gridPos.push(-0.9, v, 0.9, v);
+        }
+        var gridIdx = new Uint16Array(gridLines * 2);
+        for (var n = 0; n < gridIdx.length; n++) gridIdx[n] = n;
+        gl.bindBuffer(arrTarget, gridVBO);
+        gl.bufferData(arrTarget, new Float32Array(gridPos), gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gridIBO);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, gridIdx, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+        gl.bindBuffer(arrTarget, null);
+    } catch(e) {}
+
+    try {
+        var tfVs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(tfVs, tfVS);
+        gl.compileShader(tfVs);
+        var tfFs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(tfFs, tfFS);
+        gl.compileShader(tfFs);
+        var tfProg = gl.createProgram();
+        gl.attachShader(tfProg, tfVs);
+        gl.attachShader(tfProg, tfFs);
+        gl.transformFeedbackVaryings(tfProg, ['vLine'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(tfProg);
+        var dVs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(dVs, drawVS);
+        gl.compileShader(dVs);
+        var dFs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(dFs, drawFS);
+        gl.compileShader(dFs);
+        var drawProg = gl.createProgram();
+        gl.attachShader(drawProg, dVs);
+        gl.attachShader(drawProg, dFs);
+        gl.linkProgram(drawProg);
+        gl.getShaderInfoLog(tfVs);
+        gl.getShaderInfoLog(dVs);
+        gl.getProgramInfoLog(tfProg);
+        gl.getProgramInfoLog(drawProg);
+    } catch(e) {}
+
+    try {
+        var uboBuf = gl.createBuffer();
+        gl.bindBuffer(uboTarget, uboBuf);
+        gl.bufferData(uboTarget, 32, gl.DYNAMIC_DRAW);
+        gl.bindBufferBase(uboTarget, 0, uboBuf);
+        var blockIdx = gl.getUniformBlockIndex(drawProg, 'Frame');
+        gl.uniformBlockBinding(drawProg, blockIdx, 0);
+        var locDepth = gl.getUniformLocation(drawProg, 'uDepth');
+        var locHead = gl.getUniformLocation(drawProg, 'uHead');
+        var locPos = gl.getAttribLocation(drawProg, 'aPos');
+        var locColor = gl.getAttribLocation(drawProg, 'aColor');
+        var locSeed = gl.getAttribLocation(tfProg, 'aSeed');
+        gl.bindBuffer(uboTarget, null);
+    } catch(e) {}
+
+    try {
+        var fboTex = gl.createTexture();
+        var depthRb = gl.createRenderbuffer();
+        var fbo = gl.createFramebuffer();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, fboTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depthRb);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, 256, 256);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fboTex, 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRb);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    } catch(e) {}
+
+    try {
+        var qTF = gl.createQuery();
+        var qDraw = gl.createQuery();
+        var qPrim = gl.createQuery();
+        var qTs = gl.createQuery();
+        var tfObj = gl.createTransformFeedback();
+        var vaoTF = gl.createVertexArray();
+        gl.bindVertexArray(vaoTF);
+        gl.bindBuffer(arrTarget, seedBuf);
+        gl.enableVertexAttribArray(locSeed);
+        gl.vertexAttribPointer(locSeed, 1, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(arrTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProg);
+        gl.bindVertexArray(vaoTF);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfTarget, 0, lineBuf);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginQuery(timeTarget, qTF);
+        gl.beginQuery(primTarget, qPrim);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, curveCount * curvePts);
+        gl.endTransformFeedback();
+        gl.endQuery(primTarget);
+        gl.endQuery(timeTarget);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        for (var b = 0; b < 4; b++) gl.bindBufferBase(tfTarget, b, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        var vaoCurve = gl.createVertexArray();
+        var vaoGrid = gl.createVertexArray();
+        gl.bindVertexArray(vaoCurve);
+        gl.bindBuffer(arrTarget, lineBuf);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(arrTarget, colorBuf);
+        gl.enableVertexAttribArray(locColor);
+        gl.vertexAttribPointer(locColor, 4, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locColor, 1);
+        gl.bindVertexArray(vaoGrid);
+        gl.bindBuffer(arrTarget, gridVBO);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gridIBO);
+        gl.disableVertexAttribArray(locColor);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(arrTarget, null);
+    } catch(e) {}
+
+    try {
+        var firsts = new Int32Array(curveCount);
+        var counts = new Int32Array(curveCount).fill(curvePts);
+        for (var f = 0; f < curveCount; f++) firsts[f] = f * curvePts;
+        var gridCounts = new Int32Array(gridLines / 4).fill(8);
+        var gridOffsets = new Int32Array(gridLines / 4);
+        for (var o = 0; o < gridOffsets.length; o++) gridOffsets[o] = o * 8 * 2;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.useProgram(drawProg);
+        gl.clearColor(0.02, 0.02, 0.05, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.beginQuery(timeTarget, qDraw);
+        gl.enable(gl.BLEND);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.ALWAYS);
+        gl.depthFunc(gl.LEQUAL);
+        gl.lineWidth(1);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.bindBufferBase(uboTarget, 0, uboBuf);
+        for (var q = 0; q < 4; q++) {
+            var qx = (q % 2) * quadSize;
+            var qy = Math.floor(q / 2) * quadSize;
+            gl.viewport(qx, qy, quadSize, quadSize);
+            gl.scissor(qx, qy, quadSize, quadSize);
+            gl.bindBuffer(uboTarget, uboBuf);
+            gl.bufferSubData(uboTarget, 0, new Float32Array([0.6 + 0.1 * q, 0.9, 0.9 - 0.1 * q, 1.0, 1.0, 0.0, 0.0, 0.0]));
+            gl.bindVertexArray(vaoGrid);
+            gl.vertexAttrib4f(locColor, 0.12, 0.12, 0.18, 0.0);
+            gl.uniform1f(locDepth, 0.5);
+            gl.uniform1f(locHead, 0.0);
+            extMD.multiDrawElementsWEBGL(gridMode, gridCounts, 0, indexType, gridOffsets, 0, gridLines / 4);
+            gl.bindVertexArray(vaoCurve);
+            gl.uniform1f(locDepth, 0.0);
+            extMD.multiDrawArraysWEBGL(curveMode, firsts, q * 2, counts, q * 2, 2);
+            gl.uniform1f(locHead, 1.0);
+            gl.drawArraysInstanced(gl.POINTS, 0, 1, curveCount);
+        }
+        gl.endQuery(timeTarget);
+        extT.queryCounterEXT(qTs, extT.TIMESTAMP_EXT);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, 256, 256);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        [qTF, qDraw, qPrim, qTs].forEach(function(qq) {
+            if (gl.getQueryParameter(qq, gl.QUERY_RESULT_AVAILABLE)) gl.getQueryParameter(qq, gl.QUERY_RESULT);
+        });
+        gl.getParameter(extT.GPU_DISJOINT_EXT);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

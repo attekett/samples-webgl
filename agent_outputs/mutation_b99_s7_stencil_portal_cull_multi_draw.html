@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw',
+    'OES_draw_buffers_indexed'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+    const extDBI = gl.getExtension('OES_draw_buffers_indexed');
+
+    const portalCount = 5;
+    const starVerts = 12;
+    const tileCount = 24;
+    const stencilRef = 1;
+    const fboSize = 256;
+    const arrayLayers = 5;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const uboTarget = gl.UNIFORM_BUFFER;
+    const idxType = gl.UNSIGNED_SHORT;
+    const fanMode = gl.TRIANGLE_FAN;
+    const triMode = gl.TRIANGLES;
+
+    var progMain, progTf, vao, tileVao;
+    var starBuf, tileBuf, idxBuf, offBuf, ubo;
+    var texGrad, texArray, texC0, texC1, rbo, fbo, tf;
+    var locPos = 0;
+    var locOff = 1;
+
+    try {
+        const vsMain = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vsMain, `#version 300 es
+precision highp float;
+layout(std140) uniform Portal { vec4 tint[5]; };
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aOff;
+uniform float uMode;
+uniform vec2 uScale;
+flat out int vIdx;
+out vec2 vUV;
+out vec4 vTint;
+void main() {
+    int idx = uMode > 0.5 && uMode < 1.5 ? (gl_VertexID / 4 + gl_InstanceID) % 5 : (gl_VertexID / 12) % 5;
+    vIdx = idx;
+    vTint = tint[idx];
+    vUV = aPos * 0.5 + 0.5;
+    float z = uMode < 0.5 ? 0.5 : (uMode < 1.5 ? 0.2 : 0.1);
+    gl_Position = vec4(aPos * uScale + aOff, z, 1.0);
+}`);
+        gl.compileShader(vsMain);
+        const fsMain = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsMain, `#version 300 es
+precision highp float;
+precision highp sampler3D;
+precision highp sampler2DArray;
+uniform sampler3D uGrad;
+uniform sampler2DArray uPattern;
+uniform float uMode;
+flat in int vIdx;
+in vec2 vUV;
+in vec4 vTint;
+layout(location = 0) out vec4 c0;
+layout(location = 1) out vec4 c1;
+void main() {
+    vec4 col = vTint;
+    if (uMode > 0.5 && uMode < 1.5) {
+        vec4 pat = texture(uPattern, vec3(vUV * 3.0, float(vIdx)));
+        vec4 grad = texture(uGrad, vec3(vUV, float(vIdx) / 4.0));
+        col = mix(pat, grad, 0.3) * vTint;
+        col.a = vTint.a;
+    } else if (uMode > 1.5) {
+        col = vec4(1.0, 1.0, 0.6, 0.5);
+    }
+    c0 = col;
+    c1 = vec4(1.0 - col.rgb, col.a);
+}`);
+        gl.compileShader(fsMain);
+        progMain = gl.createProgram();
+        gl.attachShader(progMain, vsMain);
+        gl.attachShader(progMain, fsMain);
+        gl.bindAttribLocation(progMain, locPos, 'aPos');
+        gl.bindAttribLocation(progMain, locOff, 'aOff');
+        gl.linkProgram(progMain);
+
+        const vsTf = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vsTf, `#version 300 es
+precision highp float;
+out vec2 tOff;
+void main() {
+    tOff = vec2(float(gl_VertexID % 3) * 0.012, float((gl_VertexID / 3) % 2) * 0.012);
+    gl_Position = vec4(0.0);
+}`);
+        gl.compileShader(vsTf);
+        const fsTf = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsTf, `#version 300 es
+precision highp float;
+out vec4 o;
+void main() {
+    o = vec4(0.0);
+}`);
+        gl.compileShader(fsTf);
+        progTf = gl.createProgram();
+        gl.attachShader(progTf, vsTf);
+        gl.attachShader(progTf, fsTf);
+        gl.transformFeedbackVaryings(progTf, ['tOff'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(progTf);
+    } catch(e) {}
+
+    try {
+        const starData = new Float32Array(portalCount * starVerts * 2);
+        const centers = [[-0.6, 0.5], [0.0, 0.55], [0.6, 0.5], [-0.3, -0.35], [0.3, -0.35]];
+        for (let s = 0; s < portalCount; s++) {
+            const dir = s % 2 === 0 ? 1 : -1;
+            const base = s * starVerts * 2;
+            starData[base] = centers[s][0];
+            starData[base + 1] = centers[s][1];
+            for (let k = 0; k <= 10; k++) {
+                const a = dir * (k % 10) * Math.PI / 5 + Math.PI / 2;
+                const r = (k % 2 === 0) ? 0.28 : 0.12;
+                starData[base + 2 + k * 2] = centers[s][0] + r * Math.cos(a);
+                starData[base + 3 + k * 2] = centers[s][1] + r * Math.sin(a);
+            }
+        }
+        starBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, starBuf);
+        gl.bufferData(bufferTarget, starData, gl.STATIC_DRAW);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(bufferTarget, starBuf);
+
+        const tileData = new Float32Array(tileCount * 4 * 2);
+        const idxData = new Uint16Array(tileCount * 6);
+        for (let t = 0; t < tileCount; t++) {
+            const cx = -1 + (t % 6 + 0.5) * (2 / 6);
+            const cy = -1 + (Math.floor(t / 6) + 0.5) * (2 / 4);
+            const hx = 0.16;
+            const hy = 0.24;
+            tileData.set([cx - hx, cy - hy, cx + hx, cy - hy, cx + hx, cy + hy, cx - hx, cy + hy], t * 8);
+            idxData.set([t * 4, t * 4 + 1, t * 4 + 2, t * 4, t * 4 + 2, t * 4 + 3], t * 6);
+        }
+        tileBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, tileBuf);
+        gl.bufferData(bufferTarget, tileData, gl.STATIC_DRAW);
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+        gl.bindBuffer(elemTarget, null);
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindBuffer(elemTarget, null);
+    } catch(e) {}
+
+    try {
+        offBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, offBuf);
+        gl.bufferData(bufferTarget, tileCount * 8, gl.STATIC_DRAW);
+        gl.bindBuffer(bufferTarget, null);
+        tf = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.bindBufferBase(tfTarget, 0, offBuf);
+        gl.useProgram(progTf);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, tileCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindBufferBase(tfTarget, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.useProgram(progMain);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(bufferTarget, starBuf);
+        gl.enableVertexAttribArray(gl.getAttribLocation(progMain, 'aPos'));
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, offBuf);
+        gl.enableVertexAttribArray(locOff);
+        gl.vertexAttribPointer(gl.getAttribLocation(progMain, 'aOff'), 2, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locOff, 1);
+        gl.bindVertexArray(null);
+
+        tileVao = gl.createVertexArray();
+        gl.bindVertexArray(tileVao);
+        gl.bindBuffer(bufferTarget, tileBuf);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, offBuf);
+        gl.enableVertexAttribArray(locOff);
+        gl.vertexAttribPointer(locOff, 2, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locOff, 1);
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+    } catch(e) {}
+
+    try {
+        const gradData = new Uint8Array(4 * 4 * 4 * 4);
+        for (let i = 0; i < 64; i++) {
+            gradData[i * 4] = (i % 4) * 85;
+            gradData[i * 4 + 1] = (Math.floor(i / 4) % 4) * 85;
+            gradData[i * 4 + 2] = Math.floor(i / 16) * 85;
+            gradData[i * 4 + 3] = 255;
+        }
+        texGrad = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_3D, texGrad);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 4, 4, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, gradData);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+
+        const patData = new Uint8Array(8 * 8 * arrayLayers * 4);
+        for (let l = 0; l < arrayLayers; l++) {
+            for (let p = 0; p < 64; p++) {
+                const on = ((p % 8 >> 1) + (Math.floor(p / 8) >> 1)) % 2;
+                const o = (l * 64 + p) * 4;
+                patData[o] = on ? 255 : 40 + l * 30;
+                patData[o + 1] = on ? 255 - l * 40 : 30;
+                patData[o + 2] = on ? 200 : 90 + l * 25;
+                patData[o + 3] = 255;
+            }
+        }
+        texArray = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray);
+        gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 8, 8, arrayLayers, 0, gl.RGBA, gl.UNSIGNED_BYTE, patData);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.activeTexture(gl.TEXTURE0);
+
+        ubo = gl.createBuffer();
+        gl.bindBuffer(uboTarget, ubo);
+        gl.bufferData(uboTarget, new Float32Array([
+            1.0, 0.3, 0.3, 0.85,
+            0.3, 1.0, 0.4, 0.85,
+            0.3, 0.5, 1.0, 0.85,
+            1.0, 0.9, 0.3, 0.85,
+            0.9, 0.4, 1.0, 0.85
+        ]), gl.DYNAMIC_DRAW);
+        gl.bindBufferBase(uboTarget, 2, ubo);
+        gl.uniformBlockBinding(progMain, gl.getUniformBlockIndex(progMain, 'Portal'), 2);
+        gl.bindBuffer(uboTarget, null);
+    } catch(e) {}
+
+    try {
+        texC0 = gl.createTexture();
+        texC1 = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, texC0);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, fboSize, fboSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, texC1);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, fboSize, fboSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.activeTexture(gl.TEXTURE0);
+
+        rbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, fboSize, fboSize);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, texC1, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texC0, 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, rbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(progMain);
+        gl.uniform1i(gl.getUniformLocation(progMain, 'uGrad'), 0);
+        gl.uniform1i(gl.getUniformLocation(progMain, 'uPattern'), 1);
+        gl.uniform2f(gl.getUniformLocation(progMain, 'uScale'), 1.0, 1.0);
+        gl.uniform1f(gl.getUniformLocation(progMain, 'uMode'), 0.0);
+        gl.getFragDataLocation(progMain, 'c0');
+        gl.getFragDataLocation(progMain, 'c1');
+        gl.viewport(0, 0, fboSize, fboSize);
+    } catch(e) {}
+
+    try {
+        const uMode = gl.getUniformLocation(progMain, 'uMode');
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.viewport(0, 0, fboSize, fboSize);
+        gl.colorMask(true, true, true, true);
+        gl.depthMask(true);
+        gl.stencilMask(0xff);
+        gl.clearColor(0.05, 0.05, 0.12, 1.0);
+        gl.clearDepth(1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.enable(gl.SCISSOR_TEST);
+        for (let i = 0; i < 8; i++) {
+            gl.scissor(0, i * 32, fboSize, 16);
+            gl.clearColor(0.1 + i * 0.03, 0.15, 0.3 - i * 0.02, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+        }
+        gl.disable(gl.SCISSOR_TEST);
+
+        gl.disable(gl.BLEND);
+        gl.colorMask(false, false, false, false);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilFuncSeparate(gl.FRONT, gl.ALWAYS, stencilRef, 0xff);
+        gl.stencilFuncSeparate(gl.BACK, gl.ALWAYS, stencilRef, 0xff);
+        gl.stencilOpSeparate(gl.FRONT, gl.KEEP, gl.KEEP, gl.REPLACE);
+        gl.stencilOpSeparate(gl.BACK, gl.KEEP, gl.KEEP, gl.INCR_WRAP);
+        gl.stencilMaskSeparate(gl.FRONT, 0xff);
+        gl.stencilMaskSeparate(gl.BACK, 0xff);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.FRONT);
+        gl.frontFace(gl.CW);
+        gl.cullFace(gl.BACK);
+        gl.frontFace(gl.CCW);
+        gl.cullFace(gl.FRONT);
+        gl.cullFace(gl.BACK);
+        gl.disable(gl.CULL_FACE);
+
+        gl.uniform1f(uMode, 0.0);
+        gl.bindVertexArray(vao);
+        const starFirsts = new Int32Array([0, 12, 24, 36, 48]);
+        const starCounts = new Int32Array(portalCount).fill(starVerts);
+        extMD.multiDrawArraysWEBGL(fanMode, starFirsts, 0, starCounts, 0, portalCount);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        const uMode = gl.getUniformLocation(progMain, 'uMode');
+        gl.colorMask(true, true, true, true);
+        gl.stencilMask(0);
+        gl.stencilFunc(gl.EQUAL, stencilRef, 0xff);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.enable(gl.POLYGON_OFFSET_FILL);
+        gl.polygonOffset(2, 2);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
+        gl.frontFace(gl.CCW);
+
+        gl.disable(gl.BLEND);
+        extDBI.enableiOES(gl.BLEND, 0);
+        extDBI.disableiOES(gl.BLEND, 1);
+        extDBI.enableiOES(gl.BLEND, 1);
+        extDBI.blendFuncSeparateiOES(0, gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
+        extDBI.blendEquationiOES(0, gl.FUNC_ADD);
+        extDBI.blendEquationiOES(1, gl.FUNC_REVERSE_SUBTRACT);
+        extDBI.blendFunciOES(1, gl.CONSTANT_COLOR, gl.ONE_MINUS_CONSTANT_COLOR);
+        extDBI.colorMaskiOES(1, true, false, true, true);
+        gl.blendColor(0.4, 0.2, 0.6, 1.0);
+
+        const tileCounts = new Int32Array(tileCount).fill(6);
+        const tileOffsetsBytes = new Int32Array(tileCount);
+        for (let t = 0; t < tileCount; t++) tileOffsetsBytes[t] = t * 6 * 2;
+        const instCounts = new Int32Array(tileCount).fill(2);
+
+        gl.uniform1f(uMode, 1.0);
+        gl.bindVertexArray(tileVao);
+        extMD.multiDrawElementsWEBGL(triMode, tileCounts, 0, idxType, tileOffsetsBytes, 0, tileCount);
+        extMD.multiDrawElementsInstancedWEBGL(triMode, tileCounts, 4, idxType, tileOffsetsBytes, 4, instCounts, 4, 8);
+        gl.bindVertexArray(null);
+
+        gl.uniform1f(uMode, 2.0);
+        gl.uniform2f(gl.getUniformLocation(progMain, 'uScale'), 1.02, 1.02);
+        gl.bindVertexArray(vao);
+        const glowFirsts = new Int32Array([0, 12, 24, 36, 48]);
+        const glowCounts = new Int32Array(portalCount).fill(3);
+        const glowInst = new Int32Array(portalCount).fill(3);
+        extMD.multiDrawArraysInstancedWEBGL(fanMode, glowFirsts, 1, glowCounts, 1, glowInst, 1, 4);
+        gl.bindVertexArray(null);
+        gl.uniform2f(gl.getUniformLocation(progMain, 'uScale'), 1.0, 1.0);
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.STENCIL_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.CULL_FACE);
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        extDBI.disableiOES(gl.BLEND, 0);
+        extDBI.disableiOES(gl.BLEND, 1);
+        extDBI.colorMaskiOES(1, true, true, true, true);
+        gl.colorMask(true, true, true, true);
+
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, fboSize, fboSize, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.blitFramebuffer(0, 0, fboSize, fboSize, 0, 0, 64, 64, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

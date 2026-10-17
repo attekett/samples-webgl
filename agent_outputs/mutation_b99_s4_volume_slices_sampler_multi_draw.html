@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw',
+    'OES_texture_float_linear'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+    const extFL = gl.getExtension('OES_texture_float_linear');
+
+    const texSize = 256;
+    const volDim = 16;
+    const layerCount = 4;
+    const layerSize = 64;
+    const sliceQuads = 4;
+    const brick = 4;
+    const quadVerts = 6;
+
+    const volTarget = gl.TEXTURE_3D;
+    const arrTarget = gl.TEXTURE_2D_ARRAY;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const uboTarget = gl.UNIFORM_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const tfMode = gl.POINTS;
+
+    var bakeProg, sliceProg, tfProg;
+    var vaoBake, vaoSlice, vaoPts;
+    var bakeBuf, posBuf, uvBuf, offBuf, rimBuf, ubo, tfBuf, packBuf;
+    var texVol, texLayers, fbo, sLin, sNear, tfObj;
+    var blockIndex, blockSize;
+
+    try {
+        const bakeVs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(bakeVs, `#version 300 es
+#extension GL_ANGLE_multi_draw : require
+precision highp float;
+layout(location = 0) in vec2 aPos;
+layout(std140) uniform Slices {
+    vec4 sliceZ[4];
+    vec4 tilt;
+};
+uniform int uLayer;
+out vec3 vTc;
+void main() {
+    float z = sliceZ[(gl_DrawID + uLayer) % 4].x;
+    vTc = vec3(aPos * 0.5 + 0.5 + tilt.xy * z, z);
+    gl_Position = vec4(aPos.x * 0.25 - 0.75 + 0.5 * float(gl_DrawID), aPos.y, 0.0, 1.0);
+}`);
+        gl.compileShader(bakeVs);
+        const bakeFs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(bakeFs, `#version 300 es
+precision highp float;
+precision highp sampler3D;
+in vec3 vTc;
+uniform sampler3D uVol;
+layout(location = 0) out vec4 outColor;
+void main() {
+    vec3 sz = vec3(textureSize(uVol, 0));
+    vec4 v = textureLod(uVol, vTc, 0.0);
+    outColor = vec4(v.rgb * (sz.x / 16.0), 0.35 + 0.65 * v.a);
+}`);
+        gl.compileShader(bakeFs);
+        bakeProg = gl.createProgram();
+        gl.attachShader(bakeProg, bakeVs);
+        gl.attachShader(bakeProg, bakeFs);
+        gl.linkProgram(bakeProg);
+        gl.detachShader(bakeProg, bakeVs);
+        gl.detachShader(bakeProg, bakeFs);
+        gl.deleteShader(bakeVs);
+        gl.deleteShader(bakeFs);
+        const sliceVs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(sliceVs, `#version 300 es
+#extension GL_ANGLE_multi_draw : require
+precision highp float;
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUv;
+layout(location = 2) in vec2 aOff;
+flat out float vShadow;
+out vec3 vUv;
+void main() {
+    vUv = vec3(aUv, float(gl_DrawID));
+    vShadow = float(gl_InstanceID);
+    gl_PointSize = 4.0;
+    float z = 0.5 - 0.2 * float(gl_DrawID) + 0.05 * vShadow;
+    gl_Position = vec4(aPos + aOff, z, 1.0);
+}`);
+        gl.compileShader(sliceVs);
+        const sliceFs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(sliceFs, `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+flat in float vShadow;
+in vec3 vUv;
+uniform sampler2DArray uLayers;
+uniform float uRim;
+layout(location = 0) out vec4 outColor;
+void main() {
+    vec4 c = texelFetch(uLayers, ivec3(ivec2(vUv.xy * 63.0), int(vUv.z + 0.5)), 0);
+    vec4 lit = vec4(c.rgb * c.a, c.a);
+    vec4 shade = vec4(0.0, 0.0, 0.0, 0.4 * c.a);
+    vec4 col = vShadow > 0.5 ? shade : lit;
+    outColor = uRim > 0.5 ? vec4(0.9, 0.95, 1.0, 1.0) : col;
+}`);
+        gl.compileShader(sliceFs);
+        sliceProg = gl.createProgram();
+        gl.attachShader(sliceProg, sliceVs);
+        gl.attachShader(sliceProg, sliceFs);
+        gl.linkProgram(sliceProg);
+        gl.detachShader(sliceProg, sliceVs);
+        gl.detachShader(sliceProg, sliceFs);
+        gl.deleteShader(sliceVs);
+        gl.deleteShader(sliceFs);
+        const tfVs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(tfVs, `#version 300 es
+precision highp float;
+layout(location = 0) in vec2 aPos;
+out vec2 vOut;
+void main() {
+    vOut = aPos * 0.8;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(tfVs);
+        const tfFs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(tfFs, `#version 300 es
+precision highp float;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = vec4(1.0);
+}`);
+        gl.compileShader(tfFs);
+        tfProg = gl.createProgram();
+        gl.attachShader(tfProg, tfVs);
+        gl.attachShader(tfProg, tfFs);
+        gl.transformFeedbackVaryings(tfProg, ['vOut'], gl.SEPARATE_ATTRIBS);
+        gl.linkProgram(tfProg);
+        gl.detachShader(tfProg, tfVs);
+        gl.detachShader(tfProg, tfFs);
+        gl.deleteShader(tfVs);
+        gl.deleteShader(tfFs);
+    } catch(e) {}
+
+    try {
+        const bakeData = new Float32Array(sliceQuads * quadVerts * 2);
+        const quad = [-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1];
+        for (let i = 0; i < sliceQuads; i++) bakeData.set(quad, i * quadVerts * 2);
+        bakeBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, bakeBuf);
+        gl.bufferData(bufferTarget, bakeData, gl.STATIC_DRAW);
+
+        const posData = new Float32Array(sliceQuads * quadVerts * 2);
+        const uvData = new Float32Array(sliceQuads * quadVerts * 2);
+        const rimData = new Uint16Array(sliceQuads * 8);
+        const rimPat = [0, 1, 1, 2, 2, 5, 5, 0];
+        for (let s = 0; s < sliceQuads; s++) {
+            const ox = -0.75 + 0.3 * s;
+            const oy = -0.75 + 0.3 * s;
+            const r = [0.4, 0.12];
+            const u = [0.18, 0.35];
+            const p0 = [ox, oy];
+            const p1 = [ox + r[0], oy + r[1]];
+            const p2 = [ox + r[0] + u[0], oy + r[1] + u[1]];
+            const p3 = [ox + u[0], oy + u[1]];
+            posData.set([...p0, ...p1, ...p2, ...p0, ...p2, ...p3], s * quadVerts * 2);
+            uvData.set([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], s * quadVerts * 2);
+            for (let k = 0; k < 8; k++) rimData[s * 8 + k] = s * quadVerts + rimPat[k];
+        }
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.bufferData(bufferTarget, posData, gl.STATIC_DRAW);
+        uvBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, uvBuf);
+        gl.bufferData(bufferTarget, uvData, gl.STATIC_DRAW);
+        offBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, offBuf);
+        gl.bufferData(bufferTarget, new Float32Array([0, 0, 0.04, -0.04]), gl.STATIC_DRAW);
+        rimBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rimBuf);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, rimData, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+        gl.bindBuffer(bufferTarget, null);
+    } catch(e) {}
+
+    try {
+        vaoBake = gl.createVertexArray();
+        gl.bindVertexArray(vaoBake);
+        gl.bindBuffer(bufferTarget, bakeBuf);
+        const bakeLoc = gl.getAttribLocation(bakeProg, 'aPos');
+        gl.enableVertexAttribArray(bakeLoc);
+        gl.vertexAttribPointer(bakeLoc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+
+        vaoSlice = gl.createVertexArray();
+        gl.bindVertexArray(vaoSlice);
+        const locPos = gl.getAttribLocation(sliceProg, 'aPos');
+        const locUv = gl.getAttribLocation(sliceProg, 'aUv');
+        const locOff = gl.getAttribLocation(sliceProg, 'aOff');
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, uvBuf);
+        gl.enableVertexAttribArray(locUv);
+        gl.vertexAttribPointer(locUv, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, offBuf);
+        gl.enableVertexAttribArray(locOff);
+        gl.vertexAttribPointer(locOff, 2, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locOff, 1);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rimBuf);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vaoSlice);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vaoSlice);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        texVol = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(volTarget, texVol);
+        gl.bindTexture(volTarget, null);
+        gl.bindTexture(volTarget, texVol);
+        const volData = new Float32Array(volDim * volDim * volDim * 4);
+        for (let z = 0; z < volDim; z++) {
+            for (let y = 0; y < volDim; y++) {
+                for (let x = 0; x < volDim; x++) {
+                    const i = ((z * volDim + y) * volDim + x) * 4;
+                    const d = Math.hypot(x - 7.5, y - 7.5, z - 7.5) / 8;
+                    volData[i] = Math.max(0, 1 - d);
+                    volData[i + 1] = x / volDim;
+                    volData[i + 2] = y / volDim;
+                    volData[i + 3] = Math.max(0, 1 - d * d);
+                }
+            }
+        }
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, volDim);
+        gl.texImage3D(volTarget, 0, gl.RGBA32F, volDim, volDim, volDim, 0, gl.RGBA, gl.FLOAT, volData);
+        const brickData = new Float32Array(brick * brick * brick * 4).fill(1.0);
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, brick);
+        gl.texSubImage3D(volTarget, 0, 6, 6, 6, brick, brick, brick, gl.RGBA, gl.FLOAT, brickData);
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
+        gl.texParameteri(volTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(volTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(volTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+
+        texLayers = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(arrTarget, texLayers);
+        gl.bindTexture(arrTarget, null);
+        gl.bindTexture(arrTarget, texLayers);
+        gl.texStorage3D(arrTarget, 1, gl.RGBA8, layerSize, layerSize, layerCount);
+        gl.texParameteri(arrTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(arrTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(arrTarget, null);
+        gl.activeTexture(gl.TEXTURE0);
+    } catch(e) {}
+
+    try {
+        sLin = gl.createSampler();
+        gl.samplerParameteri(sLin, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.samplerParameteri(sLin, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.samplerParameteri(sLin, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.samplerParameterf(sLin, gl.TEXTURE_MIN_LOD, 0);
+        gl.samplerParameterf(sLin, gl.TEXTURE_MAX_LOD, 4);
+        gl.getSamplerParameter(sLin, gl.TEXTURE_MAX_LOD);
+        sNear = gl.createSampler();
+        gl.samplerParameteri(sNear, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.samplerParameteri(sNear, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.samplerParameteri(sNear, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(sNear, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        blockIndex = gl.getUniformBlockIndex(bakeProg, 'Slices');
+        gl.uniformBlockBinding(bakeProg, blockIndex, 0);
+        blockSize = gl.getActiveUniformBlockParameter(bakeProg, blockIndex, gl.UNIFORM_BLOCK_DATA_SIZE);
+        ubo = gl.createBuffer();
+        gl.bindBuffer(uboTarget, ubo);
+        gl.bufferData(uboTarget, blockSize, gl.DYNAMIC_DRAW);
+        const uboData = new Float32Array(20);
+        for (let s = 0; s < sliceQuads; s++) uboData[s * 4] = (s + 0.5) / sliceQuads;
+        uboData.set([0.05, -0.05, 0, 0], 16);
+        gl.bufferSubData(uboTarget, 0, uboData);
+        gl.bindBufferBase(uboTarget, 0, ubo);
+    } catch(e) {}
+
+    try {
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.useProgram(bakeProg);
+        gl.bindVertexArray(vaoBake);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(volTarget, texVol);
+        gl.bindSampler(0, sLin);
+        gl.uniform1i(gl.getUniformLocation(bakeProg, 'uVol'), 0);
+        const layerLoc = gl.getUniformLocation(bakeProg, 'uLayer');
+        gl.viewport(0, 0, layerSize, layerSize);
+        gl.clearColor(0, 0, 0, 0);
+        const bakeFirsts = new Int32Array([0, 6, 12, 18]);
+        const bakeCounts = new Int32Array(sliceQuads).fill(quadVerts);
+        for (let l = 0; l < layerCount; l++) {
+            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, texLayers, 0, l);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.bindSampler(0, l % 2 ? sNear : sLin);
+            gl.uniform1i(layerLoc, l);
+            gl.bindVertexArray(null);
+            gl.bindVertexArray(vaoBake);
+            gl.enable(gl.BLEND);
+            gl.disable(gl.BLEND);
+            extMD.multiDrawArraysWEBGL(drawMode, bakeFirsts, 0, bakeCounts, 0, sliceQuads);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProg);
+        gl.bindVertexArray(vaoSlice);
+        tfObj = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        tfBuf = gl.createBuffer();
+        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuf);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, sliceQuads * quadVerts * 8, gl.DYNAMIC_READ);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(tfMode);
+        extMD.multiDrawArraysWEBGL(tfMode, new Int32Array([0, 6, 12, 18]), 0, new Int32Array(sliceQuads).fill(quadVerts), 0, sliceQuads);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.bindVertexArray(null);
+
+        vaoPts = gl.createVertexArray();
+        gl.bindVertexArray(vaoPts);
+        gl.bindBuffer(bufferTarget, tfBuf);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(sliceProg);
+        gl.bindVertexArray(vaoSlice);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.05, 0.06, 0.1, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(arrTarget, texLayers);
+        gl.uniform1i(gl.getUniformLocation(sliceProg, 'uLayers'), 1);
+        const rimLoc = gl.getUniformLocation(sliceProg, 'uRim');
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+
+        const firsts = new Int32Array([0, 6, 12, 18]);
+        const counts = new Int32Array(sliceQuads).fill(quadVerts);
+        const instCounts = new Int32Array([2, 2, 2, 2]);
+        const rimCounts = new Int32Array(sliceQuads).fill(8);
+        const rimOffsets = new Int32Array([0, 16, 32, 48]);
+
+        gl.bindSampler(1, sNear);
+        gl.depthMask(true);
+        gl.uniform1f(rimLoc, 0);
+        extMD.multiDrawArraysInstancedWEBGL(drawMode, firsts, 0, counts, 0, instCounts, 0, layerCount);
+        gl.bindSampler(1, sLin);
+        gl.depthMask(false);
+        gl.uniform1f(rimLoc, 1);
+        extMD.multiDrawElementsWEBGL(gl.LINES, rimCounts, 0, gl.UNSIGNED_SHORT, rimOffsets, 0, layerCount);
+        gl.bindVertexArray(vaoPts);
+        gl.disable(gl.DEPTH_TEST);
+        extMD.multiDrawArraysWEBGL(tfMode, firsts, 0, counts, 0, sliceQuads);
+        gl.bindSampler(1, sNear);
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
+        gl.bindSampler(1, null);
+        gl.bindVertexArray(null);
+
+        packBuf = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuf);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, 8 * 8 * 4, gl.STREAM_READ);
+        gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
+        gl.readPixels(96, 96, 8, 8, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, new Uint8Array(8 * 8 * 4));
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

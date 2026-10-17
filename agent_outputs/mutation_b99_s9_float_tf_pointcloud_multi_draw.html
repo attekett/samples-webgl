@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw',
+    'OES_texture_float_linear',
+    'EXT_color_buffer_float'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+    const extFloatLinear = gl.getExtension('OES_texture_float_linear');
+    const extColorFloat = gl.getExtension('EXT_color_buffer_float');
+
+    const texSize = 256;
+    const clusterCount = 8;
+    const clusterPts = 512;
+    const posDim = 64;
+    const fieldDim = 8;
+    const velLayers = 2;
+    const pointCount = clusterCount * clusterPts;
+    const pointBytes = pointCount * 16;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const uboTarget = gl.UNIFORM_BUFFER;
+    const packTarget = gl.PIXEL_PACK_BUFFER;
+    const colorFormat = gl.RGBA16F;
+
+    var tfProg, drawProg, compProg;
+    var vaoTf, vaoDraw, vaoComp;
+    var pointBuf, jitBuf, uboBuf, packBuf;
+    var posTex, fieldTex, velTex, c1Tex;
+    var sField, tfObj, fbo, rbo, sync;
+
+    try {
+        const vs1 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs1, `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+precision highp sampler3D;
+precision highp sampler2DArray;
+uniform sampler2D uPos;
+uniform sampler3D uField;
+uniform sampler2DArray uVel;
+uniform Sim { vec4 dtGravity; };
+out vec4 vP;
+void main() {
+    ivec2 tc = ivec2(gl_VertexID % 64, gl_VertexID / 64);
+    vec2 p = texelFetch(uPos, tc, 0).xy;
+    vec2 uv = p * 0.5 + 0.5;
+    vec4 f = textureLod(uField, vec3(uv, 0.5), 0.0);
+    float layer = float((gl_VertexID / 512) % 2);
+    vec4 v = texture(uVel, vec3(uv, layer));
+    vec2 np = p + dtGravity.x * (v.xy + f.xy - 0.5) + dtGravity.yz * dtGravity.x;
+    vP = vec4(np, f.z, 1.0);
+}`);
+        gl.compileShader(vs1);
+        const fs1 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs1, `#version 300 es
+precision highp float;
+out vec4 o;
+void main() { o = vec4(0.0); }`);
+        gl.compileShader(fs1);
+        tfProg = gl.createProgram();
+        gl.attachShader(tfProg, vs1);
+        gl.attachShader(tfProg, fs1);
+        gl.transformFeedbackVaryings(tfProg, ['vP'], gl.SEPARATE_ATTRIBS);
+        gl.linkProgram(tfProg);
+        gl.getAttachedShaders(tfProg);
+
+        const vs2 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs2, `#version 300 es
+#extension GL_ANGLE_multi_draw : require
+precision highp float;
+in vec4 aPos;
+in vec2 aJit;
+out vec4 vCol;
+void main() {
+    vec2 p = aPos.xy + aJit * 0.01 * float(gl_InstanceID + 1);
+    gl_Position = vec4(p, 0.0, 1.0);
+    gl_PointSize = 3.0 + float(gl_DrawID);
+    float h = float(gl_DrawID) / 8.0;
+    vCol = vec4(0.4 + 0.6 * h, 0.5 + aPos.z, 1.0 - 0.6 * h, 1.0) * 0.12;
+}`);
+        gl.compileShader(vs2);
+        const fs2 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs2, `#version 300 es
+precision highp float;
+in vec4 vCol;
+layout(location = 0) out vec4 c0;
+layout(location = 1) out vec4 c1;
+void main() {
+    float fall = max(1.0 - length(gl_PointCoord * 2.0 - 1.0), 0.0);
+    c0 = vCol * fall;
+    c1 = vCol * fall * vec4(0.6, 1.0, 1.6, 1.0);
+}`);
+        gl.compileShader(fs2);
+        drawProg = gl.createProgram();
+        gl.attachShader(drawProg, vs2);
+        gl.attachShader(drawProg, fs2);
+        gl.linkProgram(drawProg);
+
+        const vs3 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs3, `#version 300 es
+precision highp float;
+out vec2 vUv;
+void main() {
+    vec2 q = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    vUv = q;
+    gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0);
+}`);
+        gl.compileShader(vs3);
+        const fs3 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs3, `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uC1;
+out vec4 o;
+void main() {
+    vec4 c = texture(uC1, vUv);
+    vec3 t = c.rgb / (1.0 + c.rgb);
+    o = vec4(smoothstep(0.0, 0.8, t * 2.0), 0.6);
+}`);
+        gl.compileShader(fs3);
+        compProg = gl.createProgram();
+        gl.attachShader(compProg, vs3);
+        gl.attachShader(compProg, fs3);
+        gl.linkProgram(compProg);
+    } catch(e) {}
+
+    try {
+        pointBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, pointBuf);
+        gl.bufferData(bufferTarget, pointBytes, gl.DYNAMIC_COPY);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(bufferTarget, pointBuf);
+        gl.bindBuffer(bufferTarget, null);
+
+        jitBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, jitBuf);
+        gl.bufferData(bufferTarget, new Float32Array([1, 0, 0, 1, -1, 0, 0, -1]), gl.STATIC_DRAW);
+
+        uboBuf = gl.createBuffer();
+        gl.bindBuffer(uboTarget, uboBuf);
+        gl.bufferData(uboTarget, new Float32Array([0.12, 0.0, -0.02, 0.0]), gl.DYNAMIC_DRAW);
+        gl.bindBufferBase(uboTarget, 0, uboBuf);
+        gl.bindBufferBase(uboTarget, 0, uboBuf);
+        gl.uniformBlockBinding(tfProg, gl.getUniformBlockIndex(tfProg, 'Sim'), 0);
+
+        packBuf = gl.createBuffer();
+        gl.bindBuffer(packTarget, packBuf);
+        gl.bufferData(packTarget, 16 * 16 * 16, gl.STREAM_READ);
+        gl.bindBuffer(packTarget, null);
+    } catch(e) {}
+
+    try {
+        posTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, posTex);
+        const posData = new Float32Array(posDim * posDim * 4);
+        for (let i = 0; i < pointCount; i++) {
+            const c = Math.floor(i / clusterPts);
+            const a = c / clusterCount * Math.PI * 2;
+            const r1 = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+            const r2 = Math.abs(Math.sin(i * 78.233) * 12345.6789) % 1;
+            const rad = 0.12 * r1;
+            const ang = r2 * Math.PI * 2;
+            posData[i * 4 + 0] = 0.55 * Math.cos(a) + rad * Math.cos(ang);
+            posData[i * 4 + 1] = 0.4 * Math.sin(a) + rad * Math.sin(ang);
+            posData[i * 4 + 2] = r1 * 0.3;
+            posData[i * 4 + 3] = 1.0;
+        }
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, posDim, posDim, 0, gl.RGBA, gl.FLOAT, posData);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        fieldTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_3D, fieldTex);
+        const fieldData = new Float32Array(fieldDim * fieldDim * fieldDim * 4);
+        for (let i = 0; i < fieldDim * fieldDim * fieldDim; i++) {
+            fieldData[i * 4 + 0] = 0.5 + 0.5 * Math.sin(i * 0.37);
+            fieldData[i * 4 + 1] = 0.5 + 0.5 * Math.cos(i * 0.21);
+            fieldData[i * 4 + 2] = (i % fieldDim) / fieldDim;
+            fieldData[i * 4 + 3] = 1.0;
+        }
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA32F, fieldDim, fieldDim, fieldDim, 0, gl.RGBA, gl.FLOAT, fieldData);
+
+        velTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, velTex);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, colorFormat, 16, 16, velLayers);
+        const velData = new Uint16Array(16 * 16 * velLayers * 4);
+        for (let i = 0; i < 16 * 16 * velLayers; i++) {
+            velData[i * 4 + 0] = (i % 2) ? 0x3400 : 0xB400;
+            velData[i * 4 + 1] = (i % 3) ? 0x3000 : 0xB000;
+            velData[i * 4 + 2] = 0x3800;
+            velData[i * 4 + 3] = 0x3C00;
+        }
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, 16, 16, velLayers, gl.RGBA, gl.HALF_FLOAT, velData);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        sField = gl.createSampler();
+        gl.samplerParameteri(sField, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.samplerParameteri(sField, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.samplerParameteri(sField, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(sField, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(sField, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.samplerParameterf(sField, gl.TEXTURE_MAX_LOD, 0);
+        gl.bindSampler(1, sField);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProg);
+        gl.uniform1i(gl.getUniformLocation(tfProg, 'uPos'), 0);
+        gl.uniform1i(gl.getUniformLocation(tfProg, 'uField'), 1);
+        gl.uniform1i(gl.getUniformLocation(tfProg, 'uVel'), 2);
+        gl.useProgram(compProg);
+        gl.uniform1i(gl.getUniformLocation(compProg, 'uC1'), 3);
+
+        vaoTf = gl.createVertexArray();
+        gl.bindVertexArray(vaoTf);
+        gl.bindVertexArray(null);
+        vaoComp = gl.createVertexArray();
+        gl.bindVertexArray(vaoComp);
+        gl.bindVertexArray(null);
+
+        vaoDraw = gl.createVertexArray();
+        gl.bindVertexArray(vaoDraw);
+        const locPos = gl.getAttribLocation(drawProg, 'aPos');
+        const locJit = gl.getAttribLocation(drawProg, 'aJit');
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, pointBuf);
+        gl.vertexAttribPointer(locPos, 4, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locJit);
+        gl.bindBuffer(bufferTarget, jitBuf);
+        gl.vertexAttribPointer(locJit, 2, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locJit, 1);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+
+        tfObj = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfTarget, 0, pointBuf);
+        gl.bindBufferBase(tfTarget, 0, null);
+        gl.bindBufferBase(tfTarget, 0, pointBuf);
+    } catch(e) {}
+
+    try {
+        c1Tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, c1Tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, colorFormat, texSize, texSize, 0, gl.RGBA, gl.HALF_FLOAT, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        rbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, colorFormat, texSize, texSize);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, c1Tex, 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProg);
+        gl.bindVertexArray(vaoTf);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfTarget, 0, pointBuf);
+        gl.bindBufferBase(uboTarget, 0, uboBuf);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindBufferBase(tfTarget, 0, null);
+        sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.clientWaitSync(sync, 0, 0);
+        gl.deleteSync(sync);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        const firsts = new Int32Array([0, 512, 1024, 1536, 2048, 2560, 3072, 3584]);
+        const counts = new Int32Array(clusterCount).fill(clusterPts);
+        const instances = new Int32Array([1, 1, 2, 2, 3, 3, 2, 1]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.useProgram(drawProg);
+        gl.bindVertexArray(vaoDraw);
+        extMD.multiDrawArraysInstancedWEBGL(gl.POINTS, firsts, 0, counts, 0, instances, 0, clusterCount);
+        gl.bindVertexArray(null);
+        gl.disable(gl.BLEND);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.bindBuffer(packTarget, packBuf);
+        gl.readPixels(120, 120, 16, 16, gl.RGBA, gl.HALF_FLOAT, 0);
+        const readBack = new Uint16Array(16 * 16 * 4);
+        gl.getBufferSubData(packTarget, 0, readBack);
+        gl.bindBuffer(packTarget, null);
+
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        gl.useProgram(compProg);
+        gl.bindVertexArray(vaoComp);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
