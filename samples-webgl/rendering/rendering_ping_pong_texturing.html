@@ -62,6 +62,10 @@ async function main() {
  // Attach texture B to FBO2
  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, textureB, 0);
+ gl.clearColor(0.0, 0.0, 0.0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+ gl.clear(gl.COLOR_BUFFER_BIT);
 
  // Create shaders for ping-pong rendering
  const vertexShaderSource = `
@@ -249,6 +253,7 @@ async function main() {
  if (error !== gl.NO_ERROR) {
  throw new Error(`WebGL Error: ${error}`);
  }
+ window.__done = true;
 }
 
 main().catch(err => {

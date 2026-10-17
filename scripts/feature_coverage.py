@@ -20,9 +20,13 @@ from api_audit.parse import parse_js
 from api_audit.context import detect_context
 from api_audit.const_propagation import resolve_constants
 from api_audit.call_analysis import analyze_calls
-from api_audit.glsl import extract_glsl_builtins
+from api_audit.glsl import extract_glsl_builtins, extract_glsl_variables
 from api_audit.feature_detection import detect_features
 from api_audit.cache import FileCache
+from api_audit.value_classes import static_overload_calls, overload_requirement
+
+
+ANALYZER_VERSION = "2"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -50,6 +54,8 @@ DISPLAY_NAMES = {
     "shader_pipeline":              "Shader Pipeline",
     "draw_calls":                   "Draw Calls",
     "viewport_scissor":             "Viewport/Scissor",
+    "rasterizer_state":             "Rasterizer State",
+    "pipeline_state":               "Pipeline State",
     "ext_color_buffer_float":       "EXT: Color Buffer Float",
     "ext_draw_buffers_indexed":     "EXT: Draw Buffers Indexed",
     "ext_float_textures":           "EXT: Float Textures",
@@ -61,7 +67,8 @@ DISPLAY_NAMES = {
 
 # Ordered display groups (omit ubiquitous features from the matrix by default)
 SKIP_UBIQUITOUS = {"attributes", "uniforms", "shader_pipeline", "draw_calls",
-                   "viewport_scissor", "buffer_ops", "glsl_builtins"}
+                   "viewport_scissor", "buffer_ops", "glsl_builtins",
+                   "pipeline_state"}
 
 
 def is_passed(filepath: Path) -> bool:
@@ -144,6 +151,25 @@ def aggregate_glsl_builtins(fingerprints: list) -> dict:
     return counts
 
 
+def aggregate_glsl_variables(fingerprints: list) -> dict:
+    """Count how many seeds reference each GLSL built-in variable.
+
+    Args:
+        fingerprints: list of analyze_file() result dicts, each may have
+            a "glsl_variables" set or list.
+
+    Returns:
+        dict {variable_name: seed_count}
+    """
+    counts = {}
+    for fp in fingerprints:
+        if fp is None:
+            continue
+        for v in fp.get("glsl_variables", []):
+            counts[v] = counts.get(v, 0) + 1
+    return counts
+
+
 def diff_coverage_snapshots(prev: dict, curr: dict) -> dict:
     """Compute delta between two coverage snapshots.
 
@@ -170,12 +196,181 @@ def diff_coverage_snapshots(prev: dict, curr: dict) -> dict:
     }
 
 
+def requirement_universe(surface, categories, topology, context_version,
+                         supported_extensions=None):
+    """Build static requirement keys for a measured WebGL context.
+
+    Overload keys use ``overload:<method>:<types>``. ``supported_extensions=None``
+    means support was not observed; an empty iterable is an observed unsupported
+    list. Unsupported or unmeasured extension-only category pairs are returned
+    separately from the applicable denominator.
+    """
+    version = int(context_version) if context_version is not None else None
+    all_core_methods = surface.get("methods", {})
+    core_methods = sorted(
+        f"core:{name}" for name, method in all_core_methods.items()
+        if version is not None and method.get("webgl_version", 1) <= version
+    )
+    core_overloads = sorted(
+        overload_requirement(name, overload)
+        for name, method in surface.get("methods", {}).items()
+        for overload in method.get("overloads", [])
+        if version is not None and overload.get(
+            "webgl_version", method.get("webgl_version", 1)) <= version
+    )
+    extensions_observed = supported_extensions is not None
+    supported = set(supported_extensions or ())
+    known_extensions = set(surface.get("extensions", {}))
+    extension_methods = sorted(
+        f"extension:{ext_name}:{method_name}"
+        for ext_name in supported
+        for method_name in surface.get("extensions", {}).get(ext_name, {}).get("methods", {})
+    )
+    unmeasured_extensions = sorted(known_extensions if not extensions_observed else ())
+    unsupported_extensions = sorted(known_extensions - supported) if extensions_observed else []
+    category_defs = categories.get("categories", categories)
+    category_names = set(category_defs)
+    category_extension_requirements = {
+        name: set(definition.get("extensions", [])) | (
+            {definition["extension"]} if definition.get("extension") else set()
+        )
+        for name, definition in category_defs.items()
+    }
+    for name, definition in category_defs.items():
+        for method_name in definition.get("extension_methods", []):
+            for ext_name, ext_info in surface.get("extensions", {}).items():
+                if method_name in ext_info.get("methods", {}):
+                    category_extension_requirements[name].add(ext_name)
+    all_pairs = sorted(
+        tuple(sorted(edge["pair"], key=str.casefold))
+        for edge in topology.get("edges", [])
+        if set(edge.get("pair", [])) <= category_names
+    )
+    pairs, unsupported_pairs, unmeasured_pairs = [], [], []
+    unsupported_categories = set()
+    unmeasured_categories = set()
+    for name, required_extensions in category_extension_requirements.items():
+        if not required_extensions:
+            continue
+        if not extensions_observed:
+            unmeasured_categories.add(name)
+        elif not required_extensions & supported:
+            unsupported_categories.add(name)
+    for pair in all_pairs:
+        pair_categories = set(pair)
+        if pair_categories & unsupported_categories:
+            unsupported_pairs.append(pair)
+        elif pair_categories & unmeasured_categories:
+            unmeasured_pairs.append(pair)
+        else:
+            pairs.append(pair)
+    pair_keys = [f"pair:{a}+{b}" for a, b in pairs]
+    unsupported_pair_keys = [f"pair:{a}+{b}" for a, b in unsupported_pairs]
+    unmeasured_pair_keys = [f"pair:{a}+{b}" for a, b in unmeasured_pairs]
+    unmeasured_core_methods = sorted(
+        f"core:{name}" for name in all_core_methods
+    ) if version is None else []
+    unmeasured_core_overloads = sorted(
+        overload_requirement(name, overload)
+        for name, method in all_core_methods.items()
+        for overload in method.get("overloads", [])
+    ) if version is None else []
+    all_extension_methods = sorted(
+        f"extension:{ext_name}:{method_name}"
+        for ext_name, ext_info in surface.get("extensions", {}).items()
+        for method_name in ext_info.get("methods", {})
+    )
+    unmeasured_extension_methods = all_extension_methods if not extensions_observed else []
+    unsupported_extension_methods = sorted(set(all_extension_methods) - set(extension_methods)) if extensions_observed else []
+    return {
+        "context_version": version,
+        "supported_extensions": sorted(supported) if extensions_observed else None,
+        "core_methods": core_methods,
+        "core_overloads": core_overloads,
+        "extension_methods": extension_methods,
+        "unmeasured_extensions": unmeasured_extensions,
+        "unsupported_extensions": unsupported_extensions,
+        "unmeasured_core_methods": unmeasured_core_methods,
+        "unmeasured_core_overloads": unmeasured_core_overloads,
+        "unmeasured_extension_methods": unmeasured_extension_methods,
+        "unsupported_extension_methods": unsupported_extension_methods,
+        "category_pairs": pair_keys,
+        "unsupported_category_pairs": unsupported_pair_keys,
+        "unmeasured_category_pairs": unmeasured_pair_keys,
+        "requirements": {
+            "core_methods": core_methods,
+            "core_overloads": core_overloads,
+            "extension_methods": extension_methods,
+            "category_pairs": pair_keys,
+        },
+    }
+
+
+def static_fingerprint(filepath, surface, cats_config, cache=None):
+    """Return a canonical, hash-addressed static fingerprint for one HTML seed.
+
+    The result is suitable for later corpus-metrics aggregation. Static calls
+    never claim runtime execution or extension support.
+    """
+    path = Path(filepath).resolve()
+    content = path.read_text()
+    analyzed = analyze_file(path, surface, cats_config, cache)
+    if analyzed is None:
+        return None
+    return {
+        "source_path": str(path),
+        "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "api_version": analyzed.get("api_version", "unknown"),
+        "core_methods": analyzed.get("core_methods", {}),
+        "extension_methods": analyzed.get("extension_methods", {}),
+        "overload_calls": analyzed.get("static_calls", []),
+        "features": analyzed.get("features", []),
+        "requested_extensions": analyzed.get("requested_extensions", []),
+        "static_requirements": _static_requirements(analyzed, cats_config),
+    }
+
+
+def _static_requirements(analyzed, cats_config):
+    requirements = {f"core:{method}" for method in analyzed.get("core_methods", {})}
+    for call in analyzed.get("static_calls", []):
+        if call.get("overload") != "unknown":
+            requirements.add(call["overload"])
+    for ext, methods in analyzed.get("extension_methods", {}).items():
+        requirements.update(f"extension:{ext}:{method}" for method in methods)
+    features = set(analyzed.get("features", []))
+    # These are static co-presence facts; runtime flow accounting is separate.
+    topology_path = Path(__file__).resolve().parents[1] / "docs/interaction_topology.json"
+    if topology_path.exists():
+        topology = json.loads(topology_path.read_text())
+        categories = set(cats_config.get("categories", cats_config))
+        for edge in topology.get("edges", []):
+            a, b = sorted(edge.get("pair", []), key=str.casefold)
+            if a in features and b in features and {a, b} <= categories:
+                requirements.add(f"pair:{a}+{b}")
+    return sorted(requirements)
+
+
+def _fingerprint_config_hash(surface, cats_config, extra=""):
+    payload = json.dumps({"surface": surface, "categories": cats_config},
+                         sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(
+        f"{ANALYZER_VERSION}\0{extra}\0{payload}".encode("utf-8")
+    ).hexdigest()
+
+
 def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
+    filepath = Path(filepath).resolve()
     content = filepath.read_text()
+    config_hash = _fingerprint_config_hash(surface, cats_config, config_hash)
     if cache:
         cached = cache.lookup(filepath.name, content, config_hash=config_hash)
-        if cached and "features" in cached:
-            return cached
+        if (cached and "features" in cached and "all_methods" in cached
+                and "glsl_variables" in cached and "static_calls" in cached):
+            return {**cached, "all_methods": set(cached.get("all_methods", [])),
+                    "glsl_builtins": set(cached.get("glsl_builtins", [])),
+                    "glsl_variables": set(cached.get("glsl_variables", [])),
+                    "core_methods": cached.get("core_methods", {}),
+                    "extension_methods": cached.get("extension_methods", {})}
 
     script = extract_script(content)
     if not script.strip():
@@ -185,12 +380,23 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     consts = resolve_constants(root)
     ctx = detect_context(root, consts)
     calls = analyze_calls(root, ctx, consts, surface)
-    glsl = extract_glsl_builtins(root, ctx, consts, surface)
+    static_calls = static_overload_calls(root, ctx.context_vars, surface)
+
+    category_glsl = []
+    for cat in cats_config.get("categories", {}).values():
+        category_glsl.extend(cat.get("glsl_functions", []))
+    glsl = extract_glsl_builtins(root, ctx, consts, surface,
+                                 extra_builtins=category_glsl)
+    glsl_vars = extract_glsl_variables(root, ctx, consts, surface)
 
     result = {
         "methods": {k: len(v) for k, v in calls.methods.items()},
         "constants": {},
         "extension_methods": {},
+        "core_methods": {k: len(v) for k, v in calls.methods.items()},
+        "static_calls": static_calls,
+        "api_version": ctx.api_version,
+        "requested_extensions": sorted(ctx.extensions),
     }
 
     surface_constants = surface.get("constants", {})
@@ -214,15 +420,27 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
         cats_config,
         extensions=set(ctx.extensions))
 
+    all_methods = set(result["methods"].keys())
+    for ext_methods in result["extension_methods"].values():
+        all_methods.update(ext_methods.keys())
+
     if cache:
         cache.store(filepath.name, content,
                     {"features": fp["features"],
                      "feature_depth": fp["feature_depth"],
                      "methods_per_feature": fp.get("methods_per_feature", {}),
-                     "glsl_builtins": list(glsl)},
+                     "all_methods": sorted(all_methods),
+                     "core_methods": result["core_methods"],
+                     "extension_methods": result["extension_methods"],
+                     "static_calls": static_calls,
+                     "api_version": ctx.api_version,
+                     "requested_extensions": sorted(ctx.extensions),
+                     "glsl_builtins": list(glsl),
+                     "glsl_variables": sorted(glsl_vars)},
                     config_hash=config_hash)
 
-    return {**fp, "glsl_builtins": set(glsl)}
+    return {**fp, **result, "glsl_builtins": set(glsl), "all_methods": all_methods,
+            "glsl_variables": set(glsl_vars)}
 
 
 def main():
@@ -248,6 +466,8 @@ def main():
                         help="Show per-method API surface coverage report")
     parser.add_argument("--glsl-detail", action="store_true",
                         help="Show per-GLSL-builtin seed counts")
+    parser.add_argument("--glsl-vars-detail", action="store_true",
+                        help="Show per-GLSL-built-in-variable seed counts")
     parser.add_argument("--snapshot", type=Path, metavar="FILE",
                         help="Save current coverage to FILE as JSON snapshot")
     parser.add_argument("--diff", type=Path, metavar="PREV_SNAPSHOT",
@@ -268,12 +488,18 @@ def main():
     feature_depths = {}  # {feat: {"present": N, "meaningful": N, "deep": N}}
     corpus_fingerprints = {}  # {filename: feature_fingerprint}
     all_seen_methods = set()
+    seen_sources = set()
     total = 0
 
     for f in html_files:
         if args.passed_only and not is_passed(f):
             continue
-        fp = analyze_file(f, surface, cats_config, cache, config_hash=cats_config_hash)
+        canonical_path = f.resolve()
+        if canonical_path in seen_sources:
+            continue
+        seen_sources.add(canonical_path)
+        fp = analyze_file(canonical_path, surface, cats_config, cache,
+                          config_hash=cats_config_hash)
         if fp is None:
             continue
         total += 1
@@ -286,13 +512,13 @@ def main():
             if feat not in feature_depths:
                 feature_depths[feat] = {"present": 0, "meaningful": 0, "deep": 0}
             feature_depths[feat][fd] += 1
-        for feat_methods in fp.get("methods_per_feature", {}).values():
-            all_seen_methods.update(feat_methods)
-        corpus_fingerprints[str(f)] = {
+        all_seen_methods.update(fp.get("all_methods", set()))
+        corpus_fingerprints[str(canonical_path)] = {
             "features": fp["features"],
             "methods_per_feature": fp.get("methods_per_feature", {}),
             "feature_depth": fp.get("feature_depth", {}),
             "glsl_builtins": fp.get("glsl_builtins", []),
+            "glsl_variables": fp.get("glsl_variables", []),
         }
 
     snapshot = {feat: {"seeds": count, "total": total,
@@ -375,16 +601,35 @@ def main():
                 print(f"  - {m}")
         print()
 
+    if args.glsl_vars_detail:
+        var_counts = aggregate_glsl_variables(list(corpus_fingerprints.values()))
+        all_vars = set()
+        var_categories = surface.get("glsl_builtin_variables", {})
+        for category_names in var_categories.values():
+            all_vars.update(category_names)
+        used = sorted(var_counts.items(), key=lambda x: x[1], reverse=True)
+        used_in_known = set(var_counts) & all_vars
+        never = sorted(all_vars - set(var_counts))
+        print("## GLSL Built-in Variable Coverage")
+        print(f"Used variables ({len(used_in_known)}/{len(all_vars)}):")
+        for name, count in used:
+            print(f"  {name:<40} {count:>4} seeds")
+        if never:
+            print(f"Never used ({len(never)}): {', '.join(never)}")
+        print()
+
     if args.glsl_detail:
         glsl_counts = aggregate_glsl_builtins(list(corpus_fingerprints.values()))
         all_builtins = set()
         for cat in cats_config.get("categories", {}).values():
             all_builtins.update(cat.get("glsl_functions", []))
+        for category_names in surface.get("glsl_builtins", {}).values():
+            all_builtins.update(category_names)
         print("## GLSL Builtin Coverage")
+        used_in_known = set(glsl_counts) & all_builtins
         never = sorted(all_builtins - set(glsl_counts))
         used = sorted(glsl_counts.items(), key=lambda x: x[1], reverse=True)
-        covered_defined = set(glsl_counts) & all_builtins
-        print(f"Used builtins ({len(covered_defined)}/{len(all_builtins)}):")
+        print(f"Used builtins ({len(used_in_known)}/{len(all_builtins)}):")
         for name, count in used:
             print(f"  {name:<30} {count:>4} seeds")
         if never:

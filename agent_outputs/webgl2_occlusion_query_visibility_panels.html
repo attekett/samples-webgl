@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    window.__done = false;
+    const gl = document.getElementById('webgl-canvas').getContext('webgl2', { antialias: false, depth: true });
+    if (!gl) throw new Error('WebGL2 not supported');
+    const missing = REQUIRED_EXTENSIONS.filter(name => !gl.getExtension(name));
+    if (missing.length) throw new Error(`UNSUPPORTED_EXTENSIONS: ${missing.join(', ')}`);
+
+    const canvasSize = 256;
+    const panelWidth = 104;
+    const panelHeight = 224;
+    const drawMode = gl.TRIANGLES;
+    const queryTarget = gl.ANY_SAMPLES_PASSED;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const bufferUsage = gl.STATIC_DRAW;
+    const depthFunction = gl.LESS;
+    let program, quad, hiddenQuery, visibleQuery, vertex, fragment;
+
+    try {
+        vertex = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertex, `#version 300 es
+layout(location=0) in vec2 aPosition;
+uniform float uDepth;
+void main() { gl_Position = vec4(aPosition, uDepth, 1.0); }`);
+        gl.compileShader(vertex);
+    } catch (error) { throw error; }
+
+    try {
+        fragment = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragment, `#version 300 es
+precision highp float;
+uniform vec3 uTint;
+out vec4 color;
+void main() {
+    float stripe = 0.72 + 0.28*sin(gl_FragCoord.y*0.12 + gl_FragCoord.x*0.06);
+    color = vec4(uTint*stripe, 1.0);
+}`);
+        gl.compileShader(fragment);
+        program = gl.createProgram();
+        gl.attachShader(program, vertex);
+        gl.attachShader(program, fragment);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    } catch (error) { throw error; }
+
+    try {
+        quad = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, quad);
+        gl.bufferData(bufferTarget, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), bufferUsage);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    } catch (error) { throw error; }
+
+    try {
+        hiddenQuery = gl.createQuery();
+        visibleQuery = gl.createQuery();
+    } catch (error) { throw error; }
+
+    try {
+        gl.viewport(0, 0, canvasSize, canvasSize);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(depthFunction);
+        gl.clearColor(0.06, 0.08, 0.16, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.useProgram(program);
+        gl.uniform1f(gl.getUniformLocation(program, 'uDepth'), 0.0);
+        gl.uniform3f(gl.getUniformLocation(program, 'uTint'), 0.18, 0.18, 0.3);
+        gl.drawArrays(drawMode, 0, 6);
+    } catch (error) { throw error; }
+
+    try {
+        gl.colorMask(false, false, false, false);
+        gl.depthMask(false);
+        gl.uniform1f(gl.getUniformLocation(program, 'uDepth'), 0.6);
+        gl.beginQuery(queryTarget, hiddenQuery);
+        gl.drawArrays(drawMode, 0, 6);
+        gl.endQuery(queryTarget);
+        gl.uniform1f(gl.getUniformLocation(program, 'uDepth'), -0.6);
+        gl.beginQuery(queryTarget, visibleQuery);
+        gl.drawArrays(drawMode, 0, 6);
+        gl.endQuery(queryTarget);
+        gl.flush();
+    } catch (error) { throw error; }
+
+    for (let frame = 0; frame < 120; frame++) {
+        if (gl.getQueryParameter(hiddenQuery, gl.QUERY_RESULT_AVAILABLE) &&
+            gl.getQueryParameter(visibleQuery, gl.QUERY_RESULT_AVAILABLE)) break;
+        await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    if (!gl.getQueryParameter(hiddenQuery, gl.QUERY_RESULT_AVAILABLE) ||
+        !gl.getQueryParameter(visibleQuery, gl.QUERY_RESULT_AVAILABLE)) throw new Error('Query results unavailable');
+    const hiddenPassed = gl.getQueryParameter(hiddenQuery, gl.QUERY_RESULT);
+    const visiblePassed = gl.getQueryParameter(visibleQuery, gl.QUERY_RESULT);
+
+    try {
+        gl.colorMask(true, true, true, true);
+        gl.depthMask(true);
+        gl.disable(gl.DEPTH_TEST);
+        gl.viewport(0, 0, canvasSize, canvasSize);
+        gl.clearColor(0.06, 0.08, 0.16, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.uniform1f(gl.getUniformLocation(program, 'uDepth'), 0.0);
+        gl.viewport(8, 16, panelWidth, panelHeight);
+        gl.uniform3f(gl.getUniformLocation(program, 'uTint'), hiddenPassed ? 0.9 : 0.2, 0.28, 0.85);
+        gl.drawArrays(drawMode, 0, 6);
+        gl.viewport(144, 16, panelWidth, panelHeight);
+        gl.uniform3f(gl.getUniformLocation(program, 'uTint'), visiblePassed ? 0.25 : 0.9, 0.9, 0.28);
+        gl.drawArrays(drawMode, 0, 6);
+    } catch (error) { throw error; }
+
+    if (gl.getError() !== gl.NO_ERROR) throw new Error('WebGL operation failed');
+    window.__done = true;
+}
+
+main().catch(error => { throw error; });
+</script>
+</body>
+</html>

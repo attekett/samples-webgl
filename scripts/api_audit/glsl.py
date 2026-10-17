@@ -47,11 +47,34 @@ def _match_builtins(shader_source: str, builtin_names: list[str]) -> set[str]:
     return found
 
 
+def _match_variables(shader_source: str, variable_names: list[str]) -> set[str]:
+    """Match GLSL built-in variables (gl_VertexID, gl_Position, etc.).
+
+    Variables are matched by word-boundary alone — they are never followed
+    by `(`, which distinguishes them from function-style builtins.
+    """
+    found = set()
+    for name in variable_names:
+        # Forbid `(` after the name to avoid colliding with any same-named call
+        if re.search(rf'\b{re.escape(name)}\b(?!\s*\()', shader_source):
+            found.add(name)
+    return found
+
+
 def _flatten_builtin_names(surface: dict) -> list[str]:
     """Flatten all GLSL builtin names from surface['glsl_builtins']."""
     glsl_section = surface.get('glsl_builtins', {})
     names = []
     for category_names in glsl_section.values():
+        names.extend(category_names)
+    return names
+
+
+def _flatten_variable_names(surface: dict) -> list[str]:
+    """Flatten all GLSL built-in variable names from surface['glsl_builtin_variables']."""
+    section = surface.get('glsl_builtin_variables', {})
+    names = []
+    for category_names in section.values():
         names.extend(category_names)
     return names
 
@@ -251,6 +274,43 @@ def _collect_helper_shader_sources(root_node, ctx, consts: dict) -> list[str]:
                     sources.append(resolved)
 
     return sources
+
+
+def _collect_all_shader_sources(root_node, ctx, consts: dict) -> list[str]:
+    """Collect every shader source string referenced by the test file."""
+    sources = _collect_direct_shader_sources(
+        root_node, ctx.context_vars, consts, ctx.helper_functions
+    )
+    sources.extend(_collect_helper_shader_sources(root_node, ctx, consts))
+    return sources
+
+
+def extract_glsl_variables(root_node, ctx, consts: dict, surface: dict,
+                            extra_variables: list[str] | None = None) -> set[str]:
+    """Extract GLSL built-in variables (gl_*) from shader sources.
+
+    Args:
+        root_node: tree-sitter AST root node.
+        ctx: ContextInfo from context.detect_context().
+        consts: resolved constants from const_propagation.resolve_constants().
+        surface: API surface dict.
+        extra_variables: Optional list of additional variable names to scan for.
+
+    Returns:
+        Set of matched GLSL built-in variable names found in shader sources.
+    """
+    all_var_names = _flatten_variable_names(surface)
+    if extra_variables:
+        all_var_names = list(set(all_var_names) | set(extra_variables))
+    if not all_var_names:
+        return set()
+
+    sources = _collect_all_shader_sources(root_node, ctx, consts)
+    result = set()
+    for source in sources:
+        stripped = strip_glsl_comments(source)
+        result |= _match_variables(stripped, all_var_names)
+    return result
 
 
 def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict,

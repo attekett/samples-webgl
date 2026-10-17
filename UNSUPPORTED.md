@@ -66,6 +66,11 @@ This file documents WebGL extensions that are not supported in the current test 
 
 ## WebGL2 Extensions
 
+### WEBGL_multi_draw
+- **Status**: Not supported in the local Firefox runner; available in Chromium with ANGLE Vulkan
+- **Used in**: `agent_outputs/mutation_vertex_buffer_state_multidraw.html`, `agent_outputs/webgl2_multidraw_indexed_instanced_rows.html`
+- **Validation**: Run Chromium with `--browser-config config/angle_vulkan.json` and inspect `browser_info.webgl.renderer` in the JSON result
+
 ### EXT_disjoint_timer_query_webgl2
 - **Status**: Not supported in Firefox
 - **Description**: GPU timer queries for performance measurement

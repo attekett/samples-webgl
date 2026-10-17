@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import argparse
 import logging
+import hashlib
 
 try:
     from playwright.async_api import async_playwright, Browser, Page, BrowserContext
@@ -68,7 +69,10 @@ class TestResult:
         self.javascript_errors: List[Dict[str, Any]] = []
         self.network_errors: List[Dict[str, Any]] = []
         self.browser_info = {}
+        self.completed: Optional[bool] = None
+        self.validation_error: Optional[int] = None
         self.screenshot_path: Optional[str] = None
+        self.webgl_profile: Optional[Dict[str, Any]] = None
         
     def finish(self, passed: bool = None):
         """Mark the test as finished."""
@@ -77,13 +81,7 @@ class TestResult:
         if passed is not None:
             self.passed = passed
         else:
-            # Auto-determine pass/fail based on errors only (warnings don't fail tests)
-            # Special case: PLAYWRIGHT_FIREFOX_LIMITATION messages indicate environmental limitations, not code bugs
-            has_environmental_limitation = any(
-                "PLAYWRIGHT_FIREFOX_LIMITATION" in str(log.get("message", ""))
-                for log in self.console_logs
-            )
-            self.passed = (len(self.errors) == 0 and len(self.javascript_errors) == 0 and len(self.webgl_errors) == 0) or has_environmental_limitation
+            self.passed = not (self.errors or self.javascript_errors or self.webgl_errors or self.warnings)
     
     def add_error(self, error_type: str, message: str, details: Dict[str, Any] = None):
         """Add an error to the test result."""
@@ -121,7 +119,7 @@ class TestResult:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert test result to dictionary for JSON serialization."""
-        return {
+        data = {
             'test_path': self.test_path,
             'browser_name': self.browser_name,
             'start_time': self.start_time.isoformat(),
@@ -135,6 +133,8 @@ class TestResult:
             'javascript_errors': self.javascript_errors,
             'network_errors': self.network_errors,
             'browser_info': self.browser_info,
+            'completed': self.completed,
+            'validation_error': self.validation_error,
             'screenshot_path': self.screenshot_path,
             'summary': {
                 'total_errors': len(self.errors) + len(self.javascript_errors) + len(self.webgl_errors),
@@ -142,12 +142,16 @@ class TestResult:
                 'console_entries': len(self.console_logs)
             }
         }
+        if self.webgl_profile is not None:
+            data['webgl_profile'] = self.webgl_profile
+        return data
 
 
 class WebGPUTestRunner:
     """Main test runner class."""
+    PROFILE_OUTCOME_CAP = 2048
     
-    def __init__(self, test_dir: str = "testcases", timeout: int = 30000, headless: bool = False, browser_config: Dict[str, str] = None, force_firefox: bool = False, capture_screenshots: bool = True, max_workers: int = 1):
+    def __init__(self, test_dir: str = "testcases", timeout: int = 30000, headless: bool = False, browser_config: Dict[str, str] = None, force_firefox: bool = False, capture_screenshots: bool = True, max_workers: int = 1, profile_webgl: bool = False, profile_event_cap: int = 20000):
         self.test_dir = Path(test_dir)
         self.timeout = timeout
         self.headless = headless
@@ -155,6 +159,12 @@ class WebGPUTestRunner:
         self.force_firefox = force_firefox
         self.capture_screenshots = capture_screenshots
         self.max_workers = max_workers
+        self.profile_webgl = profile_webgl
+        self.profile_event_cap = profile_event_cap
+        self.launch_metadata: Dict[str, Dict[str, Any]] = {}
+        if profile_event_cap < 1:
+            raise ValueError("profile_event_cap must be positive")
+        self.profiler_source = (Path(__file__).parent / 'scripts/api_audit/webgl_trace.js').read_text() if profile_webgl else None
         self.results: List[TestResult] = []
         self.logger = self._setup_logging()
     
@@ -194,9 +204,8 @@ class WebGPUTestRunner:
         
         # Recursively find all .html files
         for html_file in self.test_dir.rglob("*.html"):
-            # Convert to relative path from test directory
-            relative_path = html_file.relative_to(self.test_dir.parent)
-            test_files.append(str(relative_path))
+            test_files.append(str(html_file if self.test_dir.is_absolute()
+                                  else html_file.relative_to(self.test_dir.parent)))
         
         self.logger.info(f"Discovered {len(test_files)} test files")
         return sorted(test_files)
@@ -239,6 +248,8 @@ class WebGPUTestRunner:
                 self.logger.info(f"Using custom Chromium path: {browser_path}")
             
             browser = await playwright.chromium.launch(**launch_options)
+            self._remember_launch(browser_name, launch_options.get('executable_path') or playwright.chromium.executable_path,
+                                  browser_args, {})
             
         elif browser_name == 'firefox':
             # Create a temporary Firefox profile to avoid profile conflicts
@@ -317,6 +328,8 @@ class WebGPUTestRunner:
             # Use launch_persistent_context for Firefox profile management
             context = await playwright.firefox.launch_persistent_context(**context_options)
             context._temp_profile_dir = firefox_profile_dir  # Store for cleanup
+            self._remember_launch(browser_name, context_options.get('executable_path') or playwright.firefox.executable_path,
+                                  firefox_args, context_options['firefox_user_prefs'])
             
         elif browser_name == 'webkit':
             launch_options = {'headless': self.headless}
@@ -325,6 +338,7 @@ class WebGPUTestRunner:
                 self.logger.info(f"Using custom WebKit path: {browser_path}")
             
             browser = await playwright.webkit.launch(**launch_options)
+            self._remember_launch(browser_name, launch_options.get('executable_path') or playwright.webkit.executable_path, [], {})
         else:
             raise ValueError(f"Unsupported browser: {browser_name}")
         
@@ -350,6 +364,81 @@ class WebGPUTestRunner:
             return None, context
         else:
             return browser, context
+
+    def _remember_launch(self, browser_name: str, executable: str, args: List[str], preferences: Dict[str, Any]):
+        path = str(Path(executable).resolve()) if executable else None
+        binary_path = Path(path) if path else None
+        chrome_binary = binary_path.with_name('chrome') if binary_path and binary_path.name != 'chrome' else None
+        if chrome_binary and chrome_binary.is_file():
+            try:
+                with chrome_binary.open('rb') as binary_file:
+                    if binary_file.read(4) == b'\x7fELF':
+                        binary_path = chrome_binary
+            except OSError:
+                pass
+        identity = {'path': str(binary_path) if binary_path else None}
+        if path and binary_path and str(binary_path) != path:
+            identity['launched_path'] = path
+        if binary_path:
+            try:
+                stat = os.stat(binary_path)
+                identity.update(size=stat.st_size, mtime_ns=stat.st_mtime_ns)
+            except OSError:
+                identity['available'] = False
+        self.launch_metadata[browser_name] = {
+            'executable': identity, 'launch_flags': list(args), 'preferences': preferences,
+            'headless': self.headless,
+        }
+
+    def get_profile_identity(self, browser_name: str, context: BrowserContext) -> Dict[str, Any]:
+        """Return the stable lane identity used to validate a cached WebGL profile."""
+        browser = context.browser
+        identity = {'browser_name': browser_name, 'browser_version': browser.version if browser else None,
+                    'profiler_version': 'webgl-trace-2', 'event_cap': self.profile_event_cap,
+                    'outcome_cap': self.PROFILE_OUTCOME_CAP,
+                    'context': {'ignore_https_errors': True,
+                                'permissions': ['camera', 'microphone'] if browser_name == 'chromium' else []},
+                    **self.launch_metadata.get(browser_name, {})}
+        identity['fingerprint'] = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        return identity
+
+    def _append_profile_outcome(self, profile: Dict[str, Any], outcome: Dict[str, Any]):
+        outcomes = profile.setdefault('outcomes', [])
+        outcome_cap = profile.get('outcome_cap', self.PROFILE_OUTCOME_CAP)
+        if len(outcomes) < outcome_cap - 1:
+            outcomes.append(outcome)
+        elif not any(item.get('code') == 'outcome_buffer_full' for item in outcomes):
+            marker = {'code': 'outcome_buffer_full'}
+            if len(outcomes) >= outcome_cap:
+                outcomes[-1] = marker
+            else:
+                outcomes.append(marker)
+
+    async def _attach_profile_failure(self, result: TestResult, browser_name: str,
+                                      context: BrowserContext, code: str, message: str,
+                                      page: Optional[Page] = None, elapsed_ms: Optional[float] = None):
+        """Retain lane identity and an explicit failure outcome on every profiled error path."""
+        profile = None
+        if page is not None:
+            try:
+                profile = await asyncio.wait_for(
+                    page.evaluate('''() => window.__webglProfiler?.finish() || null'''),
+                    timeout=min(0.1, max(0.001, self.timeout / 1000)))
+            except Exception:
+                pass
+        if not isinstance(profile, dict):
+            profile = {'schema_version': 1, 'profiler_version': 'webgl-trace-2',
+                       'outcome_cap': self.PROFILE_OUTCOME_CAP,
+                       'contexts': [], 'events': [], 'truncated': False, 'outcomes': []}
+        profile.setdefault('contexts', [])
+        profile.setdefault('events', [])
+        profile.setdefault('truncated', False)
+        profile.setdefault('timing', {})
+        if elapsed_ms is not None:
+            profile['timing']['navigation_elapsed_ms'] = elapsed_ms
+        profile['identity'] = self.get_profile_identity(browser_name, context)
+        self._append_profile_outcome(profile, {'code': code, 'message': message})
+        result.webgl_profile = profile
     
     async def _check_firefox_compatibility(self, firefox_path: str) -> bool:
         """Check if a Firefox installation supports Playwright automation."""
@@ -398,11 +487,27 @@ class WebGPUTestRunner:
         """Run a single test case and capture results."""
         result = TestResult(test_path, browser_name)
         page = None
+        profile_deadline = time.perf_counter() + self.timeout / 1000 if self.profile_webgl else None
+
+        async def profile_await(awaitable):
+            if profile_deadline is None:
+                return await awaitable
+            remaining = profile_deadline - time.perf_counter()
+            if remaining <= 0:
+                close = getattr(awaitable, 'close', None)
+                if close:
+                    close()
+                raise asyncio.TimeoutError('WebGL profiling case deadline exceeded')
+            return await asyncio.wait_for(awaitable, timeout=remaining)
         
         try:
             self.logger.info(f"Running test: {test_path} in {browser_name}")
             
-            page = await context.new_page()
+            page = await profile_await(context.new_page())
+            await profile_await(page.add_init_script("document.addEventListener('webglcontextlost', () => { window.__webglContextLost = true; }, true)"))
+            if self.profile_webgl:
+                profiler_source = self.profiler_source.replace('__WEBGL_EVENT_CAP__', str(self.profile_event_cap))
+                await profile_await(page.add_init_script(profiler_source.replace('__WEBGL_OUTCOME_CAP__', str(self.PROFILE_OUTCOME_CAP))))
             
             # Set up error handlers
             page.on('pageerror', lambda error: self._handle_page_error(result, error))
@@ -411,16 +516,64 @@ class WebGPUTestRunner:
             
             # Navigate to test file
             file_url = f"file://{os.path.abspath(test_path)}"
+            navigation_started = time.perf_counter()
             
             try:
-                await page.goto(file_url, timeout=self.timeout, wait_until='networkidle')
+                await profile_await(page.goto(file_url, timeout=self.timeout,
+                                              wait_until='domcontentloaded' if self.profile_webgl else 'networkidle'))
             except Exception as e:
                 result.add_error('navigation', f"Failed to load test: {str(e)}")
+                if self.profile_webgl:
+                    elapsed_ms = round((time.perf_counter() - navigation_started) * 1000, 3)
+                    await self._attach_profile_failure(result, browser_name, context,
+                                                       'navigation_failed', str(e), page, elapsed_ms)
                 result.finish(False)
                 return result
+
+            if self.profile_webgl:
+                completed = False
+                try:
+                    await profile_await(page.wait_for_function('window.__done === true', timeout=self.timeout))
+                    completed = True
+                except Exception:
+                    pass
+                navigation_to_completion_ms = round((time.perf_counter() - navigation_started) * 1000, 3)
+                profile = None
+                try:
+                    profile = await profile_await(page.evaluate('''() => window.__webglProfiler?.finish() || null'''))
+                    if profile is None:
+                        profile = {'schema_version': 1, 'profiler_version': 'webgl-trace-2',
+                                   'outcome_cap': self.PROFILE_OUTCOME_CAP,
+                                   'contexts': [], 'events': [], 'truncated': False, 'outcomes': []}
+                    profile['timing'] = ({'navigation_to_completion_ms': navigation_to_completion_ms}
+                                          if completed else {'navigation_elapsed_ms': navigation_to_completion_ms})
+                    profile['identity'] = self.get_profile_identity(browser_name, context)
+                    if not completed:
+                        self._append_profile_outcome(profile, {'code': 'missing_completion'})
+                        result.add_error('completion', 'Profiling requires window.__done === true')
+                    if await profile_await(page.evaluate('Boolean(window.__webglContextLost)')):
+                        self._append_profile_outcome(profile, {'code': 'context_lost'})
+                    for outcome in profile['outcomes']:
+                        if outcome.get('code') in {'seed_webgl_error', 'remaining_webgl_error', 'error_drain_incomplete', 'context_lost', 'outcome_buffer_full'}:
+                            result.add_error('webgl', f"Profile observed {outcome['code']}: {outcome}")
+                    result.webgl_profile = profile
+                except Exception as e:
+                    if not isinstance(profile, dict):
+                        profile = {'schema_version': 1, 'profiler_version': 'webgl-trace-2',
+                                   'outcome_cap': self.PROFILE_OUTCOME_CAP,
+                                   'contexts': [], 'events': [], 'truncated': False, 'outcomes': []}
+                    profile.setdefault('contexts', [])
+                    profile.setdefault('events', [])
+                    profile.setdefault('truncated', False)
+                    profile['timing'] = ({'navigation_to_completion_ms': navigation_to_completion_ms}
+                                         if completed else {'navigation_elapsed_ms': navigation_to_completion_ms})
+                    profile['identity'] = self.get_profile_identity(browser_name, context)
+                    self._append_profile_outcome(profile, {'code': 'profiler_error', 'message': str(e)})
+                    result.webgl_profile = profile
+                    result.add_error('profiler', f'WebGL profiler failed: {e}')
             
             # Get browser info
-            browser_info = await page.evaluate('''
+            browser_info = await profile_await(page.evaluate('''
                 () => {
                     return {
                         userAgent: navigator.userAgent,
@@ -430,32 +583,65 @@ class WebGPUTestRunner:
                         language: navigator.language
                     };
                 }
-            ''')
+            '''))
             result.browser_info = browser_info
             
             # Check WebGPU availability
-            webgl_info = await self._check_webgl_support(page, result)
+            webgl_info = await profile_await(self._check_webgl_support(page, result))
+            result.browser_info['webgl'] = webgl_info
             
             # Wait for test execution (give it time to run)
-            await asyncio.sleep(5)
+            if not self.profile_webgl:
+                await asyncio.sleep(5)
             
             # Check for any runtime errors by examining the page state
-            await self._check_test_completion(page, result)
+            await profile_await(self._check_test_completion(page, result))
             
             # Capture screenshot before finishing (if enabled)
             if self.capture_screenshots:
-                await self._capture_screenshot(page, result)
+                await profile_await(self._capture_screenshot(page, result))
+                if self.profile_webgl and result.screenshot_path and result.webgl_profile:
+                    try:
+                        from PIL import Image
+                        pixels = Image.open(result.screenshot_path).convert('RGBA').tobytes()
+                        result.webgl_profile['image_sha256'] = hashlib.sha256(pixels).hexdigest()
+                        result.webgl_profile['image_hash_kind'] = 'rgba_pixels'
+                    except ImportError:
+                        result.webgl_profile['image_hash_kind'] = 'unavailable_no_pixel_decoder'
             
             result.finish()
             
         except Exception as e:
             self.logger.error(f"Error running test {test_path}: {str(e)}")
             result.add_error('runner', f"Test runner error: {str(e)}")
+            if self.profile_webgl:
+                if result.webgl_profile is None:
+                    await self._attach_profile_failure(result, browser_name, context,
+                                                       'runner_error', str(e), page)
+                else:
+                    self._append_profile_outcome(result.webgl_profile,
+                                                 {'code': 'runner_error', 'message': str(e)})
             result.finish(False)
         
         finally:
             if page:
-                await page.close()
+                try:
+                    close_timeout = min(0.25, max(0.01, self.timeout / 1000)) if self.profile_webgl else None
+                    if close_timeout is None:
+                        await page.close()
+                    else:
+                        await asyncio.wait_for(page.close(), timeout=close_timeout)
+                except Exception as e:
+                    if not self.profile_webgl:
+                        raise
+                    result.add_error('runner', f"Failed to close browser page: {str(e)}")
+                    if result.webgl_profile is None:
+                        await self._attach_profile_failure(result, browser_name, context,
+                                                           'runner_error', str(e), page)
+                    else:
+                        self._append_profile_outcome(result.webgl_profile,
+                                                     {'code': 'runner_error', 'message': str(e)})
+                    result.finish(False)
         
         return result
     
@@ -474,9 +660,9 @@ class WebGPUTestRunner:
                     }
 
                     // Get basic WebGL info
-                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                    const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'Unknown';
-                    const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'Unknown';
+                    const debugInfo = navigator.userAgent.includes('Firefox') ? null : gl.getExtension('WEBGL_debug_renderer_info');
+                    const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+                    const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
 
                     // Check for common extensions
                     const extensions = gl.getSupportedExtensions() || [];
@@ -536,20 +722,32 @@ class WebGPUTestRunner:
                     return {
                         hasCanvas: !!canvas,
                         hasWebGPUContext: !!webgpuContext,
+                        contextLost: !!window.__webglContextLost || !!(canvas && canvas.getContext('webgl2')?.isContextLost()),
+                        completed: typeof window.__done === 'boolean' ? window.__done : null,
+                        validationError: typeof window.__validationError === 'number' ? window.__validationError : null,
                         errorMessages: errorMessages,
                         title: document.title,
                         bodyText: document.body ? document.body.textContent.slice(0, 500) : ''
                     };
                 }
             ''')
+
+            result.completed = test_state.get('completed')
+            result.validation_error = test_state.get('validationError')
             
             # Add any DOM error messages to result
             for error_msg in test_state.get('errorMessages', []):
                 if error_msg.strip():
                     result.add_error('dom', f"Error found in DOM: {error_msg.strip()}")
+            if test_state.get('contextLost'):
+                result.add_error('webgl', 'WebGL context lost')
+            if test_state.get('completed') is False:
+                result.add_error('completion', 'Test did not finish')
+            if test_state.get('hasCanvas') is False:
+                result.add_error('completion', 'Test canvas missing')
             
         except Exception as e:
-            self.logger.warning(f"Could not check test completion state: {str(e)}")
+            result.add_error('completion', f"Could not check test completion state: {str(e)}")
     
     async def _capture_screenshot(self, page: Page, result: TestResult):
         """Capture a screenshot of the test page."""
@@ -878,6 +1076,8 @@ async def main():
     parser.add_argument('--webkit-path', help='Path to custom WebKit executable')
     parser.add_argument('--force-firefox', action='store_true', help='Force use of custom Firefox even if compatibility check fails')
     parser.add_argument('--no-screenshots', action='store_true', help='Disable screenshot capture')
+    parser.add_argument('--profile-webgl', action='store_true', help='Record seed WebGL calls and state metadata')
+    parser.add_argument('--profile-event-cap', type=int, default=20000, help='Maximum recorded WebGL calls per test')
     parser.add_argument('--parallel', '--workers', type=int, default=1, metavar='N', 
                        help='Number of parallel workers for running tests (default: 1, sequential)')
     
@@ -904,7 +1104,9 @@ async def main():
         browser_config, 
         args.force_firefox, 
         not args.no_screenshots,
-        max_workers=args.parallel
+        max_workers=args.parallel,
+        profile_webgl=args.profile_webgl,
+        profile_event_cap=args.profile_event_cap
     )
     
     # Determine which tests to run

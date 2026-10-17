@@ -1,0 +1,22 @@
+[2026-10-16 16:01:58] Starting Grizzly (220807)
+[2026-10-16 16:01:58] Browser display mode: headless
+[2026-10-16 16:01:58] Ignoring: log-limit, timeout
+[2026-10-16 16:01:58] Using time limit: 10s, timeout: 25s
+[2026-10-16 16:01:58] HTTPS support requires NSS certutil.
+[2026-10-16 16:01:58] Target does not support HTTPS, using HTTP
+[2026-10-16 16:01:58] Results will be stored in '/tmp/webgl-grizzly-campaign-20261016/firefox/radamsa-fixed/out/results'
+[2026-10-16 16:01:58] 1000 iteration(s) will be attempted
+[2026-10-16 16:01:58] Runtime is limited to 45s
+[2026-10-16 16:02:01] I0001-R00
+[2026-10-16 16:02:02] I0002-R00
+[2026-10-16 16:02:03] I0004-R00
+[2026-10-16 16:02:03] I0008-R00
+[2026-10-16 16:02:06] I0016-R00
+[2026-10-16 16:02:09] I0032-R00
+[2026-10-16 16:02:18] I0064-R00
+[2026-10-16 16:02:37] I0128-R00
+[2026-10-16 16:02:44] Hit runtime limit (45s)
+[2026-10-16 16:02:44] Shutting down...
+[2026-10-16 16:02:44] Done.
+['radamsa', '-r', '-n', '200', '-o', '/tmp/webgl-grizzly-campaign-20261016/firefox/radamsa-fixed/tmp/fuzz_gen_hk43fuz0/fuzz-%n.html', '-M', '/tmp/webgl-grizzly-campaign-20261016/firefox/radamsa-fixed/metadata/batch-cgyj2ugd.txt', '/home/attekett/orca/workspaces/samples-webgl/periwinkle/agent_outputs/valid_buffer_texture_paired_multipass.html']
+['radamsa', '-r', '-n', '200', '-o', '/tmp/webgl-grizzly-campaign-20261016/firefox/radamsa-fixed/tmp/fuzz_gen_hk43fuz0/fuzz-%n.html', '-M', '/tmp/webgl-grizzly-campaign-20261016/firefox/radamsa-fixed/metadata/batch-_3vb0gre.txt', '/home/attekett/orca/workspaces/samples-webgl/periwinkle/agent_outputs/valid_buffer_texture_paired_multipass.html']
