@@ -17,6 +17,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let copyTex, tfVertexShader, tfFragmentShader, tfProgram, mainVertexShader, mainFragmentShader, mainProgram, tfBuffer, tfQuery, tfSync, intTex, intData, intFbo, intRb, intPbo, intSync, vao, posBuffer, positions, colorBuffer, colors, instanceQuery, instanceSync, rb1, rb2, blitFbo1, blitFbo2, blitPbo, blitQuery, floatTex, floatData, sampler1, sampler2, sampler3, sampler4, finalSync, finalQuery, pixels, floatPixels, intPixels;
 
     const texSize = 256;
     const vertexCount = 6;
@@ -47,7 +48,7 @@ async function main() {
     out vec4 v_color;
     void main() {
         v_color = a_color + a_tfData * 0.2;
-        gl_Position = a_position + vec4(gl_InstanceID * 0.0001);
+        gl_Position = a_position + vec4(float(gl_InstanceID) * 0.0001);
     }`;
 
     const mainFragmentShaderSource = `#version 300 es
@@ -65,13 +66,13 @@ async function main() {
     }`;
 
     try {
-        const tfVertexShader = gl.createShader(gl.VERTEX_SHADER);
+        tfVertexShader = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(tfVertexShader, tfVertexShaderSource);
         gl.compileShader(tfVertexShader);
-        const tfFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        tfFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(tfFragmentShader, tfFragmentShaderSource);
         gl.compileShader(tfFragmentShader);
-        const tfProgram = gl.createProgram();
+        tfProgram = gl.createProgram();
         gl.attachShader(tfProgram, tfVertexShader);
         gl.attachShader(tfProgram, tfFragmentShader);
         gl.transformFeedbackVaryings(tfProgram, ['v_tfOutput'], gl.SEPARATE_ATTRIBS);
@@ -79,20 +80,23 @@ async function main() {
     } catch(e) {}
 
     try {
-        const mainVertexShader = gl.createShader(gl.VERTEX_SHADER);
+        mainVertexShader = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(mainVertexShader, mainVertexShaderSource);
         gl.compileShader(mainVertexShader);
-        const mainFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        mainFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(mainFragmentShader, mainFragmentShaderSource);
         gl.compileShader(mainFragmentShader);
-        const mainProgram = gl.createProgram();
+        mainProgram = gl.createProgram();
         gl.attachShader(mainProgram, mainVertexShader);
         gl.attachShader(mainProgram, mainFragmentShader);
+        gl.bindAttribLocation(mainProgram, 0, 'a_position');
+        gl.bindAttribLocation(mainProgram, 1, 'a_color');
+        gl.bindAttribLocation(mainProgram, 2, 'a_tfData');
         gl.linkProgram(mainProgram);
     } catch(e) {}
 
     try {
-        const tfBuffer = gl.createBuffer();
+        tfBuffer = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer);
         gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, bufferSize, gl.DYNAMIC_COPY);
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer);
@@ -100,25 +104,25 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tfQuery = gl.createQuery();
+        tfQuery = gl.createQuery();
         gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, tfQuery);
         gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
         gl.getQueryParameter(tfQuery, gl.QUERY_RESULT_AVAILABLE);
     } catch(e) {}
 
     try {
-        const tfSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        gl.clientWaitSync(tfSync, gl.SYNC_FLUSH_COMMANDS_BIT, gl.TIMEOUT_IGNORED);
+        tfSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.clientWaitSync(tfSync, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
         gl.deleteSync(tfSync);
     } catch(e) {}
 
     try {
-        const intTex = gl.createTexture();
+        intTex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, intTex);
         gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32I, texSize, texSize);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        const intData = new Int32Array(texSize * texSize * 4);
+        intData = new Int32Array(texSize * texSize * 4);
         for (let i = 0; i < intData.length; i++) {
             intData[i] = i % 256;
         }
@@ -127,36 +131,39 @@ async function main() {
     } catch(e) {}
 
     try {
-        const intFbo = gl.createFramebuffer();
+        intFbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, intFbo);
-        const intRb = gl.createRenderbuffer();
+        intRb = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, intRb);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32I, 128, 128);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, intRb);
+        gl.clearBufferiv(gl.COLOR, 0, [0, 0, 0, 0]);
         gl.bindRenderbuffer(gl.RENDERBUFFER, null);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     } catch(e) {}
 
     try {
-        const intPbo = gl.createBuffer();
+        intPbo = gl.createBuffer();
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, intPbo);
         gl.bufferData(gl.PIXEL_PACK_BUFFER, 128 * 128 * 16, gl.STREAM_READ);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, intFbo);
         gl.readPixels(0, 0, 128, 128, gl.RGBA_INTEGER, gl.INT, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     } catch(e) {}
 
     try {
-        const intSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        gl.clientWaitSync(intSync, 0, 1000);
+        intSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.clientWaitSync(intSync, 0, 0);
         gl.deleteSync(intSync);
     } catch(e) {}
 
     try {
-        const vao = gl.createVertexArray();
+        vao = gl.createVertexArray();
         gl.bindVertexArray(vao);
-        const posBuffer = gl.createBuffer();
+        posBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
-        const positions = new Float32Array([
+        positions = new Float32Array([
             -0.8, -0.8, 0.0, 1.0,
              0.8, -0.8, 0.0, 1.0,
             -0.8,  0.8, 0.0, 1.0,
@@ -167,9 +174,9 @@ async function main() {
         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
-        const colorBuffer = gl.createBuffer();
+        colorBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-        const colors = new Float32Array(instanceCount * 4);
+        colors = new Float32Array(instanceCount * 4);
         for (let i = 0; i < colors.length; i += 4) {
             colors[i] = 0.8;
             colors[i + 1] = 0.6;
@@ -184,7 +191,13 @@ async function main() {
     } catch(e) {}
 
     try {
-        const instanceQuery = gl.createQuery();
+        instanceQuery = gl.createQuery();
+        gl.useProgram(mainProgram);
+        gl.uniform1i(gl.getUniformLocation(mainProgram, 'u_intTex'), 0);
+        gl.uniform1i(gl.getUniformLocation(mainProgram, 'u_floatTex'), 1);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, intTex);
+        gl.bindVertexArray(vao);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, instanceQuery);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, vertexCount, instanceCount);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
@@ -192,25 +205,27 @@ async function main() {
     } catch(e) {}
 
     try {
-        const instanceSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        gl.clientWaitSync(instanceSync, gl.SYNC_FLUSH_COMMANDS_BIT, 500);
+        instanceSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.clientWaitSync(instanceSync, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
         gl.deleteSync(instanceSync);
     } catch(e) {}
 
     try {
-        const rb1 = gl.createRenderbuffer();
+        rb1 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rb1);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, rbSamples, gl.RGBA32F, texSize, texSize);
-        const rb2 = gl.createRenderbuffer();
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, Math.min(rbSamples, gl.getParameter(gl.MAX_SAMPLES)), gl.RGBA32F, texSize, texSize);
+        rb2 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rb2);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32F, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-        const blitFbo1 = gl.createFramebuffer();
+        blitFbo1 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, blitFbo1);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rb1);
-        const blitFbo2 = gl.createFramebuffer();
+        gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
+        blitFbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, blitFbo2);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rb2);
+        gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, blitFbo1);
         gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, blitFbo2);
         gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.LINEAR);
@@ -218,15 +233,17 @@ async function main() {
     } catch(e) {}
 
     try {
-        const blitPbo = gl.createBuffer();
+        blitPbo = gl.createBuffer();
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, blitPbo);
         gl.bufferData(gl.PIXEL_PACK_BUFFER, texSize * texSize * 16, gl.STREAM_READ);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, blitFbo2);
         gl.readPixels(0, 0, texSize, texSize, gl.RGBA, gl.FLOAT, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     } catch(e) {}
 
     try {
-        const blitQuery = gl.createQuery();
+        blitQuery = gl.createQuery();
         gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, blitQuery);
         gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
         for (let i = 0; i < 64; i++) {
@@ -235,36 +252,43 @@ async function main() {
     } catch(e) {}
 
     try {
-        const floatTex = gl.createTexture();
+        floatTex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, floatTex);
         gl.texStorage2D(gl.TEXTURE_2D, mipLevels, gl.RGBA32F, 256, 256);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        const floatData = new Float32Array(256 * 256 * 4);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        floatData = new Float32Array(256 * 256 * 4);
         for (let i = 0; i < floatData.length; i++) {
             floatData[i] = Math.random();
         }
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 256, gl.RGBA, gl.FLOAT, floatData);
+        for (let level = 1; level < mipLevels; level++) {
+            const levelSize = 256 >> level;
+            gl.texSubImage2D(gl.TEXTURE_2D, level, 0, 0, levelSize, levelSize, gl.RGBA, gl.FLOAT, new Float32Array(levelSize * levelSize * 4));
+        }
         gl.bindTexture(gl.TEXTURE_2D, null);
     } catch(e) {}
 
     try {
-        const sampler1 = gl.createSampler();
+        sampler1 = gl.createSampler();
         gl.samplerParameteri(sampler1, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.samplerParameteri(sampler1, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        const sampler2 = gl.createSampler();
+        sampler2 = gl.createSampler();
         gl.samplerParameteri(sampler2, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.samplerParameteri(sampler2, gl.TEXTURE_MIN_LOD, 0);
         gl.samplerParameteri(sampler2, gl.TEXTURE_MAX_LOD, mipLevels);
-        const sampler3 = gl.createSampler();
+        sampler3 = gl.createSampler();
         gl.samplerParameteri(sampler3, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.samplerParameteri(sampler3, gl.TEXTURE_WRAP_T, gl.REPEAT);
-        const sampler4 = gl.createSampler();
+        sampler4 = gl.createSampler();
         gl.samplerParameteri(sampler4, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.samplerParameteri(sampler4, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     } catch(e) {}
 
     try {
+        copyTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, copyTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(256 * 256 * 4));
         gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, 128, 128);
         gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
         gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
@@ -273,15 +297,17 @@ async function main() {
     } catch(e) {}
 
     try {
-        const finalSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        gl.clientWaitSync(finalSync, gl.SYNC_FLUSH_COMMANDS_BIT, gl.TIMEOUT_IGNORED);
+        finalSync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.clientWaitSync(finalSync, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
         gl.getSyncParameter(finalSync, gl.SYNC_STATUS);
         gl.getSyncParameter(finalSync, gl.SYNC_CONDITION);
         gl.deleteSync(finalSync);
     } catch(e) {}
 
     try {
-        const finalQuery = gl.createQuery();
+        finalQuery = gl.createQuery();
+        gl.bindTexture(gl.TEXTURE_2D, intTex);
+        gl.bindVertexArray(vao);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, finalQuery);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, vertexCount, instanceCount);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
@@ -291,12 +317,15 @@ async function main() {
     } catch(e) {}
 
     try {
-        const pixels = new Uint8Array(256 * 256 * 4);
+        pixels = new Uint8Array(256 * 256 * 4);
         gl.readPixels(0, 0, 256, 256, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        const floatPixels = new Float32Array(128 * 128 * 4);
+        floatPixels = new Float32Array(128 * 128 * 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, blitFbo2);
         gl.readPixels(0, 0, 128, 128, gl.RGBA, gl.FLOAT, floatPixels);
-        const intPixels = new Int32Array(64 * 64 * 4);
+        intPixels = new Int32Array(64 * 64 * 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, intFbo);
         gl.readPixels(0, 0, 64, 64, gl.RGBA_INTEGER, gl.INT, intPixels);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     } catch(e) {}
 
     try {

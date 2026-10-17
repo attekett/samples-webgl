@@ -28,11 +28,13 @@ async function main() {
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
+    let buffer1, buffer2, buffer3, buffer4, tfBuffer1, tfBuffer2, tfBuffer3;
+
     try {
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
-        const buffer4 = gl.createBuffer();
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
+        buffer3 = gl.createBuffer();
+        buffer4 = gl.createBuffer();
         gl.bindBuffer(arrayBuffer, buffer1);
         gl.bindBuffer(arrayBuffer, buffer2);
         gl.bindBuffer(arrayBuffer, buffer1);
@@ -42,13 +44,13 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tfBuffer1 = gl.createBuffer();
-        const tfBuffer2 = gl.createBuffer();
-        const tfBuffer3 = gl.createBuffer();
+        tfBuffer1 = gl.createBuffer();
+        tfBuffer2 = gl.createBuffer();
+        tfBuffer3 = gl.createBuffer();
         gl.bindBuffer(tfTarget, tfBuffer1);
         gl.bindBuffer(tfTarget, tfBuffer2);
         gl.bindBuffer(tfTarget, tfBuffer1);
-        gl.bufferData(tfTarget, captureSize, streamCopy);
+        gl.bufferData(tfTarget, captureSize * 4, streamCopy);
         gl.bindBuffer(tfTarget, tfBuffer3);
         gl.bufferData(tfTarget, 16384, streamCopy);
         gl.bindBuffer(tfTarget, tfBuffer2);
@@ -145,8 +147,8 @@ async function main() {
 
     try {
         gl.bindBuffer(arrayBuffer, tfBuffer1);
-        gl.deleteBuffer(tfBuffer1);
         gl.bindBuffer(arrayBuffer, tfBuffer1);
+        gl.deleteBuffer(tfBuffer1);
         gl.bindBuffer(tfBuffer, buffer1);
         gl.deleteBuffer(buffer1);
     } catch(e) {}

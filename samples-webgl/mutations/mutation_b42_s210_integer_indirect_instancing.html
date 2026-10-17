@@ -7,7 +7,7 @@ const REQUIRED_EXTENSIONS = [];
 
 const instanceCount = 2048;
 const texSize = 256;
-const tfBufferSize = 16384;
+const tfBufferSize = 196608;
 const clearValue = 21845;
 const divisor = 8;
 
@@ -85,7 +85,7 @@ async function main() {
     try {
         tfBuffer = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, tfBufferSize, gl.DYNAMIC_COPY);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, tfBufferSize, gl.DYNAMIC_READ);
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer);
     } catch(e) {}
 
@@ -98,7 +98,7 @@ async function main() {
             uniform highp usampler2D texInput1;
             uniform highp isampler2D texInput2;
             flat out ivec4 vData;
-            out ivec4 tfOutput;
+            flat out ivec4 tfOutput;
             void main() {
                 int instID = gl_InstanceID;
                 ivec2 texCoord1 = ivec2(instID % ${texSize}, instID / ${texSize});
@@ -206,7 +206,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.viewport(0, 0, 256, 256);
         gl.beginTransformFeedback(gl.TRIANGLES);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, 1024);
@@ -216,7 +216,7 @@ async function main() {
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 512);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, 256);
     } catch(e) {}
 
@@ -225,6 +225,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.12, 0.12, 0.12, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 128);
     } catch(e) {}
 

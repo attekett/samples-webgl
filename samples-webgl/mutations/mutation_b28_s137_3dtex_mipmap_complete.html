@@ -30,12 +30,12 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
+        var buffer1 = gl.createBuffer();
+        var buffer2 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bindBuffer(bufferTarget, buffer2);
         gl.bindBuffer(bufferTarget, buffer1);
-        const vertexData = new Float32Array([
+        var vertexData = new Float32Array([
             -1, -1, 0, 1, -1, 0, -1, 1, 0,
             -1, 1, 0, 1, -1, 0, 1, 1, 0
         ]);
@@ -43,9 +43,9 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const texture1 = gl.createTexture();
-        const texture2 = gl.createTexture();
-        const texture3 = gl.createTexture();
+        var texture1 = gl.createTexture();
+        var texture2 = gl.createTexture();
+        var texture3 = gl.createTexture();
         gl.bindTexture(textureTarget, texture1);
         gl.bindTexture(textureTarget, texture2);
         gl.bindTexture(textureTarget, texture3);
@@ -58,15 +58,18 @@ async function main() {
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, gl.REPEAT);
+        gl.texSubImage3D(textureTarget, 0, 0, 0, 0, baseSize, baseSize, depth, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(baseSize * baseSize * depth * 4));
     } catch(e) { console.log(e); }
 
     try {
         gl.bindTexture(textureTarget, texture2);
         gl.texStorage3D(textureTarget, 5, gl.RGBA8, 64, 64, 64);
+        gl.texSubImage3D(textureTarget, 0, 0, 0, 0, 64, 64, 64, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(64 * 64 * 64 * 4));
         gl.generateMipmap(textureTarget);
         gl.generateMipmap(textureTarget);
         gl.bindTexture(textureTarget, texture3);
         gl.texStorage3D(textureTarget, mipLevels, gl.RGB8, baseSize, baseSize, depth);
+        gl.texSubImage3D(textureTarget, 0, 0, 0, 0, baseSize, baseSize, depth, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array(baseSize * baseSize * depth * 3));
         gl.generateMipmap(textureTarget);
     } catch(e) { console.log(e); }
 
@@ -82,7 +85,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 position;
             out vec3 vTexCoord;
@@ -94,7 +97,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             precision highp sampler3D;
@@ -108,7 +111,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -116,8 +119,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vao1 = gl.createVertexArray();
-        const vao2 = gl.createVertexArray();
+        var vao1 = gl.createVertexArray();
+        var vao2 = gl.createVertexArray();
         gl.bindVertexArray(vao1);
         gl.bindVertexArray(vao2);
         gl.bindVertexArray(vao1);
@@ -128,8 +131,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        var fbo1 = gl.createFramebuffer();
+        var fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -150,16 +153,16 @@ async function main() {
         gl.viewport(0, 0, baseSize, baseSize);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.viewport(0, 0, 512, 512);
-        gl.drawArrays(gl.TRIANGLES, 0, 12);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.viewport(0, 0, 256, 256);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) { console.log(e); }
 
     try {
         gl.bindTexture(textureTarget, texture1);
-        gl.deleteTexture(texture1);
         gl.bindTexture(textureTarget, texture1);
         gl.bindTexture(textureTarget, texture2);
+        gl.deleteTexture(texture1);
         gl.deleteTexture(texture2);
     } catch(e) { console.log(e); }
 }

@@ -65,7 +65,7 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const buffer = gl.createBuffer();
@@ -81,7 +81,7 @@ async function main() {
             0.0, -0.6, 0.0, 0.5, 0.0
         ]);
         gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vao = gl.createVertexArray();
@@ -90,7 +90,7 @@ async function main() {
         gl.enableVertexAttribArray(1);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0);
         gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 12);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const q1 = gl.createQuery();
@@ -109,18 +109,18 @@ async function main() {
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, q4);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const nestedQ1 = gl.createQuery();
         const nestedQ2 = gl.createQuery();
         gl.beginQuery(queryTargetOcclusion, nestedQ1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.endQuery(queryTargetOcclusion);
         gl.beginQuery(queryTargetOcclusion, nestedQ2);
         gl.drawArrays(gl.TRIANGLES, 3, 3);
         gl.endQuery(queryTargetOcclusion);
-        gl.endQuery(queryTargetOcclusion);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < timingCycles; i++) {
@@ -131,7 +131,7 @@ async function main() {
             }
             gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const scopeQ1 = gl.createQuery();
@@ -139,14 +139,14 @@ async function main() {
         const scopeQ3 = gl.createQuery();
         gl.beginQuery(queryTargetConservative, scopeQ1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.endQuery(queryTargetConservative);
         gl.beginQuery(queryTargetConservative, scopeQ2);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-        gl.endQuery(queryTargetConservative);
         gl.endQuery(queryTargetConservative);
         gl.beginQuery(queryTargetConservative, scopeQ3);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.endQuery(queryTargetConservative);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let cycle = 0; cycle < drawCount; cycle++) {
@@ -157,7 +157,7 @@ async function main() {
             gl.endQuery(queryTargetTF);
             const available = gl.getQueryParameter(cycleQuery, queryResultAvailable);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const pollQ1 = gl.createQuery();
@@ -178,7 +178,7 @@ async function main() {
                 const r2 = gl.getQueryParameter(pollQ2, queryResult);
             }
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const deleteQ1 = gl.createQuery();
@@ -191,7 +191,7 @@ async function main() {
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
         gl.deleteQuery(deleteQ2);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.clearColor(0.1, 0.1, 0.2, 1.0);
@@ -200,7 +200,7 @@ async function main() {
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, finalQuery);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

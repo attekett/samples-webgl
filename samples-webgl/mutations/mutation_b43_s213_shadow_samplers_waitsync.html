@@ -39,6 +39,7 @@ async function main() {
 
     const fsSource = `#version 300 es
     precision highp float;
+    precision highp sampler2DShadow;
     in vec2 vTexcoord;
     out vec4 fragColor;
     uniform sampler2DShadow uShadowSampler0;
@@ -173,7 +174,7 @@ async function main() {
     try {
         for (let i = 0; i < fenceCount; i++) {
             if (fences[i]) {
-                gl.waitSync(fences[i], gl.SYNC_FLUSH_COMMANDS_BIT, gl.TIMEOUT_IGNORED);
+                gl.waitSync(fences[i], 0, gl.TIMEOUT_IGNORED);
                 gl.flush();
             }
         }

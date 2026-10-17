@@ -29,22 +29,23 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let sync1, sync2, query1, query2, sampler1, sampler2, sampler3, sampler4, sampler5, sampler6, tex3D1, tex3D2, tex3D3;
 
     try {
-        const sync1 = gl.fenceSync(gpuCommandsComplete, 0);
-        const sync2 = gl.fenceSync(gpuCommandsComplete, 0);
+        sync1 = gl.fenceSync(gpuCommandsComplete, 0);
+        sync2 = gl.fenceSync(gpuCommandsComplete, 0);
         const sync3 = gl.fenceSync(gpuCommandsComplete, 0);
         const sync4 = gl.fenceSync(gpuCommandsComplete, 0);
         gl.flush();
         gl.clientWaitSync(sync1, syncFlushBit, 0);
-        gl.clientWaitSync(sync2, 0, 1000000);
+        gl.clientWaitSync(sync2, 0, 0);
         gl.waitSync(sync3, 0, gl.TIMEOUT_IGNORED);
         gl.waitSync(sync4, 0, -1);
     } catch(e) {}
 
     try {
-        const query1 = gl.createQuery();
-        const query2 = gl.createQuery();
+        query1 = gl.createQuery();
+        query2 = gl.createQuery();
         const query3 = gl.createQuery();
         const query4 = gl.createQuery();
         gl.beginQuery(anySamplesPassed, query1);
@@ -58,18 +59,23 @@ async function main() {
     } catch(e) {}
 
     try {
-        const sampler1 = gl.createSampler();
-        const sampler2 = gl.createSampler();
-        const sampler3 = gl.createSampler();
-        const sampler4 = gl.createSampler();
-        const sampler5 = gl.createSampler();
-        const sampler6 = gl.createSampler();
+        sampler1 = gl.createSampler();
+        sampler2 = gl.createSampler();
+        sampler3 = gl.createSampler();
+        sampler4 = gl.createSampler();
+        sampler5 = gl.createSampler();
+        sampler6 = gl.createSampler();
         gl.samplerParameteri(sampler1, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.samplerParameteri(sampler2, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.samplerParameteri(sampler2, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.samplerParameteri(sampler3, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.samplerParameteri(sampler3, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.samplerParameteri(sampler4, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(sampler4, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.samplerParameteri(sampler5, gl.TEXTURE_WRAP_R, gl.MIRRORED_REPEAT);
+        gl.samplerParameteri(sampler5, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.samplerParameterf(sampler6, gl.TEXTURE_MAX_LOD, 4.0);
+        gl.samplerParameteri(sampler6, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.bindSampler(0, sampler1);
         gl.bindSampler(1, sampler2);
         gl.bindSampler(0, sampler3);
@@ -77,17 +83,17 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tex3D1 = gl.createTexture();
-        const tex3D2 = gl.createTexture();
-        const tex3D3 = gl.createTexture();
+        tex3D1 = gl.createTexture();
+        tex3D2 = gl.createTexture();
+        tex3D3 = gl.createTexture();
         gl.bindTexture(texture3DTarget, tex3D1);
-        gl.texImage3D(texture3DTarget, 0, gl.RGBA8, texSize, texSize, depth, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage3D(texture3DTarget, 0, gl.RGBA8, texSize, texSize, depth, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * depth * 4));
         gl.texParameteri(texture3DTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.bindTexture(texture3DTarget, tex3D2);
-        gl.texImage3D(texture3DTarget, 0, gl.RGBA8, 32, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage3D(texture3DTarget, 0, gl.RGBA8, 32, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(32 * 32 * 32 * 4));
         gl.texParameteri(texture3DTarget, gl.TEXTURE_WRAP_R, gl.REPEAT);
         gl.bindTexture(texture3DTarget, tex3D3);
-        gl.texImage3D(texture3DTarget, 0, gl.RGBA8, texSize, texSize, depth, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage3D(texture3DTarget, 0, gl.RGBA8, texSize, texSize, depth, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * depth * 4));
     } catch(e) {}
 
     try {
@@ -178,25 +184,27 @@ async function main() {
     } catch(e) {}
 
     try {
-        gl.deleteSync(sync1);
-        gl.deleteSync(sync2);
         gl.clientWaitSync(sync1, 0, 0);
         gl.waitSync(sync2, 0, gl.TIMEOUT_IGNORED);
+        gl.deleteSync(sync1);
+        gl.deleteSync(sync2);
     } catch(e) {}
 
     try {
-        gl.deleteQuery(query1);
-        gl.deleteQuery(query2);
         gl.beginQuery(anySamplesPassed, query1);
         gl.endQuery(anySamplesPassed);
+        gl.deleteQuery(query1);
+        gl.deleteQuery(query2);
     } catch(e) {}
 
     try {
         gl.bindSampler(0, sampler1);
         gl.deleteSampler(sampler1);
+        sampler1 = gl.createSampler();
         gl.bindSampler(0, sampler1);
         gl.bindTexture(texture3DTarget, tex3D1);
         gl.deleteTexture(tex3D1);
+        tex3D1 = gl.createTexture();
         gl.bindTexture(texture3DTarget, tex3D1);
     } catch(e) {}
 }

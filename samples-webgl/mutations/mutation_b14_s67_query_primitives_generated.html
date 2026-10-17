@@ -11,7 +11,7 @@ const compareCount = 16;
 const vertexCount = 3;
 const tfBufferSize = primitiveCount * 12;
 
-const primitivesGenerated = 0x8C87;
+const primitivesGenerated = 0x8C2F;
 const tfPrimitivesWritten = 0x8C88;
 const queryAvailable = 0x8867;
 const queryResult = 0x8866;
@@ -19,6 +19,7 @@ const triangleMode = 0x0004;
 const tfBufferTarget = 0x8C8E;
 
 async function main() {
+    let program;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -53,7 +54,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.transformFeedbackVaryings(program, ['vPosition'], gl.INTERLEAVED_ATTRIBS);
@@ -124,13 +125,13 @@ async function main() {
         const tfBuffer1 = gl.createBuffer();
         gl.bindBuffer(tfBufferTarget, tfBuffer1);
         gl.bufferData(tfBufferTarget, tfBufferSize, gl.STREAM_COPY);
-        gl.bindBufferBase(tfBufferTarget, 0, tfBuffer1);
 
         const query1 = gl.createQuery();
         const query2 = gl.createQuery();
 
         const tf = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+        gl.bindBufferBase(tfBufferTarget, 0, tfBuffer1);
 
         gl.beginQuery(primitivesGenerated, query1);
         gl.beginQuery(tfPrimitivesWritten, query2);
@@ -190,10 +191,10 @@ async function main() {
 
     try {
         const query7 = gl.createQuery();
-        gl.deleteQuery(query7);
         gl.beginQuery(primitivesGenerated, query7);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.endQuery(primitivesGenerated);
+        gl.deleteQuery(query7);
     } catch(e) {}
 }
 

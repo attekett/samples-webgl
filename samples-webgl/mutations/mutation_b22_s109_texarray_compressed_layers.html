@@ -27,23 +27,24 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let compArray1, compArray2;
 
     try {
-        const compArray1 = gl.createTexture();
-        const compArray2 = gl.createTexture();
+        compArray1 = gl.createTexture();
+        compArray2 = gl.createTexture();
         const compArray3 = gl.createTexture();
         gl.bindTexture(arrayTarget, compArray1);
         gl.bindTexture(arrayTarget, compArray2);
         gl.bindTexture(arrayTarget, compArray1);
         gl.texStorage3D(arrayTarget, mipCount, compressedFormat, texSize, texSize, layerCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, compArray2);
         gl.texStorage3D(arrayTarget, 1, compressedFormat, 256, 256, 32);
         gl.texParameteri(arrayTarget, 10241, 9729);
         gl.texParameteri(arrayTarget, 10240, 9729);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, compArray1);
@@ -59,7 +60,7 @@ async function main() {
             }
             gl.compressedTexSubImage3D(arrayTarget, 0, 0, 0, layer, texSize, texSize, 1, compressedFormat, compData);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, compArray2);
@@ -71,18 +72,18 @@ async function main() {
             }
             gl.compressedTexSubImage3D(arrayTarget, 0, 0, 0, layer, 256, 256, 1, compressedFormat, compData);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const normalArray = gl.createTexture();
         gl.bindTexture(arrayTarget, normalArray);
         gl.texStorage3D(arrayTarget, 1, textureFormat, 256, 256, 24);
-        const normalData = new Uint8Array(256 * 256 * 4 * 8);
+        const normalData = new Uint8Array(256 * 256 * 4 * 24);
         for (let i = 0; i < normalData.length; i++) {
             normalData[i] = (i * 3) % 256;
         }
-        gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, 256, 256, 8, 6408, 5121, normalData);
-    } catch(e) { console.log(e); }
+        gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, 256, 256, 24, 6408, 5121, normalData);
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(35633);
@@ -117,7 +118,7 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const buffer1 = gl.createBuffer();
@@ -126,7 +127,7 @@ async function main() {
         gl.bindBuffer(34962, buffer2);
         gl.bindBuffer(34962, buffer1);
         gl.bufferData(34962, 4096, 35044);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(3042);
@@ -134,21 +135,22 @@ async function main() {
         gl.disable(3042);
         gl.enable(3042);
         gl.blendEquation(32774);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.viewport(0, 0, 256, 256);
         gl.drawArrays(4, 0, 6);
         gl.drawArrays(4, 0, 12);
         gl.drawArrays(4, 0, 18);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, compArray1);
         gl.deleteTexture(compArray1);
+        compArray1 = gl.createTexture();
         gl.bindTexture(arrayTarget, compArray1);
         gl.texParameteri(arrayTarget, 10241, 9728);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

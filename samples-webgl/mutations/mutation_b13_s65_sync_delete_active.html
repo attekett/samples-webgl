@@ -14,8 +14,8 @@ const drawCycles = 12;
 
 const syncCondition = 37143;
 const flushBit = 1;
-const timeoutNs = 1000000;
-const syncTimeout = 4294967295;
+const timeoutNs = 0;
+const syncTimeout = -1;
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -67,96 +67,96 @@ async function main() {
 
     try {
         const sync1 = gl.fenceSync(syncCondition, 0);
-        gl.deleteSync(sync1);
-        gl.deleteSync(sync1);
         gl.clientWaitSync(sync1, flushBit, timeoutNs);
         gl.waitSync(sync1, 0, syncTimeout);
+        gl.deleteSync(sync1);
+        gl.deleteSync(sync1);
     } catch(e) {}
 
     try {
         const sync2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         const sync3 = gl.fenceSync(syncCondition, 0);
-        gl.deleteSync(sync2);
         gl.clientWaitSync(sync2, 0, timeoutNs);
+        gl.clientWaitSync(sync3, flushBit, 0);
+        gl.deleteSync(sync2);
         gl.deleteSync(sync3);
-        gl.clientWaitSync(sync3, flushBit, 500000);
     } catch(e) {}
 
     try {
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         const sync4 = gl.fenceSync(syncCondition, 0);
-        gl.deleteSync(sync4);
         gl.drawArrays(gl.TRIANGLES, 0, 12);
         gl.waitSync(sync4, 0, syncTimeout);
         gl.flush();
+        gl.deleteSync(sync4);
     } catch(e) {}
 
     try {
         const sync5 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.flush();
-        gl.deleteSync(sync5);
-        gl.deleteSync(sync5);
         const sync6 = gl.fenceSync(syncCondition, 0);
         gl.clientWaitSync(sync6, flushBit, timeoutNs);
+        gl.deleteSync(sync5);
+        gl.deleteSync(sync5);
         gl.deleteSync(sync6);
     } catch(e) {}
 
     try {
         const sync7 = gl.fenceSync(syncCondition, 0);
         const sync8 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        gl.deleteSync(sync7);
-        gl.deleteSync(sync8);
         gl.clientWaitSync(sync7, 0, 0);
         gl.clientWaitSync(sync8, flushBit, 0);
         gl.waitSync(sync7, 0, syncTimeout);
+        gl.deleteSync(sync7);
+        gl.deleteSync(sync8);
     } catch(e) {}
 
     try {
         gl.drawArrays(gl.TRIANGLES, 0, 18);
         const syncA = gl.fenceSync(syncCondition, 0);
-        gl.deleteSync(syncA);
         gl.flush();
         gl.clientWaitSync(syncA, flushBit, timeoutNs);
         const syncB = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.deleteSync(syncA);
         gl.deleteSync(syncB);
     } catch(e) {}
 
     try {
         const syncC = gl.fenceSync(syncCondition, 0);
         gl.waitSync(syncC, 0, syncTimeout);
-        gl.deleteSync(syncC);
-        gl.deleteSync(syncC);
         gl.clientWaitSync(syncC, 0, timeoutNs);
         gl.waitSync(syncC, 0, syncTimeout);
+        gl.deleteSync(syncC);
+        gl.deleteSync(syncC);
     } catch(e) {}
 
     try {
         const syncD = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         const syncE = gl.fenceSync(syncCondition, 0);
         const syncF = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        gl.deleteSync(syncD);
-        gl.deleteSync(syncE);
-        gl.deleteSync(syncF);
         gl.clientWaitSync(syncD, flushBit, 0);
         gl.clientWaitSync(syncE, 0, 0);
         gl.clientWaitSync(syncF, flushBit, timeoutNs);
+        gl.deleteSync(syncD);
+        gl.deleteSync(syncE);
+        gl.deleteSync(syncF);
     } catch(e) {}
 
     try {
         gl.drawArrays(gl.TRIANGLES, 0, 24);
         const syncG = gl.fenceSync(syncCondition, 0);
-        gl.deleteSync(syncG);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.waitSync(syncG, 0, syncTimeout);
+        gl.deleteSync(syncG);
         gl.deleteSync(syncG);
     } catch(e) {}
 
     try {
         const syncH = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.flush();
-        gl.deleteSync(syncH);
         gl.clientWaitSync(syncH, flushBit, timeoutNs);
         gl.waitSync(syncH, 0, syncTimeout);
+        gl.deleteSync(syncH);
         gl.deleteSync(syncH);
     } catch(e) {}
 

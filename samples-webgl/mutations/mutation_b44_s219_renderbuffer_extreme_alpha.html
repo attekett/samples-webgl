@@ -3,7 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [];
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -56,21 +56,21 @@ async function main() {
         gl.RGBA4,
         gl.RGB565,
         gl.RGB5_A1,
-        gl.RGBA16F,
-        gl.RGBA32F,
-        gl.RGB16F,
-        gl.RGB32F,
-        gl.R11F_G11F_B10F,
-        gl.RGB10_A2,
         gl.RGB10_A2UI,
         gl.RGBA8UI,
         gl.RGBA8I,
+        gl.R11F_G11F_B10F,
+        gl.RGBA16F,
+        gl.RGBA32F,
+        gl.RG16F,
+        gl.RG32F,
+        gl.RGB10_A2,
         gl.DEPTH_COMPONENT32F,
         gl.DEPTH24_STENCIL8,
         gl.STENCIL_INDEX8
     ];
 
-    const msaaSamples = [2, 4, 8, 16];
+    const msaaSamples = [2, 4, 8, 4];
     const renderbuffers = [];
 
     try {
@@ -199,18 +199,20 @@ async function main() {
 
     try {
         gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffers[1].obj);
         gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_WIDTH);
     } catch(e) {}
 
     try {
         const deletedRbo = renderbuffers[0].obj;
-        gl.deleteRenderbuffer(deletedRbo);
         gl.bindRenderbuffer(gl.RENDERBUFFER, deletedRbo);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 256, 256);
+        gl.deleteRenderbuffer(deletedRbo);
     } catch(e) {}
 
     try {
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 999, gl.RGBA8, 256, 256);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffers[1].obj);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.RGBA8, 256, 256);
     } catch(e) {}
 
     try {
@@ -226,6 +228,7 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, gl.createFramebuffer());
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, null);
     } catch(e) {}
 }

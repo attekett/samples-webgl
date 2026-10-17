@@ -19,7 +19,7 @@ async function main() {
 
     let vertexCount = 512;
     let queryPollCount = 128;
-    let tfBufferSize = 8192;
+    let tfBufferSize = 65536;
     let nestedQueryDepth = 3;
     let primitivesExpected = 256;
     let occlusionSamples = 64;
@@ -236,13 +236,9 @@ async function main() {
 
         for (let i = 0; i < nestedQueryDepth; i++) {
             gl.beginQuery(tfQueryTarget, nestedQueries[i]);
-        }
-
-        gl.beginTransformFeedback(gl.POINTS);
-        gl.drawArrays(gl.POINTS, 0, vertexCount / 2);
-        gl.endTransformFeedback();
-
-        for (let i = nestedQueryDepth - 1; i >= 0; i--) {
+            gl.beginTransformFeedback(gl.POINTS);
+            gl.drawArrays(gl.POINTS, 0, vertexCount / 2);
+            gl.endTransformFeedback();
             gl.endQuery(tfQueryTarget);
         }
 

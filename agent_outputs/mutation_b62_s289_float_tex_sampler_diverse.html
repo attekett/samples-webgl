@@ -92,10 +92,12 @@ void main() {
         var floatTex1 = gl.createTexture();
         gl.bindTexture(texTarget, floatTex0);
         gl.texStorage2D(texTarget, 1, gl.RGBA32F, texSize, texSize);
+        gl.texSubImage2D(texTarget, 0, 0, 0, texSize, texSize, gl.RGBA, gl.FLOAT, new Float32Array(texSize * texSize * 4));
         gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(texTarget, floatTex1);
         gl.texStorage2D(texTarget, 1, gl.RGBA32F, halfSize, halfSize);
+        gl.texSubImage2D(texTarget, 0, 0, 0, halfSize, halfSize, gl.RGBA, gl.FLOAT, new Float32Array(halfSize * halfSize * 4));
         gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(texTarget, floatTex0);
@@ -138,8 +140,8 @@ void main() {
         gl.samplerParameteri(samp0, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
         gl.samplerParameterf(samp0, gl.TEXTURE_MIN_LOD, lodMin);
         gl.samplerParameterf(samp0, gl.TEXTURE_MAX_LOD, lodMax);
-        gl.samplerParameteri(samp1, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.samplerParameteri(samp1, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.samplerParameteri(samp1, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.samplerParameteri(samp1, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.samplerParameteri(samp1, gl.TEXTURE_COMPARE_MODE, cmpMode);
         gl.samplerParameteri(samp1, gl.TEXTURE_COMPARE_FUNC, gl.GEQUAL);
         gl.samplerParameterf(samp1, gl.TEXTURE_MIN_LOD, 0.0);
@@ -235,8 +237,8 @@ void main() {
         gl.deleteSampler(samp2);
         gl.isSampler(samp1);
         gl.bindTexture(texTarget, floatTex0);
-        gl.deleteTexture(floatTex0);
         gl.bindTexture(texTarget, floatTex0);
+        gl.deleteTexture(floatTex0);
         gl.deleteTexture(floatTex1);
         gl.deleteRenderbuffer(rb0);
         gl.deleteRenderbuffer(depthRb);

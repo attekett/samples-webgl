@@ -20,7 +20,7 @@ async function main() {
     let queryCount = 6;
     let tfPrimitives = 500;
     let vertexCount = 300;
-    let tfIterations = 4;
+    let tfIterations = 6;
     let bufferSize = 4096;
     let varyingCount = 3;
 
@@ -29,7 +29,7 @@ async function main() {
     const QUERY_RESULT_AVAILABLE = 0x8867;
 
     let queryTarget = TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN;
-    let tfMode = gl.TRIANGLES;
+    let tfMode = gl.POINTS;
     let bufferTarget = gl.ARRAY_BUFFER;
     let tfBufferTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
 
@@ -154,6 +154,7 @@ async function main() {
         gl.vertexAttribPointer(lifeLoc, 1, gl.FLOAT, false, 28, 24);
         gl.vertexAttribPointer(lifeLoc, 1, gl.FLOAT, false, 28, 24);
 
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
         gl.bindVertexArray(null);
     } catch (e) {
         throw e;
@@ -177,6 +178,7 @@ async function main() {
         gl.enableVertexAttribArray(lifeLoc);
         gl.vertexAttribPointer(lifeLoc, 1, gl.FLOAT, false, 28, 24);
 
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
         gl.bindVertexArray(null);
     } catch (e) {
         throw e;
@@ -223,16 +225,16 @@ async function main() {
             gl.uniform1f(decayLoc, 0.98);
 
             gl.beginQuery(queryTarget, query);
+            gl.endQuery(queryTarget);
             gl.beginQuery(queryTarget, query);
 
             gl.beginTransformFeedback(tfMode);
-            gl.beginTransformFeedback(tfMode);
             gl.drawArrays(gl.POINTS, 0, vertexCount);
+            gl.endTransformFeedback();
+            gl.beginTransformFeedback(tfMode);
             gl.drawArrays(gl.POINTS, 0, vertexCount / 2);
             gl.endTransformFeedback();
-            gl.endTransformFeedback();
 
-            gl.endQuery(queryTarget);
             gl.endQuery(queryTarget);
 
             gl.bindVertexArray(null);
@@ -279,6 +281,7 @@ async function main() {
         gl.uniform1f(gl.getUniformLocation(program, 'u_time'), 0.0);
         gl.uniform1f(gl.getUniformLocation(program, 'u_decay'), 1.0);
         gl.drawArrays(gl.POINTS, 0, vertexCount);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
         gl.bindVertexArray(null);
     } catch (e) {
         throw e;

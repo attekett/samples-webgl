@@ -22,7 +22,7 @@ async function main() {
     const bufferSize = 8192;
     const commandSize = 20;
 
-    const drawIndirectTarget = gl.DRAW_INDIRECT_BUFFER;
+    const drawIndirectTarget = gl.COPY_READ_BUFFER;
     const arrayBufferTarget = gl.ARRAY_BUFFER;
     const bufferUsage = gl.STATIC_DRAW;
 

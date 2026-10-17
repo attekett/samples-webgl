@@ -18,9 +18,7 @@ async function main() {
    // Use WebGL1 compatible depth format
    gl.DEPTH_COMPONENT16 = gl.DEPTH_COMPONENT || 0x81A5;
    gl.DEPTH_COMPONENT24 = gl.DEPTH_COMPONENT || 0x81A6;
-   console.log("Using WebGL1 context");
  } else {
-   console.log("Using WebGL2 context");
  }
 
  // 1. EXTENSION GATING
@@ -44,7 +42,6 @@ async function main() {
  const stateChangeCount = 25;
 
  // DEBUGGING: Check WebGL version
- console.log("WebGL Version:", gl instanceof WebGL2RenderingContext ? "WebGL2" : "WebGL1");
 
  // Early depth texture creation for state poisoning
  const testTexture = gl.createTexture();
@@ -202,12 +199,7 @@ async function main() {
  }
 }
 
-main().catch(err => {
- // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
- // knows to log it to UNSUPPORTED.md and skip.
- // Otherwise, it counts as a test failure/crash.
- console.error("Caught error:", err.message, err.stack); // Allowed for debugging, but DOM update is primary signal
-});
+main().catch(err => { throw err; });
 </script>
 </body>
 </html>

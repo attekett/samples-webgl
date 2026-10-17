@@ -181,7 +181,7 @@ void main() {
     try {
         const srgbTex = gl.createTexture();
         gl.bindTexture(textureTarget, srgbTex);
-        gl.texImage2D(textureTarget, 0, gl.SRGB, texSize, texSize, 0, gl.RGB, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(textureTarget, 0, gl.SRGB8, texSize, texSize, 0, gl.RGB, gl.UNSIGNED_BYTE, null);
         gl.deleteTexture(srgbTex);
 
         const tp1 = gl.createTexture();

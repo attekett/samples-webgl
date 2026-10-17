@@ -190,7 +190,7 @@ async function main() {
                 gl.endTransformFeedback();
                 gl.disable(gl.RASTERIZER_DISCARD);
                 gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-                gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, textureArray, 0, layer);
+                gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, textureArray, 0, (layer + 1) % numLayers);
                 gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
                 gl.readBuffer(gl.COLOR_ATTACHMENT0);
                 gl.copyTexSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, 0, 0, texWidth, texHeight);
@@ -206,7 +206,7 @@ async function main() {
         gl.pixelStorei(gl.PACK_ROW_LENGTH, texWidth);
         gl.pixelStorei(gl.PACK_SKIP_PIXELS, 10);
         gl.pixelStorei(gl.PACK_SKIP_ROWS, 10);
-        const pixels = new Uint8Array(pixelReadSize * pixelReadSize * 4);
+        const pixels = new Uint8Array(texWidth * (pixelReadSize + 10) * 4);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         for (let i = 0; i < 8; i++) {
             const layer = i * 16;
@@ -251,6 +251,7 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.useProgram(tfProgram);
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer);
         gl.enable(gl.RASTERIZER_DISCARD);
         gl.beginTransformFeedback(gl.TRIANGLES);

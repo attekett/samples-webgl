@@ -11,7 +11,7 @@ const syncPerContext = 8;
 const switchCycles = 24;
 const drawIterations = 16;
 
-const syncCondition = 0x9113;
+const syncCondition = 0x9117;
 const syncSignaled = 0x9119;
 const syncUnsignaled = 0;
 
@@ -74,7 +74,7 @@ async function main() {
     try {
         const prog1 = setupContext(gl1);
         const prog2 = setupContext(gl2);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     const syncs1 = [];
     const syncs2 = [];
@@ -88,7 +88,7 @@ async function main() {
             syncs2.push(gl2.fenceSync(gl2.SYNC_GPU_COMMANDS_COMPLETE, 0));
             syncs2.push(gl2.fenceSync(syncCondition, 0));
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl1.clear(gl1.COLOR_BUFFER_BIT);
@@ -97,7 +97,7 @@ async function main() {
         gl2.clear(gl2.COLOR_BUFFER_BIT);
         gl2.drawArrays(gl2.TRIANGLES, 0, 3);
         gl2.flush();
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let cycle = 0; cycle < switchCycles; cycle++) {
@@ -106,7 +106,7 @@ async function main() {
 
             gl.drawArrays(gl.TRIANGLES, 0, 3);
             const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-            gl.clientWaitSync(sync, 0, 1000);
+            gl.clientWaitSync(sync, 0, 0);
 
             if (ctxIdx === 0) {
                 syncs1.push(sync);
@@ -114,7 +114,7 @@ async function main() {
                 syncs2.push(sync);
             }
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < drawIterations; i++) {
@@ -124,13 +124,13 @@ async function main() {
             gl2.drawArrays(gl2.TRIANGLES, 0, 3);
             const s2 = gl2.fenceSync(gl2.SYNC_GPU_COMMANDS_COMPLETE, 0);
 
-            gl1.clientWaitSync(s1, gl1.SYNC_FLUSH_COMMANDS_BIT, 500);
-            gl2.clientWaitSync(s2, gl2.SYNC_FLUSH_COMMANDS_BIT, 500);
+            gl1.clientWaitSync(s1, gl1.SYNC_FLUSH_COMMANDS_BIT, 0);
+            gl2.clientWaitSync(s2, gl2.SYNC_FLUSH_COMMANDS_BIT, 0);
 
             syncs1.push(s1);
             syncs2.push(s2);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < 32; i++) {
@@ -144,7 +144,7 @@ async function main() {
                 gl2.clientWaitSync(syncs2[idx2], 0, 0);
             }
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < 16; i++) {
@@ -160,7 +160,7 @@ async function main() {
             syncs1.push(s3);
             syncs2.push(s4);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < syncs1.length; i++) {
@@ -173,14 +173,14 @@ async function main() {
                 gl2.deleteSync(syncs2[i]);
             }
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl1.clear(gl1.COLOR_BUFFER_BIT);
         gl1.drawArrays(gl1.TRIANGLES, 0, 3);
         gl1.flush();
         gl1.finish();
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

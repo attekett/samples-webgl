@@ -181,11 +181,11 @@ void main() {
 
     try {
         gl.bindTexture(tex3dTarget, tex3d);
-        gl.deleteTexture(tex3d);
         gl.bindTexture(tex3dTarget, tex3d);
+        gl.deleteTexture(tex3d);
+        gl.bindTexture(tex3dTarget, tex3d2);
         gl.bindTexture(tex3dTarget, tex3d2);
         gl.deleteTexture(tex3d2);
-        gl.bindTexture(tex3dTarget, tex3d2);
     } catch(e) {}
 }
 

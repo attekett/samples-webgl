@@ -17,6 +17,7 @@ const queryResult = 0x8866;
 const triangleMode = 0x0004;
 
 async function main() {
+    let program;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -49,7 +50,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -162,9 +163,9 @@ async function main() {
 
     try {
         const query7 = gl.createQuery();
-        gl.deleteQuery(query7);
         gl.beginQuery(queryTarget, query7);
         gl.endQuery(queryTarget);
+        gl.deleteQuery(query7);
     } catch(e) {}
 }
 

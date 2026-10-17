@@ -3,7 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [];
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
 
 const rboCount = 8;
 const pixelSize = 256;
@@ -39,10 +39,11 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let rbo1, rbo2, rbo3, rbo4, rbo5, rbo6, rbo7, rbo8, fbo1, fbo2, pixels1, pixels2, pbo1, pbo2, fbo3, pixels3;
 
     try {
-        const rbo1 = gl.createRenderbuffer();
-        const rbo2 = gl.createRenderbuffer();
+        rbo1 = gl.createRenderbuffer();
+        rbo2 = gl.createRenderbuffer();
         gl.bindRenderbuffer(RENDERBUFFER, rbo1);
         gl.bindRenderbuffer(RENDERBUFFER, rbo2);
         gl.bindRenderbuffer(RENDERBUFFER, rbo1);
@@ -51,8 +52,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo3 = gl.createRenderbuffer();
-        const rbo4 = gl.createRenderbuffer();
+        rbo3 = gl.createRenderbuffer();
+        rbo4 = gl.createRenderbuffer();
         gl.bindRenderbuffer(RENDERBUFFER, rbo3);
         gl.renderbufferStorage(RENDERBUFFER, RGBA16F, pixelSize, pixelSize);
         gl.bindRenderbuffer(RENDERBUFFER, rbo4);
@@ -61,8 +62,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo5 = gl.createRenderbuffer();
-        const rbo6 = gl.createRenderbuffer();
+        rbo5 = gl.createRenderbuffer();
+        rbo6 = gl.createRenderbuffer();
         gl.bindRenderbuffer(RENDERBUFFER, rbo5);
         gl.renderbufferStorage(RENDERBUFFER, R11F_G11F_B10F, pixelSize, pixelSize);
         gl.bindRenderbuffer(RENDERBUFFER, rbo6);
@@ -70,8 +71,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo7 = gl.createRenderbuffer();
-        const rbo8 = gl.createRenderbuffer();
+        rbo7 = gl.createRenderbuffer();
+        rbo8 = gl.createRenderbuffer();
         gl.bindRenderbuffer(RENDERBUFFER, rbo7);
         gl.renderbufferStorage(RENDERBUFFER, DEPTH_COMPONENT32F, 256, 256);
         gl.bindRenderbuffer(RENDERBUFFER, rbo8);
@@ -79,8 +80,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(FRAMEBUFFER, fbo1);
         gl.framebufferRenderbuffer(FRAMEBUFFER, COLOR_ATTACHMENT0, RENDERBUFFER, rbo1);
         gl.bindFramebuffer(FRAMEBUFFER, fbo2);
@@ -103,11 +104,13 @@ async function main() {
         gl.pixelStorei(gl.PACK_SKIP_ROWS, packSkipRows);
         gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
         gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
+        gl.pixelStorei(gl.PACK_SKIP_PIXELS, 0);
+        gl.pixelStorei(gl.PACK_SKIP_ROWS, 0);
     } catch(e) {}
 
     try {
-        const pixels1 = new Uint8Array(pixelSize * pixelSize * 4);
-        const pixels2 = new Float32Array(256 * 256 * 4);
+        pixels1 = new Uint8Array(pixelSize * pixelSize * 4);
+        pixels2 = new Float32Array(256 * 256 * 4);
         gl.bindFramebuffer(FRAMEBUFFER, fbo1);
         gl.readPixels(0, 0, pixelSize, pixelSize, gl.RGBA, gl.UNSIGNED_BYTE, pixels1);
         gl.bindFramebuffer(FRAMEBUFFER, fbo2);
@@ -115,12 +118,12 @@ async function main() {
     } catch(e) {}
 
     try {
-        const pbo1 = gl.createBuffer();
-        const pbo2 = gl.createBuffer();
+        pbo1 = gl.createBuffer();
+        pbo2 = gl.createBuffer();
         gl.bindBuffer(PIXEL_PACK_BUFFER, pbo1);
         gl.bufferData(PIXEL_PACK_BUFFER, pixelSize * pixelSize * 16, STREAM_READ);
         gl.bindBuffer(PIXEL_PACK_BUFFER, pbo2);
-        gl.bufferData(PIXEL_PACK_BUFFER, 262144, STREAM_READ);
+        gl.bufferData(PIXEL_PACK_BUFFER, pixelSize * pixelSize * 32, STREAM_READ);
     } catch(e) {}
 
     try {
@@ -134,21 +137,24 @@ async function main() {
 
     try {
         for (let i = 0; i < readIterations; i++) {
-            gl.pixelStorei(gl.PACK_ALIGNMENT, i + 1);
+            gl.pixelStorei(gl.PACK_ALIGNMENT, 1 << i);
             gl.bindFramebuffer(FRAMEBUFFER, fbo1);
-            gl.readPixels(i * 64, i * 32, 128, 128, gl.RGBA, gl.UNSIGNED_BYTE, null);
-            gl.pixelStorei(gl.PACK_ROW_LENGTH, i * 128);
-            gl.readPixels(0, 0, pixelSize, pixelSize, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.readPixels(i * 32, i * 16, 128, 128, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+            gl.pixelStorei(gl.PACK_ROW_LENGTH, (i + 2) * 128);
+            gl.readPixels(0, 0, pixelSize, pixelSize, gl.RGBA, gl.UNSIGNED_BYTE, 0);
         }
     } catch(e) {}
 
     try {
-        const fbo3 = gl.createFramebuffer();
+        gl.bindBuffer(PIXEL_PACK_BUFFER, null);
+        gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
+        gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
+        fbo3 = gl.createFramebuffer();
         gl.bindFramebuffer(FRAMEBUFFER, fbo3);
         gl.framebufferRenderbuffer(FRAMEBUFFER, COLOR_ATTACHMENT0, RENDERBUFFER, rbo5);
         gl.clearColor(0.7, 0.8, 0.9, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-        const pixels3 = new Float32Array(pixelSize * pixelSize * 4);
+        pixels3 = new Float32Array(pixelSize * pixelSize * 4);
         gl.readPixels(0, 0, 256, 256, gl.RGBA, gl.FLOAT, pixels3);
     } catch(e) {}
 
@@ -157,8 +163,9 @@ async function main() {
         gl.pixelStorei(gl.PACK_ROW_LENGTH, 1024);
         gl.pixelStorei(gl.PACK_SKIP_PIXELS, 32);
         gl.pixelStorei(gl.PACK_SKIP_ROWS, 16);
+        gl.bindBuffer(PIXEL_PACK_BUFFER, pbo2);
         gl.bindFramebuffer(FRAMEBUFFER, fbo1);
-        gl.readPixels(0, 0, pixelSize, pixelSize, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.readPixels(0, 0, pixelSize, pixelSize, gl.RGBA, gl.UNSIGNED_BYTE, 0);
         gl.bindBuffer(PIXEL_PACK_BUFFER, null);
     } catch(e) {}
 

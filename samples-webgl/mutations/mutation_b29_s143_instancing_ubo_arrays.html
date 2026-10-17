@@ -26,21 +26,21 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const ubo1 = gl.createBuffer();
-        const ubo2 = gl.createBuffer();
-        const ubo3 = gl.createBuffer();
-        const ubo4 = gl.createBuffer();
-        const ubo5 = gl.createBuffer();
-        const ubo6 = gl.createBuffer();
-        const ubo7 = gl.createBuffer();
-        const ubo8 = gl.createBuffer();
+        var ubo1 = gl.createBuffer();
+        var ubo2 = gl.createBuffer();
+        var ubo3 = gl.createBuffer();
+        var ubo4 = gl.createBuffer();
+        var ubo5 = gl.createBuffer();
+        var ubo6 = gl.createBuffer();
+        var ubo7 = gl.createBuffer();
+        var ubo8 = gl.createBuffer();
         gl.bindBuffer(gl.UNIFORM_BUFFER, ubo1);
         gl.bindBuffer(gl.UNIFORM_BUFFER, ubo2);
         gl.bindBuffer(gl.UNIFORM_BUFFER, ubo1);
     } catch(e) { console.log(e); }
 
     try {
-        const uboData = new Float32Array(uboBlockSize / 4);
+        var uboData = new Float32Array(uboBlockSize / 4);
         for (let i = 0; i < arraySize; i++) {
             const idx = i * 4;
             uboData[idx] = Math.sin(i * 0.05);
@@ -56,8 +56,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const posBuffer = gl.createBuffer();
-        const instBuffer = gl.createBuffer();
+        var posBuffer = gl.createBuffer();
+        var instBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.bindBuffer(gl.ARRAY_BUFFER, instBuffer);
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
@@ -72,7 +72,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const instData = new Float32Array(instanceCount * 4);
+        var instData = new Float32Array(instanceCount * 4);
         for (let i = 0; i < instanceCount; i++) {
             const idx = i * 4;
             instData[idx] = (i % 16) / 16.0 - 0.5;
@@ -85,7 +85,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 aPosition;
             in vec4 aInstanceData;
@@ -104,7 +104,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             in vec4 vColor;
@@ -115,7 +115,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -123,7 +123,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const blockIndex = gl.getUniformBlockIndex(program, 'InstanceBlock');
+        var blockIndex = gl.getUniformBlockIndex(program, 'InstanceBlock');
         gl.uniformBlockBinding(program, blockIndex, uboBinding);
         gl.uniformBlockBinding(program, blockIndex, 1);
         gl.uniformBlockBinding(program, blockIndex, 2);
@@ -136,14 +136,14 @@ async function main() {
         gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, ubo3);
         gl.bindBufferBase(gl.UNIFORM_BUFFER, uboBinding, ubo1);
 
-        gl.bindBufferRange(gl.UNIFORM_BUFFER, uboBinding, ubo1, 0, 1024);
+        gl.bindBufferRange(gl.UNIFORM_BUFFER, uboBinding, ubo1, 0, uboBlockSize);
         gl.bindBufferRange(gl.UNIFORM_BUFFER, 1, ubo2, 256, 512);
         gl.bindBufferRange(gl.UNIFORM_BUFFER, 2, ubo3, 0, uboBlockSize);
     } catch(e) { console.log(e); }
 
     try {
-        const posLoc = gl.getAttribLocation(program, 'aPosition');
-        const instLoc = gl.getAttribLocation(program, 'aInstanceData');
+        var posLoc = gl.getAttribLocation(program, 'aPosition');
+        var instLoc = gl.getAttribLocation(program, 'aInstanceData');
 
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.enableVertexAttribArray(posLoc);
@@ -185,9 +185,9 @@ async function main() {
 
     try {
         gl.bindBuffer(gl.UNIFORM_BUFFER, ubo1);
-        gl.deleteBuffer(ubo1);
         gl.bindBuffer(gl.UNIFORM_BUFFER, ubo1);
         gl.bufferData(gl.UNIFORM_BUFFER, 2048, gl.DYNAMIC_DRAW);
+        gl.deleteBuffer(ubo1);
         gl.deleteBuffer(ubo2);
         gl.deleteBuffer(ubo2);
     } catch(e) { console.log(e); }

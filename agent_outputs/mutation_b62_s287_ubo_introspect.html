@@ -242,7 +242,7 @@ void main() {
         gl.bindBufferBase(uniTarget, 0, camBuf);
         gl.bindBufferBase(uniTarget, 1, colBuf);
         gl.drawArrays(gl.TRIANGLES, 0, vertCount);
-        gl.bindBufferRange(uniTarget, 0, bigBuf, rangeOffset, rangeSize);
+        gl.bindBufferRange(uniTarget, 0, bigBuf, rangeOffset, rangeSize2);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     } catch(e) {}
 
@@ -258,9 +258,9 @@ void main() {
 
     try {
         gl.bindBuffer(uniTarget, camBuf);
-        gl.deleteBuffer(camBuf);
         gl.bindBufferBase(uniTarget, 0, camBuf);
         gl.bindBuffer(uniTarget, camBuf);
+        gl.deleteBuffer(camBuf);
         gl.deleteBuffer(colBuf);
         gl.deleteBuffer(bigBuf);
         gl.deleteBuffer(vertBuf);

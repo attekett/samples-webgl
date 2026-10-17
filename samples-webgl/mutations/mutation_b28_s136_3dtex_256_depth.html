@@ -12,8 +12,8 @@ const dataSize = texSize * texSize * depth * 4;
 const vertexCount = 6;
 const mipLevels = 7;
 
-const textureTarget = 35866;
-const textureFormat = 32849;
+const textureTarget = 32879;
+const textureFormat = 32856;
 const textureType = 5121;
 const bufferTarget = 34962;
 const bufferUsage = 35044;
@@ -28,19 +28,20 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let buffer1, texture1;
 
     try {
-        const buffer1 = gl.createBuffer();
+        buffer1 = gl.createBuffer();
         const buffer2 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bindBuffer(bufferTarget, buffer2);
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bufferData(bufferTarget, dataSize, bufferUsage);
         gl.bufferSubData(bufferTarget, 0, new Float32Array(512));
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        const texture1 = gl.createTexture();
+        texture1 = gl.createTexture();
         const texture2 = gl.createTexture();
         const texture3 = gl.createTexture();
         gl.bindTexture(textureTarget, texture1);
@@ -55,15 +56,17 @@ async function main() {
         gl.texImage3D(textureTarget, 0, gl.RGBA8, 64, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindTexture(textureTarget, texture3);
         gl.texImage3D(textureTarget, 0, gl.RGB8, texSize, texSize, slices, 0, gl.RGB, gl.UNSIGNED_BYTE, null);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const texture4 = gl.createTexture();
         gl.bindTexture(textureTarget, texture4);
         gl.texStorage3D(textureTarget, mipLevels, gl.RGBA8, texSize, texSize, depth);
+        gl.texSubImage3D(textureTarget, 0, 0, 0, 0, texSize, texSize, depth, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(dataSize));
+        gl.generateMipmap(textureTarget);
         gl.texSubImage3D(textureTarget, 0, 0, 0, 0, 32, 32, 32, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(131072));
         gl.texSubImage3D(textureTarget, 0, 16, 16, 16, 16, 16, 16, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(16384));
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -95,7 +98,7 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const fbo1 = gl.createFramebuffer();
@@ -104,7 +107,7 @@ async function main() {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vao1 = gl.createVertexArray();
@@ -122,7 +125,7 @@ async function main() {
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
         gl.disableVertexAttribArray(0);
         gl.enableVertexAttribArray(0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(gl.DEPTH_TEST);
@@ -133,25 +136,27 @@ async function main() {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.disable(gl.BLEND);
         gl.enable(gl.BLEND);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-        gl.viewport(0, 0, 512, 512);
-        gl.drawArrays(gl.TRIANGLES, 0, 18);
         gl.viewport(0, 0, 256, 256);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-    } catch(e) { console.log(e); }
+        gl.viewport(0, 0, 256, 256);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    } catch(e) {}
 
     try {
         gl.bindTexture(textureTarget, texture1);
         gl.deleteTexture(texture1);
+        texture1 = gl.createTexture();
         gl.bindTexture(textureTarget, texture1);
         gl.bindBuffer(bufferTarget, buffer1);
         gl.deleteBuffer(buffer1);
+        buffer1 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

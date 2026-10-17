@@ -30,10 +30,10 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const rb0 = gl.createRenderbuffer();
-        const rb1 = gl.createRenderbuffer();
-        const rb2 = gl.createRenderbuffer();
-        const rb3 = gl.createRenderbuffer();
+        var rb0 = gl.createRenderbuffer();
+        var rb1 = gl.createRenderbuffer();
+        var rb2 = gl.createRenderbuffer();
+        var rb3 = gl.createRenderbuffer();
         gl.bindRenderbuffer(rbTarget, rb0);
         gl.renderbufferStorage(rbTarget, formatRGBA8, rbSize, rbSize);
         gl.bindRenderbuffer(rbTarget, rb1);
@@ -45,10 +45,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rb4 = gl.createRenderbuffer();
-        const rb5 = gl.createRenderbuffer();
-        const rb6 = gl.createRenderbuffer();
-        const rb7 = gl.createRenderbuffer();
+        var rb4 = gl.createRenderbuffer();
+        var rb5 = gl.createRenderbuffer();
+        var rb6 = gl.createRenderbuffer();
+        var rb7 = gl.createRenderbuffer();
         gl.bindRenderbuffer(rbTarget, rb4);
         gl.renderbufferStorage(rbTarget, formatRGBA16F, rbSize, rbSize);
         gl.bindRenderbuffer(rbTarget, rb5);
@@ -60,8 +60,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbDepth = gl.createRenderbuffer();
-        const rbStencil = gl.createRenderbuffer();
+        var rbDepth = gl.createRenderbuffer();
+        var rbStencil = gl.createRenderbuffer();
         gl.bindRenderbuffer(rbTarget, rbDepth);
         gl.renderbufferStorage(rbTarget, formatDepth24, rbSize, rbSize);
         gl.bindRenderbuffer(rbTarget, rbStencil);
@@ -69,7 +69,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo = gl.createFramebuffer();
+        var fbo = gl.createFramebuffer();
         gl.bindFramebuffer(fboTarget, fbo);
         gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, rb0);
         gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT1, rbTarget, rb1);
@@ -89,11 +89,11 @@ async function main() {
             gl.COLOR_ATTACHMENT4, gl.COLOR_ATTACHMENT5,
             gl.COLOR_ATTACHMENT6, gl.COLOR_ATTACHMENT7
         ]);
-        const status = gl.checkFramebufferStatus(fboTarget);
+        var status = gl.checkFramebufferStatus(fboTarget);
     } catch(e) {}
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 position;
             void main() {
@@ -102,7 +102,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             layout(location = 0) out vec4 fragColor0;
@@ -126,7 +126,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -134,13 +134,13 @@ async function main() {
     } catch(e) {}
 
     try {
-        const posBuffer = gl.createBuffer();
+        var posBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
             -1, -1, 0, 1, -1, 0, 1, 1, 0,
             -1, -1, 0, 1, 1, 0, -1, 1, 0
         ]), gl.STATIC_DRAW);
-        const vao = gl.createVertexArray();
+        var vao = gl.createVertexArray();
         gl.bindVertexArray(vao);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);

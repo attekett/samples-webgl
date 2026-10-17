@@ -17,10 +17,10 @@ async function main() {
 
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
-    let instanceCount = 256;
+    let instanceCount = 8;
     let vertexCount = 384;
     let vaoCount = 4;
-    let tfBufferSize = 65536;
+    let tfBufferSize = 131072;
     let divisorValues = [0, 1, 2, 4];
     let queryIterations = 8;
     let vaoSwitchCount = 12;
@@ -120,7 +120,7 @@ async function main() {
     }
 
     const vertexData = createVertexData(vertexCount);
-    const instanceData = createInstanceData(instanceCount);
+    const instanceData = createInstanceData(Math.max(instanceCount, vertexCount));
 
     let vbo;
     try {

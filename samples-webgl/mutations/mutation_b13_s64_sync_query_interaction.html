@@ -80,7 +80,7 @@ async function main() {
         gl.beginQuery(queryTarget, query3);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.endQuery(queryTarget);
-        gl.clientWaitSync(sync1, flushBit, 1000000);
+        gl.clientWaitSync(sync1, flushBit, 0);
         gl.deleteSync(sync1);
     } catch(e) {}
 
@@ -91,7 +91,7 @@ async function main() {
         gl.drawArrays(gl.TRIANGLES, 0, 18);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
         gl.flush();
-        gl.clientWaitSync(sync2, 0, 500000);
+        gl.clientWaitSync(sync2, 0, 0);
         gl.deleteSync(sync2);
     } catch(e) {}
 
@@ -115,8 +115,8 @@ async function main() {
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, queryA);
         gl.drawArrays(gl.TRIANGLES, 0, 24);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.clientWaitSync(syncA, flushBit, 0);
         gl.deleteSync(syncA);
-        gl.clientWaitSync(syncA, flushBit, 1000000);
     } catch(e) {}
 
     try {
@@ -133,13 +133,13 @@ async function main() {
         const syncC = gl.fenceSync(syncCondition, 0);
         const queryC = gl.createQuery();
         const queryD = gl.createQuery();
-        gl.deleteSync(syncC);
         gl.beginQuery(queryTarget, queryC);
         gl.drawArrays(gl.TRIANGLES, 0, 12);
         gl.endQuery(queryTarget);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, queryD);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.deleteSync(syncC);
     } catch(e) {}
 
     try {
@@ -149,7 +149,7 @@ async function main() {
         gl.drawArrays(gl.TRIANGLES, 0, 30);
         gl.endQuery(queryTarget);
         gl.flush();
-        gl.clientWaitSync(syncD, flushBit, 2000000);
+        gl.clientWaitSync(syncD, flushBit, 0);
         gl.deleteSync(syncD);
     } catch(e) {}
 

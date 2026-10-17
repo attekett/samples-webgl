@@ -11,11 +11,12 @@ const atomicCount = 32;
 const barrierCount = 4;
 const workgroupSize = 16;
 
-const textureTarget = 35866;
-const rgba32iFormat = 36227;
+const textureTarget = 3553;
+const rgba32iFormat = 36226;
 const rgba32uiFormat = 36208;
 
 async function main() {
+    let program, tex1, tex2, tex3, fbo1, fbo2;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -27,9 +28,9 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
@@ -40,9 +41,12 @@ async function main() {
 
     try {
         gl.bindTexture(textureTarget, tex2);
-        gl.texStorage2D(textureTarget, 1, rgba32uiFormat, 256, 256);
+        gl.texStorage2D(textureTarget, 1, rgba32iFormat, 256, 256);
         gl.bindTexture(textureTarget, tex3);
         gl.texStorage2D(textureTarget, 1, rgba32iFormat, 64, 64);
+        gl.texParameteri(textureTarget, 10241, 9728);
+        gl.texParameteri(textureTarget, 10240, 9728);
+        gl.texSubImage2D(textureTarget, 0, 0, 0, 64, 64, 36249, 5124, new Int32Array(64 * 64 * 4));
         gl.bindTexture(textureTarget, tex1);
         const data = new Int32Array(texPixels * 4);
         for (let i = 0; i < texPixels * 4; i++) data[i] = i % 128;
@@ -62,8 +66,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(36160, fbo1);
         gl.framebufferTexture2D(36160, 36064, textureTarget, tex1, 0);
         gl.bindFramebuffer(36160, fbo2);
@@ -99,7 +103,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -109,7 +113,7 @@ async function main() {
     try {
         const posLoc = gl.getAttribLocation(program, 'position');
         const texLoc = gl.getUniformLocation(program, 'uTexture');
-        gl.uniform1i(texLoc, 0);
+        gl.uniform1i(texLoc, 2);
         const positions = new Float32Array([
             -1, -1, 0,
             1, -1, 0,
@@ -156,18 +160,18 @@ async function main() {
         gl.bindFramebuffer(36160, fbo2);
         gl.viewport(0, 0, 256, 256);
         gl.drawArrays(5, 0, 6);
-        gl.bindFramebuffer(36160, null);
+        gl.bindFramebuffer(36160, fbo1);
         gl.viewport(0, 0, 256, 256);
         gl.drawArrays(5, 0, 6);
     } catch(e) {}
 
     try {
         gl.bindTexture(textureTarget, tex1);
-        gl.deleteTexture(tex1);
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
-        gl.deleteTexture(tex2);
         gl.bindTexture(textureTarget, tex3);
+        gl.deleteTexture(tex1);
+        gl.deleteTexture(tex2);
         gl.deleteTexture(tex3);
     } catch(e) {}
 }

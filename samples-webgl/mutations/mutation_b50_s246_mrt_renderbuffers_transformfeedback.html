@@ -22,7 +22,7 @@ async function main() {
     const rbCount = 4;
     const texSize = 256;
     const vertexCount = 6;
-    const tfStride = 7;
+    const tfStride = 8;
 
     const vsSource = `#version 300 es
     in vec3 aPosition;
@@ -215,7 +215,7 @@ async function main() {
         }
 
         try {
-            const drawBuffers1 = [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT4, gl.COLOR_ATTACHMENT5];
+            const drawBuffers1 = [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.NONE, gl.NONE, gl.COLOR_ATTACHMENT4, gl.COLOR_ATTACHMENT5];
             gl.drawBuffers(drawBuffers1);
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         } catch (e) {
@@ -223,7 +223,7 @@ async function main() {
         }
 
         try {
-            const drawBuffers2 = [gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3, gl.COLOR_ATTACHMENT6, gl.COLOR_ATTACHMENT7];
+            const drawBuffers2 = [gl.NONE, gl.NONE, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3, gl.NONE, gl.NONE, gl.COLOR_ATTACHMENT6, gl.COLOR_ATTACHMENT7];
             gl.drawBuffers(drawBuffers2);
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         } catch (e) {
@@ -240,6 +240,7 @@ async function main() {
 
     try {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, mrtTextures[0], 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT4, gl.RENDERBUFFER, null);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, mrtRenderbuffers[0]);
         gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
@@ -249,8 +250,9 @@ async function main() {
 
     try {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, mrtTextures[1], 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT5, gl.RENDERBUFFER, null);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, gl.RENDERBUFFER, mrtRenderbuffers[1]);
-        gl.drawBuffers([gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
+        gl.drawBuffers([gl.NONE, gl.NONE, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch (e) {
         throw e;

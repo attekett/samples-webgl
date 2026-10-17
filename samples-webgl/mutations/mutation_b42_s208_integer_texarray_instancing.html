@@ -88,7 +88,6 @@ async function main() {
                 pos.x += (offset * 2.0 - 1.0);
                 pos.y += sin(offset * 18.84955) * 0.5;
                 gl_Position = vec4(pos, 1.0);
-                gl_Layer = vLayer;
             }
         `);
         gl.compileShader(vs);
@@ -185,6 +184,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.15, 0.15, 0.15, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, query4);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 128);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);

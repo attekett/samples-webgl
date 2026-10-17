@@ -28,10 +28,6 @@ async function main() {
     try {
         vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
-out gl_PerVertex {
-    vec4 gl_Position;
-    float gl_PointSize;
-};
 in vec3 aPos;
 out float vDepthDiff;
 out float vFar;

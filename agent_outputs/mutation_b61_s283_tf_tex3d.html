@@ -19,7 +19,7 @@ async function main() {
     const texSize = 32;
     const texDepth = 8;
     const vertCount = 6;
-    const tfBufSize = vertCount * 4 * 4;
+    const tfBufSize = vertCount * 4 * 4 * 2;
     const bufSize = texSize * texSize * texDepth * 4;
     const sliceSize = texSize * texSize * 4;
 
@@ -141,7 +141,7 @@ void main() {
         gl.linkProgram(prog);
         gl.useProgram(prog);
         var tfVarying0 = gl.getTransformFeedbackVarying(prog, 0);
-        var tfVarying1 = gl.getTransformFeedbackVarying(prog, 1);
+        var tfVarying1 = gl.getTransformFeedbackVarying(prog, 0);
     } catch(e) {}
 
     try {
@@ -187,7 +187,7 @@ void main() {
         gl.uniform1i(texLoc, 0);
         gl.uniform1f(layerLoc, 0.0);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(tex3dTarget, tex3d);
+        gl.bindTexture(tex3dTarget, tex3d3);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.viewport(0, 0, texSize, texSize);
         gl.clearColor(0.1, 0.1, 0.1, 1.0);
@@ -244,13 +244,13 @@ void main() {
         gl.bindTransformFeedback(tfBindPoint, tf2);
         gl.bindBufferBase(tfBufTarget, 0, tfOut);
         gl.bindTransformFeedback(tfBindPoint, tf1);
-        gl.deleteTransformFeedback(tf1);
         gl.isTransformFeedback(tf1);
         gl.bindTransformFeedback(tfBindPoint, tf1);
+        gl.deleteTransformFeedback(tf1);
         gl.deleteTransformFeedback(tf2);
         gl.bindTexture(tex3dTarget, tex3d);
-        gl.deleteTexture(tex3d);
         gl.bindTexture(tex3dTarget, tex3d);
+        gl.deleteTexture(tex3d);
         gl.deleteTexture(tex3d2);
         gl.deleteTexture(tex3d3);
         gl.deleteBuffer(tfOut);

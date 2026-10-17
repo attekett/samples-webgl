@@ -6,7 +6,7 @@
 const REQUIRED_EXTENSIONS = [];
 
 const layerCount = 32;
-const intFormat = 36236;
+const intFormat = 36238;
 const clearValue = 999;
 const sampleCount = 64;
 const texSize = 128;
@@ -17,6 +17,7 @@ const intFormatUI = 36220;
 const colorBuffer = 6144;
 
 async function main() {
+    let program, intArray1, intArray2, intArray3, fbo1, fbo2;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -28,26 +29,30 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const intArray1 = gl.createTexture();
-        const intArray2 = gl.createTexture();
-        const intArray3 = gl.createTexture();
+        intArray1 = gl.createTexture();
+        intArray2 = gl.createTexture();
+        intArray3 = gl.createTexture();
         gl.bindTexture(arrayTarget, intArray1);
         gl.bindTexture(arrayTarget, intArray2);
         gl.bindTexture(arrayTarget, intArray1);
         gl.texStorage3D(arrayTarget, 1, intFormat, texSize, texSize, layerCount);
-    } catch(e) { console.log(e); }
+        gl.texParameteri(arrayTarget, 10241, 9728);
+        gl.texParameteri(arrayTarget, 10240, 9728);
+        gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, texSize, texSize, layerCount, 36249, 5120, new Int8Array(texSize * texSize * layerCount * 4));
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, intArray2);
         gl.texStorage3D(arrayTarget, 1, intFormatUI, 256, 256, 64);
+        gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, 256, 256, 64, 36249, 5121, new Uint8Array(256 * 256 * 64 * 4));
         gl.texParameteri(arrayTarget, 10241, 9728);
         gl.texParameteri(arrayTarget, 10240, 9728);
         gl.texParameteri(arrayTarget, 10242, 33071);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(36160, fbo1);
         gl.framebufferTextureLayer(36160, 36064, intArray1, 0, 0);
         gl.framebufferTextureLayer(36160, 36064, intArray1, 0, 8);
@@ -55,7 +60,7 @@ async function main() {
         gl.bindFramebuffer(36160, fbo2);
         gl.framebufferTextureLayer(36160, 36064, intArray2, 0, 0);
         gl.bindFramebuffer(36160, fbo1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let layer = 0; layer < 16; layer++) {
@@ -63,7 +68,7 @@ async function main() {
             const val = clearValue + layer * 100;
             gl.clearBufferiv(colorBuffer, 0, new Int32Array([val, val * 2, val * 3, val * 4]));
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let layer = 0; layer < 12; layer++) {
@@ -71,7 +76,7 @@ async function main() {
             gl.framebufferTextureLayer(36160, 36064, intArray2, 0, layer);
             gl.clearBufferuiv(colorBuffer, 0, new Uint32Array([12345, 67890, 11111, 22222]));
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(35633);
@@ -103,12 +108,18 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+        gl.uniform1i(gl.getUniformLocation(program, 'uIntArray'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uUintArray'), 1);
+        gl.activeTexture(33985);
+        gl.bindTexture(arrayTarget, intArray2);
+        gl.activeTexture(33984);
+        gl.bindTexture(arrayTarget, intArray1);
+    } catch(e) {}
 
     try {
         const buffer1 = gl.createBuffer();
@@ -116,14 +127,14 @@ async function main() {
         gl.bufferData(34962, bufferSize, 35044);
         gl.vertexAttribPointer(0, 3, 5126, false, 0, 0);
         gl.enableVertexAttribArray(0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(2929);
         gl.disable(2929);
         gl.enable(2929);
         gl.depthFunc(515);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(36160, null);
@@ -131,14 +142,15 @@ async function main() {
         gl.drawArrays(4, 0, 6);
         gl.drawArrays(4, 0, sampleCount);
         gl.drawArrays(4, 0, 18);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, intArray1);
-        gl.deleteTexture(intArray1);
         gl.bindTexture(arrayTarget, intArray1);
+        gl.bindFramebuffer(36160, fbo1);
         gl.framebufferTextureLayer(36160, 36064, intArray1, 0, 0);
-    } catch(e) { console.log(e); }
+        gl.deleteTexture(intArray1);
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

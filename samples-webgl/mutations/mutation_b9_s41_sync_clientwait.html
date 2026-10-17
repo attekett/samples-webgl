@@ -18,7 +18,7 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     let syncCount = 4;
-    let waitTimeout = 1000000000;
+    let waitTimeout = 0;
     let drawCount = 8;
     let renderIterations = 3;
     let syncDelay = 500;
@@ -185,9 +185,9 @@ async function main() {
             }
 
             for (let j = 0; j < syncs.length; j++) {
-                const currentTimeout = waitTimeout + (j * timeoutVariation);
+                const currentTimeout = waitTimeout;
                 const status = gl.clientWaitSync(syncs[j], waitFlags, currentTimeout);
-                gl.clientWaitSync(syncs[j], 0, currentTimeout - timeoutVariation);
+                gl.clientWaitSync(syncs[j], 0, Math.max(currentTimeout - timeoutVariation, 0));
                 gl.clientWaitSync(syncs[j], SYNC_FLUSH_COMMANDS_BIT, waitTimeout);
             }
 

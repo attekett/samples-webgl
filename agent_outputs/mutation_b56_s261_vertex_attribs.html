@@ -268,16 +268,16 @@ void main() {
     } catch(e) {}
 
     try {
-        gl.deleteBuffer(buf1);
         gl.bindBuffer(bufferTarget, buf1);
+        gl.deleteBuffer(buf1);
         gl.deleteBuffer(buf2);
         gl.deleteBuffer(buf3);
-        gl.deleteVertexArray(vao1);
         gl.bindVertexArray(vao1);
+        gl.deleteVertexArray(vao1);
         gl.deleteVertexArray(vao2);
         gl.deleteVertexArray(vao3);
-        gl.deleteProgram(program);
         gl.useProgram(program);
+        gl.deleteProgram(program);
     } catch(e) {}
 }
 

@@ -165,6 +165,11 @@ void main() {
         gl.linkProgram(program);
         gl.validateProgram(program);
         gl.useProgram(program);
+        var samplerUnit = 0;
+        for (var si = 0; si < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); si++) {
+            var sInfo = gl.getActiveUniform(program, si);
+            if (sInfo && /^u_(s|is|us)/.test(sInfo.name)) gl.uniform1i(gl.getUniformLocation(program, sInfo.name), samplerUnit++);
+        }
     } catch(e) {}
 
     try {

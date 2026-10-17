@@ -257,20 +257,20 @@ void main() {
     try {
         gl.bindSampler(0, null);
         gl.bindSampler(1, null);
+        gl.bindSampler(0, sampler1);
         gl.deleteSampler(sampler1);
         gl.deleteSampler(sampler2);
-        gl.bindSampler(0, sampler1);
+        gl.bindFramebuffer(fbTarget, fbo1);
         gl.deleteFramebuffer(fbo1);
         gl.deleteFramebuffer(fbo2);
-        gl.bindFramebuffer(fbTarget, fbo1);
+        gl.bindTexture(tex3dTarget, tex3d);
         gl.deleteTexture(tex3d);
+        gl.bindTexture(texArrTarget, texArr);
         gl.deleteTexture(texArr);
         gl.deleteTexture(texInt);
         gl.deleteTexture(texAniso);
-        gl.bindTexture(tex3dTarget, tex3d);
-        gl.bindTexture(texArrTarget, texArr);
-        gl.deleteBuffer(vbo);
         gl.bindBuffer(bufferTarget, vbo);
+        gl.deleteBuffer(vbo);
         gl.deleteVertexArray(vao);
         gl.deleteShader(vs);
         gl.deleteShader(fs);

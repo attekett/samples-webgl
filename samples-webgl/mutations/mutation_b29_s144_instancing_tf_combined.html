@@ -9,7 +9,7 @@ const instanceCount = 64;
 const tfBufferSize = 16384;
 const varyingCount = 6;
 const vertexCount = 6;
-const tfTarget = 35982;
+const tfTarget = 36386;
 const tfPrimitives = 35976;
 const rasterizerDiscard = 35977;
 
@@ -25,20 +25,20 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const tfBuffer1 = gl.createBuffer();
-        const tfBuffer2 = gl.createBuffer();
-        const tfBuffer3 = gl.createBuffer();
-        const tfBuffer4 = gl.createBuffer();
+        var tfBuffer1 = gl.createBuffer();
+        var tfBuffer2 = gl.createBuffer();
+        var tfBuffer3 = gl.createBuffer();
+        var tfBuffer4 = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer2);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
         gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, tfBufferSize, gl.DYNAMIC_COPY);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 8192, gl.STREAM_COPY);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, tfBufferSize, gl.STREAM_COPY);
     } catch(e) { console.log(e); }
 
     try {
-        const posBuffer = gl.createBuffer();
-        const instBuffer = gl.createBuffer();
+        var posBuffer = gl.createBuffer();
+        var instBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.bindBuffer(gl.ARRAY_BUFFER, instBuffer);
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
@@ -53,7 +53,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const instData = new Float32Array(instanceCount * 4);
+        var instData = new Float32Array(instanceCount * 4);
         for (let i = 0; i < instanceCount; i++) {
             const idx = i * 4;
             instData[idx] = (i % 8) / 8.0 - 0.5;
@@ -66,7 +66,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 aPosition;
             in vec4 aInstanceData;
@@ -90,7 +90,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             in vec4 vColor;
@@ -101,7 +101,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.transformFeedbackVaryings(program, ['vPosition', 'vInstanceData', 'vTexCoord', 'vDepth', 'vNormal', 'vColor'], gl.INTERLEAVED_ATTRIBS);
@@ -112,8 +112,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const posLoc = gl.getAttribLocation(program, 'aPosition');
-        const instLoc = gl.getAttribLocation(program, 'aInstanceData');
+        var posLoc = gl.getAttribLocation(program, 'aPosition');
+        var instLoc = gl.getAttribLocation(program, 'aInstanceData');
 
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.enableVertexAttribArray(posLoc);
@@ -127,9 +127,9 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const tf1 = gl.createTransformFeedback();
-        const tf2 = gl.createTransformFeedback();
-        const tf3 = gl.createTransformFeedback();
+        var tf1 = gl.createTransformFeedback();
+        var tf2 = gl.createTransformFeedback();
+        var tf3 = gl.createTransformFeedback();
         gl.bindTransformFeedback(tfTarget, tf1);
         gl.bindTransformFeedback(tfTarget, tf2);
         gl.bindTransformFeedback(tfTarget, tf1);
@@ -153,8 +153,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const query1 = gl.createQuery();
-        const query2 = gl.createQuery();
+        var query1 = gl.createQuery();
+        var query2 = gl.createQuery();
 
         gl.beginQuery(tfPrimitives, query1);
         gl.beginTransformFeedback(gl.TRIANGLES);
@@ -182,9 +182,9 @@ async function main() {
         for (let i = 0; i < 8; i++) {
             gl.beginTransformFeedback(gl.TRIANGLES);
             gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 16);
-            gl.endTransformFeedback();
             gl.pauseTransformFeedback();
             gl.resumeTransformFeedback();
+            gl.endTransformFeedback();
             gl.beginTransformFeedback(gl.TRIANGLES);
             gl.endTransformFeedback();
         }
@@ -192,17 +192,17 @@ async function main() {
 
     try {
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf1);
-        gl.deleteTransformFeedback(tf1);
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf1);
         gl.beginTransformFeedback(gl.TRIANGLES);
         gl.endTransformFeedback();
+        gl.deleteTransformFeedback(tf1);
     } catch(e) { console.log(e); }
 
     try {
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
-        gl.deleteBuffer(tfBuffer1);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
         gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 1024, gl.STREAM_COPY);
+        gl.deleteBuffer(tfBuffer1);
     } catch(e) { console.log(e); }
 }
 

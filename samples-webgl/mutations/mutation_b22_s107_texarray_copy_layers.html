@@ -27,10 +27,11 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let texArray1, texArray2, fbo1, fbo2;
 
     try {
-        const texArray1 = gl.createTexture();
-        const texArray2 = gl.createTexture();
+        texArray1 = gl.createTexture();
+        texArray2 = gl.createTexture();
         const texArray3 = gl.createTexture();
         gl.bindTexture(arrayTarget, texArray1);
         gl.bindTexture(arrayTarget, texArray2);
@@ -39,27 +40,27 @@ async function main() {
         const data = new Uint8Array(texSize * texSize * 4 * layerCount);
         for (let i = 0; i < data.length; i++) data[i] = (i % 256);
         gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, texSize, texSize, layerCount, 6408, 5121, data);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, texArray2);
         gl.texStorage3D(arrayTarget, 1, textureFormat, 512, 512, 64);
         gl.texParameteri(arrayTarget, 10242, 33071);
         gl.texParameteri(arrayTarget, 10243, 33071);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(readFramebuffer, fbo1);
         gl.framebufferTextureLayer(readFramebuffer, 36064, texArray1, 0, srcLayer);
         gl.bindFramebuffer(drawFramebuffer, fbo2);
         gl.framebufferTextureLayer(drawFramebuffer, 36064, texArray1, 0, dstLayer);
         gl.bindFramebuffer(readFramebuffer, fbo1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 4; i++) {
             const src = i * layerStride;
             const dst = (i * layerStride) + dstLayer;
             gl.bindFramebuffer(readFramebuffer, fbo1);
@@ -68,16 +69,17 @@ async function main() {
             gl.framebufferTextureLayer(drawFramebuffer, 36064, texArray1, 0, dst);
             gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, copySize, copySize, 16384, 9728);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, texArray1);
+        gl.bindFramebuffer(readFramebuffer, null);
         for (let layer = 0; layer < 16; layer++) {
             gl.copyTexSubImage3D(arrayTarget, 0, 0, 0, layer, 0, 0, 128, 128);
             gl.copyTexSubImage3D(arrayTarget, 0, 128, 0, layer, 0, 128, 64, 64);
             gl.copyTexSubImage3D(arrayTarget, 0, 0, 128, layer, 128, 0, 96, 96);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(readFramebuffer, fbo1);
@@ -88,7 +90,7 @@ async function main() {
         gl.framebufferTextureLayer(readFramebuffer, 36064, texArray1, 0, 8);
         gl.framebufferTextureLayer(drawFramebuffer, 36064, texArray2, 0, 16);
         gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, 16384, 9728);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(35633);
@@ -122,7 +124,7 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(3042);
@@ -130,21 +132,24 @@ async function main() {
         gl.disable(3042);
         gl.enable(3042);
         gl.blendEquation(32774);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(36160, null);
         gl.viewport(0, 0, 256, 256);
         gl.drawArrays(4, 0, 6);
         gl.drawArrays(4, 0, 12);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, texArray1);
         gl.deleteTexture(texArray1);
+        texArray1 = gl.createTexture();
         gl.bindTexture(arrayTarget, texArray1);
+        gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
+        gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, texSize, texSize, layerCount, 6408, 5121, new Uint8Array(texSize * texSize * 4 * layerCount));
         gl.copyTexSubImage3D(arrayTarget, 0, 0, 0, 0, 0, 0, 64, 64);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

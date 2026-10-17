@@ -229,9 +229,9 @@ async function main() {
                 gl.bindVertexArray(vao);
 
                 gl.beginQuery(queryTarget, query);
+                gl.endQuery(queryTarget);
                 gl.beginQuery(queryTarget, query);
                 gl.drawElements(gl.TRIANGLES, cubeIndices.length, gl.UNSIGNED_SHORT, 0);
-                gl.endQuery(queryTarget);
                 gl.endQuery(queryTarget);
 
                 if (i % 3 === 0) {

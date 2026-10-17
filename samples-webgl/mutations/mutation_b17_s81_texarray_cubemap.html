@@ -4,10 +4,12 @@
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
 const REQUIRED_EXTENSIONS = [
-    'EXT_color_buffer_float'
+    'EXT_color_buffer_float',
+    'EXT_float_blend'
 ];
 
 async function main() {
+    let program, tex1, tex2, tex3, buffer1, fbo1, fbo2, fbo3;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -25,17 +27,17 @@ async function main() {
     const bufferSize = texSize * texSize * 4;
     const samplerCount = 6;
 
-    const textureTarget = gl.TEXTURE_CUBE_MAP_ARRAY;
+    const textureTarget = gl.TEXTURE_2D_ARRAY;
     const textureFormat = gl.RGBA32F;
     const internalFormat = gl.RGBA;
     const dataType = gl.FLOAT;
-    const filterMode = gl.LINEAR;
+    const filterMode = gl.NEAREST;
     const wrapMode = gl.CLAMP_TO_EDGE;
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
@@ -47,7 +49,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const buffer1 = gl.createBuffer();
+        buffer1 = gl.createBuffer();
         const buffer2 = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer2);
@@ -99,7 +101,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -107,9 +109,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
-        const fbo3 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
+        fbo3 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -147,9 +149,11 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.bindTexture(textureTarget, tex2);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindTexture(textureTarget, tex1);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
         gl.viewport(0, 0, 512, 512);
         gl.drawArrays(gl.TRIANGLES, 0, 18);
@@ -163,11 +167,11 @@ async function main() {
 
     try {
         gl.bindTexture(textureTarget, tex1);
-        gl.deleteTexture(tex1);
         gl.bindTexture(textureTarget, tex1);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
-        gl.deleteBuffer(buffer1);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer1);
+        gl.deleteTexture(tex1);
+        gl.deleteBuffer(buffer1);
     } catch(e) {}
 }
 

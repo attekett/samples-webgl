@@ -26,6 +26,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let program, vao1, vao2, vao3, vao4, tfBuf1, tfBuf2, tfBuf3, tfBuf4;
 
     try {
         const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -58,32 +59,32 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.transformFeedbackVaryings(program, ['vPosition', 'vNormal', 'vTexCoord'], gl.INTERLEAVED_ATTRIBS);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        const vao1 = gl.createVertexArray();
-        const vao2 = gl.createVertexArray();
-        const vao3 = gl.createVertexArray();
-        const vao4 = gl.createVertexArray();
+        vao1 = gl.createVertexArray();
+        vao2 = gl.createVertexArray();
+        vao3 = gl.createVertexArray();
+        vao4 = gl.createVertexArray();
         gl.bindVertexArray(vao1);
         gl.bindVertexArray(vao2);
         gl.bindVertexArray(vao1);
         gl.bindVertexArray(vao3);
         gl.bindVertexArray(vao4);
         gl.bindVertexArray(vao1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        const tfBuf1 = gl.createBuffer();
-        const tfBuf2 = gl.createBuffer();
-        const tfBuf3 = gl.createBuffer();
-        const tfBuf4 = gl.createBuffer();
+        tfBuf1 = gl.createBuffer();
+        tfBuf2 = gl.createBuffer();
+        tfBuf3 = gl.createBuffer();
+        tfBuf4 = gl.createBuffer();
         gl.bindBuffer(tfBufferTarget, tfBuf1);
         gl.bufferData(tfBufferTarget, bufferSize, gl.DYNAMIC_COPY);
         gl.bindBuffer(tfBufferTarget, tfBuf2);
@@ -92,7 +93,7 @@ async function main() {
         gl.bufferData(tfBufferTarget, bufferSize, gl.STATIC_READ);
         gl.bindBuffer(tfBufferTarget, tfBuf4);
         gl.bufferData(tfBufferTarget, 16384, gl.DYNAMIC_READ);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const posBuffer = gl.createBuffer();
@@ -129,7 +130,7 @@ async function main() {
         const tcLoc = gl.getAttribLocation(program, 'texCoord');
         gl.enableVertexAttribArray(tcLoc);
         gl.vertexAttribPointer(tcLoc, 2, gl.FLOAT, false, 0, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < switchCycles; i++) {
@@ -145,7 +146,7 @@ async function main() {
             gl.endTransformFeedback();
             gl.disable(gl.RASTERIZER_DISCARD);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindVertexArray(vao1);
@@ -154,16 +155,18 @@ async function main() {
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.bindVertexArray(vao3);
         gl.drawArrays(gl.TRIANGLES, 0, 18);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindBuffer(tfBufferTarget, tfBuf1);
         gl.deleteBuffer(tfBuf1);
+        tfBuf1 = gl.createBuffer();
         gl.bindBuffer(tfBufferTarget, tfBuf1);
         gl.bindVertexArray(vao1);
         gl.deleteVertexArray(vao1);
+        vao1 = gl.createVertexArray();
         gl.bindVertexArray(vao1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

@@ -35,7 +35,7 @@ async function main() {
 
  // FUZZING VARIABLES - expose for mutation targeting
  const NUM_INSTANCES = 100;
- const UBO_BLOCK_SIZE = 64;
+ const UBO_BLOCK_SIZE = 256;
  const NUM_UBOS = 4;
  const VERTEX_DENSITY = 32;
  const UNIFORM_BLOCK_INDEX = 0;
@@ -69,8 +69,8 @@ async function main() {
  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
 
  const indexBuffer = gl.createBuffer();
- gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
- gl.bufferData(gl.ELEMENT_INDEX_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
 
  // Create UBOs with complex data
  const transformUBO = gl.createBuffer();
@@ -129,11 +129,12 @@ async function main() {
 
    // Buffer binding churn
    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-   gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
+   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
    gl.bindBuffer(gl.UNIFORM_BUFFER, transformUBO);
    gl.bindBuffer(gl.UNIFORM_BUFFER, materialUBO);
  }
 
+{
  // Create vertex shader with uniform block
  const vertexShader = gl.createShader(gl.VERTEX_SHADER);
  gl.shaderSource(vertexShader, `#version 300 es
@@ -226,8 +227,8 @@ void main() {
  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
 
  const indexBuffer = gl.createBuffer();
- gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
- gl.bufferData(gl.ELEMENT_INDEX_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+ gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
 
  // Set up vertex attributes
  const positionLoc = gl.getAttribLocation(program, 'aPosition');
@@ -243,6 +244,7 @@ void main() {
  gl.clearColor(0.1, 0.1, 0.1, 1.0);
  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
  gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+}
  const vertexShader = gl.createShader(gl.VERTEX_SHADER);
  gl.shaderSource(vertexShader, `#version 300 es
 layout(location = 0) in vec3 aPosition;
@@ -372,14 +374,14 @@ void main() {
 
    // Buffer binding changes - only bind valid buffers
    if (vertexBuffer) gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-   if (indexBuffer) gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
+   if (indexBuffer) gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
    if (transformUBO) gl.bindBuffer(gl.UNIFORM_BUFFER, transformUBO);
    if (materialUBO) gl.bindBuffer(gl.UNIFORM_BUFFER, materialUBO);
  }
 
  // Bind the correct buffers for rendering
  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
- gl.bindBuffer(gl.ELEMENT_INDEX_BUFFER, indexBuffer);
+ gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
  gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, transformUBO);
  gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, materialUBO);
 
@@ -412,9 +414,7 @@ void main() {
  }
 }
 
-main().catch(err => {
- console.error(err);
-});
+main().catch(err => { throw err; });
 </script>
 </body>
 </html>

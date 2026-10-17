@@ -11,11 +11,12 @@ const sampleCount = 16;
 const texSize = 128;
 const bindCycles = 8;
 
-const textureTarget = 35866;
+const textureTarget = 3553;
 const r8iFormat = 33329;
-const r8uiFormat = 33330;
+const r8uiFormat = 33329;
 
 async function main() {
+    let program, tex1, tex2, tex3, tex4, tex5, tex6, tex7, tex8;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -27,9 +28,9 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
@@ -50,20 +51,26 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tex4 = gl.createTexture();
-        const tex5 = gl.createTexture();
-        const tex6 = gl.createTexture();
+        tex4 = gl.createTexture();
+        tex5 = gl.createTexture();
+        tex6 = gl.createTexture();
         gl.bindTexture(textureTarget, tex4);
-        gl.texStorage2D(textureTarget, 1, 33332, 64, 64);
+        gl.texStorage2D(textureTarget, 1, 33331, 64, 64);
+        gl.texParameteri(textureTarget, 10241, 9728);
+        gl.texParameteri(textureTarget, 10240, 9728);
+        gl.texSubImage2D(textureTarget, 0, 0, 0, 64, 64, 36244, 5122, new Int16Array(64 * 64));
         gl.bindTexture(textureTarget, tex5);
         gl.texStorage2D(textureTarget, 1, 33333, 128, 128);
+        gl.texParameteri(textureTarget, 10241, 9728);
+        gl.texParameteri(textureTarget, 10240, 9728);
+        gl.texSubImage2D(textureTarget, 0, 0, 0, 128, 128, 36244, 5124, new Int32Array(128 * 128));
         gl.bindTexture(textureTarget, tex6);
         gl.texStorage2D(textureTarget, 1, 33334, 256, 256);
     } catch(e) {}
 
     try {
-        const tex7 = gl.createTexture();
-        const tex8 = gl.createTexture();
+        tex7 = gl.createTexture();
+        tex8 = gl.createTexture();
         gl.bindTexture(textureTarget, tex7);
         gl.bindTexture(textureTarget, tex8);
         gl.bindTexture(textureTarget, tex7);
@@ -110,7 +117,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -177,13 +184,13 @@ async function main() {
 
     try {
         gl.bindTexture(textureTarget, tex1);
-        gl.deleteTexture(tex1);
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
-        gl.deleteTexture(tex2);
         gl.bindTexture(textureTarget, tex3);
-        gl.deleteTexture(tex3);
         gl.bindTexture(textureTarget, tex4);
+        gl.deleteTexture(tex1);
+        gl.deleteTexture(tex2);
+        gl.deleteTexture(tex3);
         gl.deleteTexture(tex4);
     } catch(e) {}
 }

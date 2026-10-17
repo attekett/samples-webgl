@@ -3,13 +3,11 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [
- 'EXT_shader_texture_lod'
-];
+const REQUIRED_EXTENSIONS = [];
 
 async function main() {
  const canvas = document.getElementById('webgl-canvas');
- const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+ const gl = canvas.getContext('webgl2');
  if (!gl) throw new Error("WebGL not supported");
 
  // 1. EXTENSION GATING
@@ -93,7 +91,7 @@ async function main() {
  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureSize, textureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, baseData);
 
  // Generate mipmaps manually
- for (let level = 1; level < lodLevels; level++) {
+ for (let level = 1; level <= lodLevels; level++) {
    const levelSize = textureSize >> level;
    if (levelSize < 1) break;
 
@@ -269,13 +267,7 @@ async function main() {
  }
 }
 
-main().catch(err => {
- // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
- // knows to log it to UNSUPPORTED.md and skip.
- // Otherwise, it counts as a test failure/crash.
- console.error('Exception caught:', err.message || err); // Show detailed error message
- throw err; // Re-throw so test runner catches it
-});
+main().catch(err => { throw err; });
 </script>
 </body>
 </html>

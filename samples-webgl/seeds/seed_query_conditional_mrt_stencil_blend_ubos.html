@@ -81,6 +81,10 @@ async function main() {
         0.0, 1.0, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0,
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
         0.5, 0.3, 0.7, 1.0,
         0.2, 0.8, 0.1, 1.0,
         0.9, 0.4, 0.6, 1.0,
@@ -312,7 +316,7 @@ void main() {
     }
     gl.activeTexture(gl.TEXTURE0);
 
-    const timerAvailable = gl.getQueryParameter(timerQuery, gl.QUERY_RESULT_AVAILABLE);
+    const timerAvailable = timerQueryExt && gl.getQueryParameter(timerQuery, gl.QUERY_RESULT_AVAILABLE);
     if (timerAvailable) {
         const timerResult = gl.getQueryParameter(timerQuery, gl.QUERY_RESULT);
     }

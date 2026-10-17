@@ -128,6 +128,7 @@ async function main() {
         gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(texTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(texTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texStorage3D(texTarget, 1, dxt5Format, texSize, texSize, numLayers);
     } catch(e) {}
 
     try {
@@ -159,7 +160,7 @@ async function main() {
     }
 
     try {
-        const dxt1Data = new Uint8Array(dxt1Size);
+        const dxt1Data = new Uint8Array(dxt5Size);
         for (let i = 0; i < dxt1Data.length; i++) {
             dxt1Data[i] = (i * 17 + 64) % 256;
         }
@@ -168,7 +169,7 @@ async function main() {
                 dxt1Data[i] = (layer * 3 + i / 8) % 256;
                 dxt1Data[i + 1] = (layer + i / 16) % 256;
             }
-            gl.compressedTexSubImage3D(texTarget, 0, 0, 0, layer, texSize, texSize, 1, dxt1Format, dxt1Data);
+            gl.compressedTexSubImage3D(texTarget, 0, 0, 0, layer, texSize, texSize, 1, dxt5Format, dxt1Data);
         }
     } catch(e) {}
 
@@ -176,7 +177,7 @@ async function main() {
     try {
         tfBuffer = gl.createBuffer();
         gl.bindBuffer(tfTarget, tfBuffer);
-        gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_COPY);
+        gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_READ);
         tf = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
         gl.bindBufferBase(tfTarget, 0, tfBuffer);
@@ -251,6 +252,7 @@ async function main() {
 
     try {
         gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.endTransformFeedback();
         gl.beginTransformFeedback(gl.TRIANGLES);
     } catch(e) {}
 

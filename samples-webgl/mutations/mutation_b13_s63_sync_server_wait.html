@@ -13,7 +13,7 @@ const bufferSize = 3072;
 const textureSize = 128;
 
 const syncCondition = 37143;
-const syncTimeout = 4294967295;
+const syncTimeout = -1;
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -121,18 +121,18 @@ async function main() {
     try {
         const syncA = gl.fenceSync(syncCondition, 0);
         gl.waitSync(syncA, 0, syncTimeout);
-        gl.deleteSync(syncA);
         gl.waitSync(syncA, 0, syncTimeout);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.deleteSync(syncA);
     } catch(e) {}
 
     try {
         const syncB = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         const syncC = gl.fenceSync(syncCondition, 0);
-        gl.deleteSync(syncB);
-        gl.deleteSync(syncC);
         gl.waitSync(syncB, 0, syncTimeout);
         gl.waitSync(syncC, 0, syncTimeout);
+        gl.deleteSync(syncB);
+        gl.deleteSync(syncC);
     } catch(e) {}
 
     try {

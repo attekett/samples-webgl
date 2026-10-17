@@ -11,7 +11,7 @@ const REQUIRED_EXTENSIONS = [
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
-    const gl = canvas.getContext('webgl2');
+    const gl = canvas.getContext('webgl2', {antialias: false});
     if (!gl) throw new Error("WebGL2 not supported");
 
     const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
@@ -21,6 +21,7 @@ async function main() {
     const extEdbi = gl.getExtension('OES_draw_buffers_indexed');
     gl.getExtension('OES_texture_float_linear');
     gl.getExtension('EXT_color_buffer_float');
+    gl.getExtension('EXT_float_blend');
 
     const texSize = 64;
     const layers = 4;
@@ -103,13 +104,18 @@ void main() {
         gl.bindTexture(gl.TEXTURE_3D, tex3D);
         gl.texStorage3D(gl.TEXTURE_3D, 1, gl.RGBA16F, texSize, texSize, layers);
         gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, texSize, texSize, layers, gl.RGBA, gl.FLOAT, new Float32Array(texSize * texSize * layers * 4));
         var texArr = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArr);
         gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA16F, texSize, texSize, layers);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, texSize, texSize, layers, gl.RGBA, gl.FLOAT, new Float32Array(texSize * texSize * layers * 4));
         var texSrcI = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texSrcI);
         gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32I, 32, 32);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 32, 32, gl.RGBA_INTEGER, gl.INT, new Int32Array(32 * 32 * 4));
     } catch(e) {}
 
     try {
@@ -142,7 +148,7 @@ void main() {
         gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.bindSampler(0, sampler);
         gl.bindSampler(1, sampler);
-        gl.bindSampler(2, sampler);
+        gl.bindSampler(2, null);
     } catch(e) {}
 
     try {
@@ -177,12 +183,12 @@ void main() {
     } catch(e) {}
 
     try {
-        var tfBuf = gl.createBuffer();
-        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuf);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 256, gl.DYNAMIC_COPY);
-        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf);
         var tfo = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
+        var tfBuf = gl.createBuffer();
+        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuf);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 1024, gl.DYNAMIC_COPY);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf);
     } catch(e) {}
 
     try {
@@ -250,12 +256,14 @@ void main() {
     } catch(e) {}
 
     try {
-        var fpix = new Float32Array(4 * 4 * 4);
+        var packBuf = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuf);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, 256, gl.STREAM_READ);
         gl.readBuffer(gl.COLOR_ATTACHMENT0);
-        gl.readPixels(0, 0, 4, 4, gl.RGBA, gl.FLOAT, fpix);
-        var ipix = new Int32Array(4 * 4 * 4);
+        gl.readPixels(0, 0, 4, 4, gl.RGBA, gl.FLOAT, 0);
         gl.readBuffer(gl.COLOR_ATTACHMENT1);
-        gl.readPixels(0, 0, 4, 4, gl.RGBA_INTEGER, gl.INT, ipix);
+        gl.readPixels(0, 0, 4, 4, gl.RGBA_INTEGER, gl.INT, 0);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
         gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
         gl.viewport(0, 0, viewW, viewH);

@@ -160,9 +160,9 @@ void main() { fragColor = vec4(0.6, 0.3, 0.8, 1.0); }
         gl.stencilOp(gl.KEEP, gl.INCR, gl.DECR_WRAP);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.stencilFuncSeparate(gl.FRONT, gl.LEQUAL, 64, 0xFF);
-        gl.stencilFuncSeparate(gl.BACK, gl.GEQUAL, 32, 0xFF);
+        gl.stencilFuncSeparate(gl.BACK, gl.LEQUAL, 64, 0xFF);
         gl.stencilOpSeparate(gl.FRONT, gl.KEEP, gl.REPLACE, gl.REPLACE);
-        gl.stencilOpSeparate(gl.BACK, gl.INVERT, gl.ZERO, gl.KEEP);
+        gl.stencilOpSeparate(gl.BACK, gl.KEEP, gl.REPLACE, gl.REPLACE);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) {}
 
@@ -185,11 +185,11 @@ void main() { fragColor = vec4(0.6, 0.3, 0.8, 1.0); }
 
     try {
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbDepthStencil);
-        gl.deleteRenderbuffer(rbDepthStencil);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbDepthStencil);
+        gl.deleteRenderbuffer(rbDepthStencil);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.deleteFramebuffer(fbo);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     } catch(e) {}
 }
 

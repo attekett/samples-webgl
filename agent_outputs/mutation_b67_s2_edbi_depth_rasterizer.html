@@ -9,7 +9,7 @@ const REQUIRED_EXTENSIONS = [
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
-    const gl = canvas.getContext('webgl2');
+    const gl = canvas.getContext('webgl2', {antialias: false});
     if (!gl) throw new Error("WebGL2 not supported");
 
     const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
@@ -163,7 +163,7 @@ void main() {
         gl.stencilFuncSeparate(gl.BACK, gl.NOTEQUAL, stencilRef, stencilMaskVal);
         gl.stencilMask(stencilMaskVal);
         gl.stencilMaskSeparate(gl.FRONT, 0x0F);
-        gl.stencilMaskSeparate(gl.BACK, 0xF0);
+        gl.stencilMaskSeparate(gl.BACK, 0x0F);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
         gl.stencilOpSeparate(gl.FRONT, gl.KEEP, gl.INCR, gl.REPLACE);
         gl.stencilOpSeparate(gl.BACK, gl.KEEP, gl.DECR, gl.REPLACE);

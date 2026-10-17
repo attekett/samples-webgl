@@ -5,6 +5,7 @@
 <script>
 const REQUIRED_EXTENSIONS = [
     'EXT_color_buffer_float',
+    'EXT_float_blend',
     'EXT_texture_filter_anisotropic'
 ];
 
@@ -17,18 +18,19 @@ async function main() {
     if (missingExtensions.length > 0) {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
+    let pbo0, depthAttachTex, vShader, fShader, program, buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8, posData, normalData, texData, colorData, tangentData, bitangentData, maxAniso, pbo1, pbo2, pbo3, pbo4;
 
     const extFloat = gl.getExtension('EXT_color_buffer_float');
     const extAniso = gl.getExtension('EXT_texture_filter_anisotropic');
 
-    const texSize = 1024;
+    const texSize = 256;
     const texSizeHalf = texSize / 2;
     const texSizeQuarter = texSize / 4;
     const texPixels = texSize * texSize;
     const bufferSize = texPixels * 16;
     const vertexCount = 36;
     const instanceCount = 4096;
-    const mipLevels = 10;
+    const mipLevels = 9;
     const mrtCount = 8;
     const arrayLayers = 256;
     const tex3dDepth = 128;
@@ -231,21 +233,27 @@ async function main() {
     }`;
 
     try {
-        const vShader = gl.createShader(gl.VERTEX_SHADER);
+        vShader = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vShader, vsSource);
         gl.compileShader(vShader);
         if (!gl.getShaderParameter(vShader, gl.COMPILE_STATUS)) {
             throw new Error(gl.getShaderInfoLog(vShader));
         }
-        const fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fShader, fsSource);
         gl.compileShader(fShader);
         if (!gl.getShaderParameter(fShader, gl.COMPILE_STATUS)) {
             throw new Error(gl.getShaderInfoLog(fShader));
         }
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vShader);
         gl.attachShader(program, fShader);
+        gl.bindAttribLocation(program, 0, 'position');
+        gl.bindAttribLocation(program, 1, 'normal');
+        gl.bindAttribLocation(program, 2, 'texcoord');
+        gl.bindAttribLocation(program, 3, 'color');
+        gl.bindAttribLocation(program, 4, 'tangent');
+        gl.bindAttribLocation(program, 5, 'bitangent');
         gl.linkProgram(program);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
             throw new Error(gl.getProgramInfoLog(program));
@@ -254,14 +262,14 @@ async function main() {
     } catch(e) {}
 
     try {
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
-        const buffer4 = gl.createBuffer();
-        const buffer5 = gl.createBuffer();
-        const buffer6 = gl.createBuffer();
-        const buffer7 = gl.createBuffer();
-        const buffer8 = gl.createBuffer();
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
+        buffer3 = gl.createBuffer();
+        buffer4 = gl.createBuffer();
+        buffer5 = gl.createBuffer();
+        buffer6 = gl.createBuffer();
+        buffer7 = gl.createBuffer();
+        buffer8 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bindBuffer(bufferTarget, buffer2);
         gl.bindBuffer(bufferTarget, buffer1);
@@ -283,7 +291,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const posData = new Float32Array(vertexCount * 3);
+        posData = new Float32Array(vertexCount * 3);
         for (let i = 0; i < vertexCount; i++) {
             const angle = (i / vertexCount) * Math.PI * 2;
             const radius = 0.5 + Math.sin(i * 0.5) * 0.3;
@@ -298,7 +306,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const normalData = new Float32Array(vertexCount * 3);
+        normalData = new Float32Array(vertexCount * 3);
         for (let i = 0; i < normalData.length; i += 3) {
             normalData[i] = Math.sin(i * 0.1);
             normalData[i+1] = Math.cos(i * 0.1);
@@ -311,7 +319,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const texData = new Float32Array(vertexCount * 2);
+        texData = new Float32Array(vertexCount * 2);
         for (let i = 0; i < vertexCount; i++) {
             texData[i * 2] = i / vertexCount;
             texData[i * 2 + 1] = (i % 4) / 4.0;
@@ -323,7 +331,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const colorData = new Float32Array(vertexCount * 4);
+        colorData = new Float32Array(vertexCount * 4);
         for (let i = 0; i < colorData.length; i += 4) {
             colorData[i] = Math.random() * 0.5 + 0.5;
             colorData[i+1] = Math.random() * 0.5 + 0.5;
@@ -337,7 +345,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tangentData = new Float32Array(vertexCount * 4);
+        tangentData = new Float32Array(vertexCount * 4);
         for (let i = 0; i < tangentData.length; i += 4) {
             tangentData[i] = 1.0;
             tangentData[i+1] = 0.0;
@@ -351,7 +359,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const bitangentData = new Float32Array(vertexCount * 3);
+        bitangentData = new Float32Array(vertexCount * 3);
         for (let i = 0; i < bitangentData.length; i += 3) {
             bitangentData[i] = 0.0;
             bitangentData[i+1] = 1.0;
@@ -378,19 +386,25 @@ async function main() {
 
     const textures = [];
     try {
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < 24; i++) {
             const tex = gl.createTexture();
             textures.push(tex);
             gl.bindTexture(textureTarget, tex);
             gl.bindTexture(textureTarget, null);
             gl.bindTexture(textureTarget, tex);
             gl.texStorage2D(textureTarget, mipLevels, textureFormat, texSize, texSize);
-            gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-            gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_NEAREST);
+            gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
             gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
             gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
             gl.texParameteri(textureTarget, gl.TEXTURE_BASE_LEVEL, 0);
             gl.texParameteri(textureTarget, gl.TEXTURE_MAX_LEVEL, mipLevels - 1);
+            if (i >= 16) {
+                for (let level = 0; level < mipLevels; level++) {
+                    const levelSize = texSize >> level;
+                    gl.texSubImage2D(textureTarget, level, 0, 0, levelSize, levelSize, gl.RGBA, gl.FLOAT, new Float32Array(levelSize * levelSize * 4));
+                }
+            }
         }
     } catch(e) {}
 
@@ -398,14 +412,16 @@ async function main() {
     try {
         intTex = gl.createTexture();
         gl.bindTexture(textureTarget, intTex);
-        gl.texStorage2D(textureTarget, 1, integerFormat, 512, 512);
+        gl.texStorage2D(textureTarget, 1, integerFormat, 128, 128);
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texSubImage2D(textureTarget, 0, 0, 0, 128, 128, gl.RGBA_INTEGER, gl.INT, new Int32Array(128 * 128 * 4));
         uintTex = gl.createTexture();
         gl.bindTexture(textureTarget, uintTex);
-        gl.texStorage2D(textureTarget, 1, uintFormat, 512, 512);
+        gl.texStorage2D(textureTarget, 1, uintFormat, 128, 128);
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texSubImage2D(textureTarget, 0, 0, 0, 128, 128, gl.RGBA_INTEGER, gl.UNSIGNED_INT, new Uint32Array(128 * 128 * 4));
     } catch(e) {}
 
     let texArray;
@@ -414,11 +430,16 @@ async function main() {
         gl.bindTexture(arrayTarget, texArray);
         gl.bindTexture(arrayTarget, null);
         gl.bindTexture(arrayTarget, texArray);
-        gl.texStorage3D(arrayTarget, 8, gl.RGBA32F, 1024, 1024, arrayLayers);
-        gl.texParameteri(arrayTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.texParameteri(arrayTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texStorage3D(arrayTarget, 7, gl.RGBA32F, 64, 64, arrayLayers);
+        gl.texParameteri(arrayTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_NEAREST);
+        gl.texParameteri(arrayTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(arrayTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.texParameteri(arrayTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        const arrayZeros = new Float32Array(64 * 64 * arrayLayers * 4);
+        for (let level = 0; level < 7; level++) {
+            const levelSize = 64 >> level;
+            gl.texSubImage3D(arrayTarget, level, 0, 0, 0, levelSize, levelSize, arrayLayers, gl.RGBA, gl.FLOAT, arrayZeros.subarray(0, levelSize * levelSize * arrayLayers * 4));
+        }
     } catch(e) {}
 
     let tex3d;
@@ -427,37 +448,52 @@ async function main() {
         gl.bindTexture(tex3dTarget, tex3d);
         gl.bindTexture(tex3dTarget, null);
         gl.bindTexture(tex3dTarget, tex3d);
-        gl.texStorage3D(tex3dTarget, 7, gl.RGBA16F, 256, 256, tex3dDepth);
+        gl.texStorage3D(tex3dTarget, 7, gl.RGBA16F, 64, 64, tex3dDepth);
         gl.texParameteri(tex3dTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(tex3dTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(tex3dTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(tex3dTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(tex3dTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        for (let level = 0; level < 7; level++) {
+            const levelSize = 64 >> level;
+            const levelDepth = tex3dDepth >> level;
+            gl.texSubImage3D(tex3dTarget, level, 0, 0, 0, levelSize, levelSize, levelDepth, gl.RGBA, gl.HALF_FLOAT, new Uint16Array(levelSize * levelSize * levelDepth * 4));
+        }
     } catch(e) {}
 
     let texCube;
     try {
         texCube = gl.createTexture();
         gl.bindTexture(cubeTarget, texCube);
-        gl.texStorage2D(cubeTarget, 6, gl.RGBA16F, 512, 512);
+        gl.texStorage2D(cubeTarget, 6, gl.RGBA16F, 128, 128);
         gl.texParameteri(cubeTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(cubeTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(cubeTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(cubeTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(cubeTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        for (let face = 0; face < 6; face++) {
+            for (let level = 0; level < 6; level++) {
+                const levelSize = 128 >> level;
+                gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, level, 0, 0, levelSize, levelSize, gl.RGBA, gl.HALF_FLOAT, new Uint16Array(levelSize * levelSize * 4));
+            }
+        }
     } catch(e) {}
 
     let shadowTex;
     try {
         shadowTex = gl.createTexture();
         gl.bindTexture(textureTarget, shadowTex);
-        gl.texStorage2D(textureTarget, 1, gl.DEPTH_COMPONENT24, 1024, 1024);
+        gl.texStorage2D(textureTarget, 1, gl.DEPTH_COMPONENT24, 256, 256);
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
         gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+        gl.texSubImage2D(textureTarget, 0, 0, 0, 256, 256, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, new Uint32Array(256 * 256));
+        depthAttachTex = gl.createTexture();
+        gl.bindTexture(textureTarget, depthAttachTex);
+        gl.texStorage2D(textureTarget, 1, gl.DEPTH_COMPONENT24, 256, 256);
     } catch(e) {}
 
     const renderbuffers = [];
@@ -468,56 +504,47 @@ async function main() {
             gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
             gl.bindRenderbuffer(gl.RENDERBUFFER, null);
             gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
-            if (i % 16 === 0) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32F, 1024, 1024);
-            } else if (i % 16 === 1) {
-                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.RGBA32F, 512, 512);
-            } else if (i % 16 === 2) {
-                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 8, gl.RGBA16F, 256, 256);
-            } else if (i % 16 === 3) {
-                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 16, gl.RGBA8, 256, 256);
-            } else if (i % 16 === 4) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.R11F_G11F_B10F, 512, 512);
-            } else if (i % 16 === 5) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGB10_A2, 512, 512);
-            } else if (i % 16 === 6) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA16F, 256, 256);
-            } else if (i % 16 === 7) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 1024, 1024);
-            } else if (i % 16 === 8) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, 1024, 1024);
-            } else if (i % 16 === 9) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, 512, 512);
-            } else if (i % 16 === 10) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT32F, 512, 512);
-            } else if (i % 16 === 11) {
-                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.DEPTH_COMPONENT24, 512, 512);
-            } else if (i % 16 === 12) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, 1024, 1024);
-            } else if (i % 16 === 13) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH32F_STENCIL8, 512, 512);
-            } else if (i % 16 === 14) {
-                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 8, gl.DEPTH24_STENCIL8, 512, 512);
+            const maxSamples = gl.getParameter(gl.MAX_SAMPLES);
+            if (i < 24) {
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32F, 256, 256);
+            } else if (i < 32) {
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, 256, 256);
+            } else if (i < 40) {
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, 256, 256);
+            } else if (i % 8 === 0) {
+                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, Math.min(4, maxSamples), gl.RGBA32F, 128, 128);
+            } else if (i % 8 === 1) {
+                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, Math.min(8, maxSamples), gl.RGBA16F, 64, 64);
+            } else if (i % 8 === 2) {
+                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, Math.min(16, maxSamples), gl.RGBA8, 64, 64);
+            } else if (i % 8 === 3) {
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.R11F_G11F_B10F, 128, 128);
+            } else if (i % 8 === 4) {
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGB10_A2, 128, 128);
+            } else if (i % 8 === 5) {
+                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, Math.min(4, maxSamples), gl.DEPTH_COMPONENT24, 128, 128);
+            } else if (i % 8 === 6) {
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH32F_STENCIL8, 128, 128);
             } else {
-                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 16, gl.DEPTH32F_STENCIL8, 256, 256);
+                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, Math.min(16, maxSamples), gl.DEPTH32F_STENCIL8, 64, 64);
             }
         }
     } catch(e) {}
 
     const samplers = [];
     try {
-        const maxAniso = gl.getParameter(extAniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+        maxAniso = gl.getParameter(extAniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
         for (let i = 0; i < samplerCount; i++) {
             const sampler = gl.createSampler();
             samplers.push(sampler);
-            gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-            gl.samplerParameteri(sampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_NEAREST);
+            gl.samplerParameteri(sampler, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
             gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_S, gl.REPEAT);
             gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-            gl.samplerParameterf(sampler, extAniso.TEXTURE_MAX_ANISOTROPY_EXT, maxAniso * (i + 1) / samplerCount);
+            gl.samplerParameterf(sampler, extAniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.max(1.0, maxAniso * (i + 1) / samplerCount));
             gl.samplerParameterf(sampler, gl.TEXTURE_MIN_LOD, -1000.0);
             gl.samplerParameterf(sampler, gl.TEXTURE_MAX_LOD, 1000.0);
-            if (i % 4 === 0) {
+            if (i === 13) {
                 gl.samplerParameteri(sampler, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
                 gl.samplerParameteri(sampler, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
             }
@@ -545,20 +572,24 @@ async function main() {
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
             for (let j = 0; j < mrtCount; j++) {
                 if (i % 4 === 0) {
-                    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + j, gl.TEXTURE_2D, textures[j % textures.length], 0);
+                    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + j, gl.TEXTURE_2D, textures[(i === 4 ? 8 : 0) + j], 0);
                 } else {
-                    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + j, gl.RENDERBUFFER, renderbuffers[j % renderbufferCount]);
+                    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + j, gl.RENDERBUFFER, renderbuffers[(i === 5 ? 8 : i === 6 ? 16 : 0) + j]);
                 }
             }
             if (i % 3 === 0) {
-                gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffers[8]);
+                gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffers[24 + (i % 8)]);
             } else if (i % 3 === 1) {
-                gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, renderbuffers[12]);
+                gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, renderbuffers[32 + (i % 8)]);
             } else {
-                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowTex, 0);
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthAttachTex, 0);
             }
             const drawBuffers = [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3, gl.COLOR_ATTACHMENT4, gl.COLOR_ATTACHMENT5, gl.COLOR_ATTACHMENT6, gl.COLOR_ATTACHMENT7];
             gl.drawBuffers(drawBuffers);
+            for (let j = 0; j < mrtCount; j++) {
+                gl.clearBufferfv(gl.COLOR, j, [0, 0, 0, 0]);
+            }
+            gl.clearBufferfv(gl.DEPTH, 0, [1.0]);
         }
     } catch(e) {}
 
@@ -567,6 +598,10 @@ async function main() {
         for (let i = 0; i < queryCount; i++) {
             const query = gl.createQuery();
             queries.push(query);
+        }
+        for (let i = 3; i < queryCount; i++) {
+            gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[i]);
+            gl.endQuery(gl.ANY_SAMPLES_PASSED);
         }
     } catch(e) {}
 
@@ -681,9 +716,9 @@ async function main() {
         gl.enable(gl.DITHER);
         gl.disable(gl.DITHER);
         gl.enable(gl.SCISSOR_TEST);
-        gl.scissor(0, 0, 1024, 1024);
-        gl.scissor(0, 0, 512, 512);
         gl.scissor(0, 0, 256, 256);
+        gl.scissor(0, 0, 128, 128);
+        gl.scissor(0, 0, 64, 64);
     } catch(e) {}
 
     try {
@@ -699,12 +734,20 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.useProgram(program);
+        gl.uniformBlockBinding(program, gl.getUniformBlockIndex(program, 'Matrices'), 0);
+        gl.uniformBlockBinding(program, gl.getUniformBlockIndex(program, 'Lighting'), 2);
+        gl.uniformBlockBinding(program, gl.getUniformBlockIndex(program, 'Material'), 3);
+        const unitNames = ['tex0', 'tex1', 'tex2', 'tex3', 'tex4', 'tex5', 'tex6', 'tex7', 'texArray', 'tex3d', 'texCube', 'intTex', 'uintTex', 'shadowTex'];
+        for (let i = 0; i < unitNames.length; i++) {
+            gl.uniform1i(gl.getUniformLocation(program, unitNames[i]), i);
+        }
         for (let i = 0; i < samplerCount; i++) {
             gl.bindSampler(i, samplers[i]);
         }
         for (let i = 0; i < 8; i++) {
             gl.activeTexture(gl.TEXTURE0 + i);
-            gl.bindTexture(gl.TEXTURE_2D, textures[i]);
+            gl.bindTexture(gl.TEXTURE_2D, textures[16 + i]);
         }
         gl.activeTexture(gl.TEXTURE8);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray);
@@ -722,7 +765,7 @@ async function main() {
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[0]);
-        gl.viewport(0, 0, 1024, 1024);
+        gl.viewport(0, 0, 256, 256);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[0]);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, vertexCount, instanceCount);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
@@ -730,7 +773,7 @@ async function main() {
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[1]);
-        gl.viewport(0, 0, 512, 512);
+        gl.viewport(0, 0, 128, 128);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, queries[1]);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 18, 2048);
         gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
@@ -738,7 +781,7 @@ async function main() {
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[2]);
-        gl.viewport(0, 0, 256, 256);
+        gl.viewport(0, 0, 64, 64);
         gl.stencilFunc(gl.EQUAL, 1, 0xFF);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[2]);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 12, 1024);
@@ -748,55 +791,59 @@ async function main() {
     try {
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[0]);
         gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbos[3]);
-        gl.blitFramebuffer(0, 0, 1024, 1024, 0, 0, 512, 512, gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, gl.LINEAR);
+        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 128, 128, gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, gl.NEAREST);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[3]);
         gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbos[4]);
-        gl.blitFramebuffer(0, 0, 512, 512, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.blitFramebuffer(0, 0, 128, 128, 0, 0, 64, 64, gl.COLOR_BUFFER_BIT, gl.NEAREST);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[4]);
         gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbos[5]);
-        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 128, 128, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+        gl.blitFramebuffer(0, 0, 64, 64, 0, 0, 32, 32, gl.COLOR_BUFFER_BIT, gl.NEAREST);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[5]);
         gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbos[6]);
-        gl.blitFramebuffer(0, 0, 128, 128, 0, 0, 1024, 1024, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.blitFramebuffer(0, 0, 32, 32, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[0]);
+        pbo0 = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo0);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, 128 * 128 * 16, gl.STREAM_READ);
         for (let i = 0; i < mrtCount; i++) {
             gl.readBuffer(gl.COLOR_ATTACHMENT0 + i);
-            const pixels = new Float32Array(512 * 512 * 4);
-            gl.readPixels(0, 0, 512, 512, gl.RGBA, gl.FLOAT, pixels);
+            const pixels = new Float32Array(128 * 128 * 4);
+            gl.readPixels(0, 0, 128, 128, gl.RGBA, gl.FLOAT, 0);
         }
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     } catch(e) {}
 
     try {
-        const pbo1 = gl.createBuffer();
-        const pbo2 = gl.createBuffer();
-        const pbo3 = gl.createBuffer();
-        const pbo4 = gl.createBuffer();
+        pbo1 = gl.createBuffer();
+        pbo2 = gl.createBuffer();
+        pbo3 = gl.createBuffer();
+        pbo4 = gl.createBuffer();
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo1);
         gl.bufferData(gl.PIXEL_PACK_BUFFER, 1024 * 1024 * 16, gl.STREAM_READ);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[0]);
         gl.readBuffer(gl.COLOR_ATTACHMENT0);
-        gl.readPixels(0, 0, 1024, 1024, gl.RGBA, gl.FLOAT, 0);
+        gl.readPixels(0, 0, 256, 256, gl.RGBA, gl.FLOAT, 0);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo2);
         gl.bufferData(gl.PIXEL_PACK_BUFFER, 512 * 512 * 16, gl.STREAM_READ);
         gl.readBuffer(gl.COLOR_ATTACHMENT1);
-        gl.readPixels(0, 0, 512, 512, gl.RGBA, gl.FLOAT, 0);
+        gl.readPixels(0, 0, 128, 128, gl.RGBA, gl.FLOAT, 0);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo3);
         gl.bufferData(gl.PIXEL_PACK_BUFFER, 256 * 256 * 16, gl.STREAM_READ);
         gl.readBuffer(gl.COLOR_ATTACHMENT2);
-        gl.readPixels(0, 0, 256, 256, gl.RGBA, gl.FLOAT, 0);
+        gl.readPixels(0, 0, 64, 64, gl.RGBA, gl.FLOAT, 0);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo4);
         gl.bufferData(gl.PIXEL_PACK_BUFFER, 128 * 128 * 16, gl.STREAM_READ);
         gl.readBuffer(gl.COLOR_ATTACHMENT3);
-        gl.readPixels(0, 0, 128, 128, gl.RGBA, gl.FLOAT, 0);
+        gl.readPixels(0, 0, 32, 32, gl.RGBA, gl.FLOAT, 0);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     } catch(e) {}
 
     try {
         for (let i = 0; i < syncs.length; i++) {
-            const status = gl.clientWaitSync(syncs[i], gl.SYNC_FLUSH_COMMANDS_BIT, 10000);
+            const status = gl.clientWaitSync(syncs[i], gl.SYNC_FLUSH_COMMANDS_BIT, 0);
             const signaled = gl.getSyncParameter(syncs[i], gl.SYNC_STATUS);
             const condition = gl.getSyncParameter(syncs[i], gl.SYNC_CONDITION);
             const flags = gl.getSyncParameter(syncs[i], gl.SYNC_FLAGS);
@@ -820,28 +867,28 @@ async function main() {
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[7]);
-        gl.viewport(0, 0, 512, 512);
+        gl.viewport(0, 0, 128, 128);
         gl.depthFunc(gl.GREATER);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 18, 512);
     } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[8]);
-        gl.viewport(0, 0, 256, 256);
+        gl.viewport(0, 0, 64, 64);
         gl.depthFunc(gl.ALWAYS);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 12, 256);
     } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[9]);
-        gl.viewport(0, 0, 128, 128);
+        gl.viewport(0, 0, 32, 32);
         gl.depthFunc(gl.NEVER);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 128);
     } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, 256, 256);
+        gl.viewport(0, 0, 64, 64);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, vertexCount, 32);
     } catch(e) {}

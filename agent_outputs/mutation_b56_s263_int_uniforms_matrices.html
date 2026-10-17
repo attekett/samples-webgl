@@ -249,18 +249,18 @@ void main() {
 
     try {
         gl.bindBuffer(bufferTarget, buffer2);
-        gl.deleteBuffer(buffer2);
         gl.bindBuffer(bufferTarget, buffer2);
+        gl.deleteBuffer(buffer2);
         gl.deleteBuffer(buffer1);
 
         gl.bindTexture(texTarget, tex1);
-        gl.deleteTexture(tex1);
         gl.bindTexture(texTarget, tex1);
+        gl.deleteTexture(tex1);
         gl.deleteTexture(tex2);
 
+        gl.bindFramebuffer(fboTarget, fbo1);
         gl.deleteFramebuffer(fbo1);
         gl.deleteFramebuffer(fbo2);
-        gl.bindFramebuffer(fboTarget, fbo1);
 
         gl.deleteRenderbuffer(rbo1);
         gl.deleteVertexArray(vao);

@@ -3,7 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [];
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -56,7 +56,7 @@ async function main() {
 
     const depthStencilFormats = [
         gl.DEPTH_COMPONENT16,
-        gl.DEPTH_COMPONENT24,
+        gl.DEPTH_COMPONENT16,
         gl.DEPTH_COMPONENT32F,
         gl.DEPTH24_STENCIL8,
         gl.DEPTH32F_STENCIL8,
@@ -65,8 +65,8 @@ async function main() {
 
     const colorFormats = [
         gl.RGBA8,
-        gl.RGBA16F,
         gl.RGBA32F,
+        gl.RGB10_A2,
         gl.RGB10_A2,
         gl.R11F_G11F_B10F,
         gl.SRGB8_ALPHA8
@@ -129,19 +129,19 @@ async function main() {
                 gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo.obj);
                 const colorRbo = gl.createRenderbuffer();
                 gl.bindRenderbuffer(gl.RENDERBUFFER, colorRbo);
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, rboSize, rboSize);
+                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, rbo.samples, gl.RGBA8, rboSize, rboSize);
                 gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colorRbo);
             } else if (isDepthStencil) {
                 gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, rbo.obj);
                 const colorRbo = gl.createRenderbuffer();
                 gl.bindRenderbuffer(gl.RENDERBUFFER, colorRbo);
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, rboSize, rboSize);
+                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, rbo.samples, gl.RGBA8, rboSize, rboSize);
                 gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colorRbo);
             } else if (isStencil) {
                 gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.STENCIL_ATTACHMENT, gl.RENDERBUFFER, rbo.obj);
                 const colorRbo = gl.createRenderbuffer();
                 gl.bindRenderbuffer(gl.RENDERBUFFER, colorRbo);
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, rboSize, rboSize);
+                gl.renderbufferStorageMultisample(gl.RENDERBUFFER, rbo.samples, gl.RGBA8, rboSize, rboSize);
                 gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colorRbo);
             } else {
                 gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rbo.obj);
@@ -178,7 +178,7 @@ async function main() {
             const dstRbo = renderbuffers[dstIdx];
             const srcIsColor = srcIdx >= 6;
             const dstIsColor = dstIdx >= 6;
-            if (srcIsColor && dstIsColor) {
+            if (srcIsColor && dstIsColor && dstRbo.samples === 0) {
                 gl.blitFramebuffer(0, 0, rboSize, rboSize, 0, 0, rboSize, rboSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
             }
             gl.disable(gl.SCISSOR_TEST);
@@ -192,7 +192,7 @@ async function main() {
             if (renderbuffers[msaaIdx].samples > 0 && renderbuffers[resolveIdx].samples === 0) {
                 gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[msaaIdx]);
                 gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbos[resolveIdx]);
-                gl.blitFramebuffer(0, 0, rboSize, rboSize, 0, 0, rboSize / 2, rboSize / 2, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+                gl.blitFramebuffer(0, 0, rboSize, rboSize, 0, 0, rboSize, rboSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
             }
         }
     } catch(e) {}
@@ -207,6 +207,8 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[6]);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbos[7]);
         gl.enable(gl.SCISSOR_TEST);
         gl.scissor(0, 0, 128, 128);
         gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 128, 128, gl.COLOR_BUFFER_BIT, gl.NEAREST);
@@ -215,17 +217,21 @@ async function main() {
     try {
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[0]);
         gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbos[1]);
-        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 512, 512, gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT, gl.NEAREST);
+        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
     } catch(e) {}
 
     try {
         gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.LINEAR);
-        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.DEPTH_BUFFER_BIT, gl.LINEAR);
+        gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
     } catch(e) {}
 
     try {
         const invalidFBO = gl.createFramebuffer();
+        const invalidRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, invalidRbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 256, 256);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, invalidFBO);
+        gl.framebufferRenderbuffer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, invalidRbo);
         gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     } catch(e) {}
 
@@ -242,11 +248,15 @@ async function main() {
     } catch(e) {}
 
     try {
-        gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffers[0].obj);
+        gl.isRenderbuffer(renderbuffers[0].obj);
+        const liveRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, liveRbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 64, 64);
         gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_WIDTH);
     } catch(e) {}
 
     try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, gl.createFramebuffer());
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, null);
     } catch(e) {}
 }

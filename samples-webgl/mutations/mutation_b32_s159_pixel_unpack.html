@@ -33,9 +33,9 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const tex2d1 = gl.createTexture();
-        const tex2d2 = gl.createTexture();
-        const tex2d3 = gl.createTexture();
+        var tex2d1 = gl.createTexture();
+        var tex2d2 = gl.createTexture();
+        var tex2d3 = gl.createTexture();
         gl.bindTexture(texture2DTarget, tex2d1);
         gl.bindTexture(texture2DTarget, tex2d2);
         gl.bindTexture(texture2DTarget, tex2d1);
@@ -50,7 +50,7 @@ async function main() {
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, unpackAlign1);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, unpackAlign2);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, unpackAlign1);
-        const data1 = new Uint8Array(texSize * texSize * 4);
+        var data1 = new Uint8Array(texSize * texSize * 4);
         for (let i = 0; i < data1.length; i += 4) {
             data1[i] = 255;
             data1[i + 1] = 128;
@@ -66,7 +66,7 @@ async function main() {
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, rowLength);
         gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, skipPixels);
         gl.pixelStorei(gl.UNPACK_SKIP_ROWS, skipRows);
-        const data2 = new Uint8Array(texSize * texSize * 4);
+        var data2 = new Uint8Array(texSize * texSize * 4);
         for (let i = 0; i < data2.length; i += 4) {
             data2[i] = 64;
             data2[i + 1] = 255;
@@ -83,7 +83,7 @@ async function main() {
     try {
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, unpackAlign8);
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 128);
-        const data3 = new Uint8Array(subWidth * subHeight * 4);
+        var data3 = new Uint8Array(subWidth * subHeight * 4);
         for (let i = 0; i < data3.length; i += 4) {
             data3[i] = 128;
             data3[i + 1] = 64;
@@ -96,14 +96,14 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tex3d1 = gl.createTexture();
-        const tex3d2 = gl.createTexture();
+        var tex3d1 = gl.createTexture();
+        var tex3d2 = gl.createTexture();
         gl.bindTexture(texture3DTarget, tex3d1);
         gl.bindTexture(texture3DTarget, tex3d2);
         gl.bindTexture(texture3DTarget, tex3d1);
         gl.texImage3D(texture3DTarget, 0, gl.RGBA8, 64, 64, 8, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindTexture(texture3DTarget, tex3d2);
-        gl.texImage3D(texture3DTarget, 0, gl.RGBA8, texSize, texSize, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage3D(texture3DTarget, 0, gl.RGBA8, texSize, texSize, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * 16));
     } catch(e) {}
 
     try {
@@ -112,7 +112,7 @@ async function main() {
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, rowLength);
         gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 8);
         gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 4);
-        const data4 = new Uint8Array(64 * 64 * 8 * 4);
+        var data4 = new Uint8Array(1048576);
         for (let i = 0; i < data4.length; i += 4) {
             data4[i] = 200;
             data4[i + 1] = 100;
@@ -128,12 +128,12 @@ async function main() {
     } catch(e) {}
 
     try {
-        const texArray1 = gl.createTexture();
+        var texArray1 = gl.createTexture();
         gl.bindTexture(textureArrayTarget, texArray1);
         gl.texImage3D(textureArrayTarget, 0, gl.RGBA8, texSize, texSize, 8, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, unpackAlign4);
-        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 128);
-        const data5 = new Uint8Array(texSize * texSize * 8 * 4);
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, texSize);
+        var data5 = new Uint8Array(texSize * texSize * 8 * 4);
         for (let i = 0; i < data5.length; i += 4) {
             data5[i] = 50;
             data5[i + 1] = 200;
@@ -146,9 +146,9 @@ async function main() {
 
     try {
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, unpackAlign1);
-        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 64);
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 128);
         gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, skipPixels);
-        const data6 = new Uint8Array(64 * 64 * 4);
+        var data6 = new Uint8Array(64 * 128 * 4);
         for (let i = 0; i < data6.length; i += 4) {
             data6[i] = 150;
             data6[i + 1] = 50;
@@ -164,9 +164,9 @@ async function main() {
     try {
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, unpackAlign8);
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, rowLength);
-        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, imageHeight);
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, texSize);
         gl.pixelStorei(gl.UNPACK_SKIP_ROWS, skipRows);
-        const data7 = new Uint8Array(texSize * texSize * 4);
+        var data7 = new Uint8Array(texSize * texSize * 8);
         for (let i = 0; i < data7.length; i += 4) {
             data7[i] = 100;
             data7[i + 1] = 150;
@@ -181,7 +181,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 position;
             out vec2 vUV;
@@ -192,7 +192,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             uniform sampler2D tex;
@@ -204,7 +204,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -214,6 +214,7 @@ async function main() {
     try {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(texture2DTarget, tex2d1);
+        gl.texParameteri(texture2DTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);

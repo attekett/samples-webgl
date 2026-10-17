@@ -21,6 +21,7 @@ async function main() {
     const extEdbi = gl.getExtension('OES_draw_buffers_indexed');
     gl.getExtension('EXT_color_buffer_float');
     gl.getExtension('OES_texture_float_linear');
+    gl.getExtension('EXT_float_blend');
 
     const tSize = 64;
     const layers = 4;
@@ -93,6 +94,9 @@ void main() {
         gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, fpFmt16, tSize, tSize, layers, 0, gl.RGBA, gl.HALF_FLOAT, null);
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 1, 4, 4, 1, gl.RGBA, gl.HALF_FLOAT, new Uint16Array(64));
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        var tex3Dx = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, tex3Dx);
+        gl.texImage3D(gl.TEXTURE_3D, 0, fpFmt16, tSize, tSize, layers, 0, gl.RGBA, gl.HALF_FLOAT, null);
         var att0 = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, att0);
         gl.texImage2D(gl.TEXTURE_2D, 0, fpFmt, tSize, tSize, 0, gl.RGBA, gl.FLOAT, null);
@@ -111,7 +115,7 @@ void main() {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, att0, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, att1, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, att2, 0);
-        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, tex3D, 0, 1);
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, tex3Dx, 0, 1);
         gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
         gl.checkFramebufferStatus(gl.FRAMEBUFFER);
         gl.getFramebufferAttachmentParameter(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
@@ -138,10 +142,11 @@ void main() {
     try {
         var tfBuf = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuf);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 256, gl.DYNAMIC_COPY);
-        gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf, 0, 128);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 1024, gl.DYNAMIC_COPY);
+        gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf, 0, 1024);
         var tfo = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
+        gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf, 0, 1024);
         gl.getTransformFeedbackVarying(program, 0);
     } catch(e) {}
 
@@ -203,6 +208,7 @@ void main() {
         gl.deleteVertexArray(vao);
         gl.deleteFramebuffer(fbo);
         gl.deleteTexture(tex3D);
+        gl.deleteTexture(tex3Dx);
         gl.deleteTexture(texArr);
         gl.deleteTexture(att0);
         gl.deleteTexture(att1);

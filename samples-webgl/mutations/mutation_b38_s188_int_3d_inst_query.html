@@ -173,6 +173,8 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.15, 0.2, 0.1, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, sliceFBOs[0]);
+        gl.viewport(0, 0, texSize, texSize);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, 128);
     } catch(e) {}
 

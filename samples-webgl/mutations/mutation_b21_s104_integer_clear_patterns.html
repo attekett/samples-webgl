@@ -30,11 +30,12 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tex1, tex2, tex3, fbo1, fbo2, fbo3;
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
@@ -47,9 +48,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
-        const fbo3 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
+        fbo3 = gl.createFramebuffer();
         gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.framebufferTexture2D(framebufferTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex1, 0);
         gl.bindFramebuffer(framebufferTarget, fbo2);
@@ -129,6 +130,7 @@ async function main() {
         gl.bindFramebuffer(framebufferTarget, fbo2);
         gl.viewport(0, 0, 256, 256);
         gl.clearBufferuiv(colorBuffer, 0, [100000, 200000, 300000, 400000]);
+        gl.drawBuffers([gl.NONE]);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } catch(e) {}
 
@@ -148,6 +150,7 @@ async function main() {
         gl.drawArrays(gl.TRIANGLES, 0, 18);
         gl.bindFramebuffer(framebufferTarget, fbo2);
         gl.clearBufferuiv(colorBuffer, 0, [131415, 161718, 192021, 222324]);
+        gl.drawBuffers([gl.NONE]);
         gl.drawArrays(gl.TRIANGLES, 0, 12);
         gl.bindFramebuffer(framebufferTarget, fbo3);
         gl.clearBufferiv(colorBuffer, 0, [252627, -282930, 313233, -343536]);
@@ -159,6 +162,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.5, 0.5, 0.5, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawBuffers([gl.NONE]);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } catch(e) {}
 
@@ -166,13 +170,16 @@ async function main() {
         gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.clearBufferiv(colorBuffer, 0, [clearValue, clearValue, clearValue, clearValue]);
         gl.deleteFramebuffer(fbo1);
+        fbo1 = gl.createFramebuffer();
         gl.bindFramebuffer(framebufferTarget, fbo1);
+        gl.framebufferTexture2D(framebufferTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex1, 0);
         gl.clearBufferiv(colorBuffer, 0, [0, 0, 0, 0]);
     } catch(e) {}
 
     try {
         gl.bindTexture(textureTarget, tex1);
         gl.deleteTexture(tex1);
+        tex1 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindFramebuffer(framebufferTarget, fbo2);
         gl.clearBufferuiv(colorBuffer, 0, [1, 2, 3, 4]);

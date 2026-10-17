@@ -27,16 +27,18 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let texArray1, texArray2;
 
     try {
-        const texArray1 = gl.createTexture();
-        const texArray2 = gl.createTexture();
+        texArray1 = gl.createTexture();
+        texArray2 = gl.createTexture();
         const texArray3 = gl.createTexture();
         gl.bindTexture(arrayTarget, texArray1);
         gl.bindTexture(arrayTarget, texArray2);
         gl.bindTexture(arrayTarget, texArray1);
         gl.texStorage3D(arrayTarget, mipLevels, textureFormat, texSize, texSize, layerCount);
-    } catch(e) { console.log(e); }
+        gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, texSize, texSize, layerCount, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * layerCount * 4));
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, texArray2);
@@ -45,7 +47,7 @@ async function main() {
         gl.texParameteri(arrayTarget, 10240, 9729);
         gl.bindTexture(arrayTarget, texArray1);
         gl.texParameteri(arrayTarget, 10241, 9984);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const buffer1 = gl.createBuffer();
@@ -55,7 +57,7 @@ async function main() {
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bufferData(bufferTarget, bufferSize, bufferUsage);
         gl.bufferSubData(bufferTarget, 0, new Float32Array(512));
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(35633);
@@ -90,7 +92,7 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const fbo1 = gl.createFramebuffer();
@@ -102,7 +104,7 @@ async function main() {
         gl.bindFramebuffer(36160, fbo2);
         gl.framebufferTextureLayer(36160, 36064, texArray2, 0, 0);
         gl.bindFramebuffer(36160, fbo1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < 8; i++) {
@@ -110,7 +112,7 @@ async function main() {
             gl.clearColor(i * 0.1, 0.5, 1.0 - i * 0.1, 1.0);
             gl.clear(16384);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, texArray1);
@@ -118,7 +120,7 @@ async function main() {
         gl.bindTexture(arrayTarget, texArray2);
         gl.generateMipmap(arrayTarget);
         gl.bindTexture(arrayTarget, texArray1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(2929);
@@ -128,7 +130,7 @@ async function main() {
         gl.enable(3042);
         gl.blendFunc(770, 771);
         gl.disable(3042);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(36160, null);
@@ -136,14 +138,15 @@ async function main() {
         gl.drawArrays(4, 0, vertexCount);
         gl.drawArrays(4, 0, 18);
         gl.drawArrays(4, 0, vertexCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, texArray1);
         gl.deleteTexture(texArray1);
+        texArray1 = gl.createTexture();
         gl.bindTexture(arrayTarget, texArray1);
         gl.texParameteri(arrayTarget, 10241, 9728);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

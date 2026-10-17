@@ -191,7 +191,7 @@ async function main() {
     const tfBuffer = gl.createBuffer();
     try {
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 9 * 3 * 4, gl.DYNAMIC_COPY);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 9 * 3 * 4, gl.DYNAMIC_READ);
     } catch(e) {
         throw e;
     }
@@ -283,6 +283,7 @@ async function main() {
     try {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, textures[1], 0);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.RENDERBUFFER, renderbuffers[1]);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, gl.RENDERBUFFER, renderbuffers[0]);
     } catch(e) {
         throw e;
     }

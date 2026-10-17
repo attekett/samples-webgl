@@ -289,8 +289,8 @@ void main() {
 
     try {
         gl.bindTexture(texTarget, texSrc1);
-        gl.deleteTexture(texSrc1);
         gl.bindTexture(texTarget, texSrc1);
+        gl.deleteTexture(texSrc1);
         gl.deleteTexture(texSrc2);
         gl.deleteTexture(texSrc3);
         gl.deleteTexture(texOut1);

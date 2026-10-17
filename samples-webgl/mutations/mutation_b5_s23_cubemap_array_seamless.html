@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let cubeArray1, cubeArray2, cubeArray3, program, fbo1, buffer1, buffer2, cubeIdxLoc, cubeIdxIntLoc;
 
     const cubeCount = 4;
     const faceSize = 128;
@@ -23,15 +24,15 @@ async function main() {
     const totalLayers = cubeCount * 6;
     const bufferSize = vertexCount * 24;
 
-    const cubemapTarget = gl.TEXTURE_CUBE_MAP_ARRAY;
+    const cubemapTarget = gl.TEXTURE_2D_ARRAY;
     const textureFormat = gl.RGBA8;
     const filterMode = gl.LINEAR;
     const bufferTarget = gl.ARRAY_BUFFER;
 
     try {
-        const cubeArray1 = gl.createTexture();
-        const cubeArray2 = gl.createTexture();
-        const cubeArray3 = gl.createTexture();
+        cubeArray1 = gl.createTexture();
+        cubeArray2 = gl.createTexture();
+        cubeArray3 = gl.createTexture();
         gl.bindTexture(cubemapTarget, cubeArray1);
         gl.bindTexture(cubemapTarget, cubeArray2);
         gl.bindTexture(cubemapTarget, cubeArray1);
@@ -86,19 +87,19 @@ async function main() {
 
     const fragmentShaderSource = `#version 300 es
         precision highp float;
-        precision highp samplerCubeArray;
+        precision highp sampler2DArray;
         in vec3 vDirection;
-        uniform samplerCubeArray uCubeArray;
+        uniform sampler2DArray uCubeArray;
         uniform float uCubeIndex;
         uniform int uCubeIndexInt;
         out vec4 fragColor;
         void main() {
-            vec4 coords1 = vec4(vDirection, uCubeIndex);
-            vec4 coords2 = vec4(vDirection, float(uCubeIndexInt));
+            vec3 coords1 = vec3(vDirection.xy * 0.5 + 0.5, uCubeIndex);
+            vec3 coords2 = vec3(vDirection.xy * 0.5 + 0.5, float(uCubeIndexInt));
             vec4 color1 = texture(uCubeArray, coords1);
             vec4 color2 = texture(uCubeArray, coords2);
             vec3 dir2 = normalize(vDirection + vec3(0.1, 0.1, 0.0));
-            vec4 color3 = texture(uCubeArray, vec4(dir2, uCubeIndex));
+            vec4 color3 = texture(uCubeArray, vec3(dir2.xy * 0.5 + 0.5, uCubeIndex));
             fragColor = (color1 + color2 + color3) / 3.0;
         }`;
 
@@ -119,11 +120,12 @@ async function main() {
         if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
             throw new Error(gl.getShaderInfoLog(fragmentShader));
         }
-        const program = gl.createProgram();
+        program = gl.createProgram();
         const program2 = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
         gl.attachShader(program2, vertexShader2);
+        gl.attachShader(program2, fragmentShader);
         gl.linkProgram(program);
         gl.linkProgram(program2);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
@@ -133,7 +135,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
         const fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
@@ -156,8 +158,8 @@ async function main() {
              1.0, -1.0,  1.0,  1.0,  0.0,
              1.0,  1.0, -1.0,  0.0, -1.0
         ]);
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bindBuffer(bufferTarget, buffer2);
         gl.bindBuffer(bufferTarget, buffer1);
@@ -172,8 +174,8 @@ async function main() {
         const posLoc = gl.getAttribLocation(program, 'position');
         const dirLoc = gl.getAttribLocation(program, 'direction');
         const cubeArrayLoc = gl.getUniformLocation(program, 'uCubeArray');
-        const cubeIdxLoc = gl.getUniformLocation(program, 'uCubeIndex');
-        const cubeIdxIntLoc = gl.getUniformLocation(program, 'uCubeIndexInt');
+        cubeIdxLoc = gl.getUniformLocation(program, 'uCubeIndex');
+        cubeIdxIntLoc = gl.getUniformLocation(program, 'uCubeIndexInt');
         gl.enableVertexAttribArray(posLoc);
         gl.disableVertexAttribArray(posLoc);
         gl.enableVertexAttribArray(posLoc);

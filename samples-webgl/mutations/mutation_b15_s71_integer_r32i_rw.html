@@ -11,11 +11,12 @@ const bufferSize = texPixels * 4;
 const readWriteCount = 8;
 const bindCycles = 4;
 
-const textureTarget = 35866;
+const textureTarget = 3553;
 const textureFormat = 33333;
 const internalFormat = 33333;
 
 async function main() {
+    let program, tex1, tex2, tex3;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -27,16 +28,16 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
         gl.texStorage2D(textureTarget, 1, internalFormat, texSize, texSize);
         const data = new Int32Array(texPixels);
         for (let i = 0; i < texPixels; i++) data[i] = i % 256;
-        gl.texSubImage2D(textureTarget, 0, 0, 0, texSize, texSize, 36248, 5124, data);
+        gl.texSubImage2D(textureTarget, 0, 0, 0, texSize, texSize, 36244, 5124, data);
     } catch(e) {}
 
     try {
@@ -84,7 +85,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -140,9 +141,9 @@ async function main() {
 
     try {
         gl.bindTexture(textureTarget, tex1);
-        gl.deleteTexture(tex1);
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
+        gl.deleteTexture(tex1);
         gl.deleteTexture(tex2);
     } catch(e) {}
 }

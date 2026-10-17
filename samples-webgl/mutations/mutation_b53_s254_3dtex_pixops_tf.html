@@ -119,7 +119,7 @@ async function main() {
     try {
         tfBuffer = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, vertexCount * 24, gl.DYNAMIC_COPY);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, vertexCount * 24, gl.DYNAMIC_READ);
     } catch (e) {
         throw new Error("Transform feedback buffer creation failed: " + e.message);
     }
@@ -151,11 +151,15 @@ async function main() {
     const sliceBatches = 128;
     const slicesPerBatch = 2;
     const pixelBuffer = new Uint8Array(256 * 256 * 4);
+    const packBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuffer);
+    gl.bufferData(gl.PIXEL_PACK_BUFFER, pixelBuffer.byteLength, gl.STREAM_READ);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
 
     for (let batch = 0; batch < sliceBatches; batch++) {
         try {
-            gl.pixelStorei(gl.PACK_ALIGNMENT, (batch % 4) + 1);
-            gl.pixelStorei(gl.UNPACK_ALIGNMENT, ((batch + 1) % 4) + 1);
+            gl.pixelStorei(gl.PACK_ALIGNMENT, 1 << (batch % 4));
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1 << ((batch + 1) % 4));
         } catch (e) {
             throw new Error("Pixel store state setup failed: " + e.message);
         }
@@ -204,9 +208,10 @@ async function main() {
 
         try {
             gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
-            gl.bindBuffer(gl.ARRAY_BUFFER, tfBuffer);
+            gl.bindBuffer(gl.COPY_READ_BUFFER, tfBuffer);
             const tfData = new Float32Array(512 * 6);
-            gl.getBufferSubData(gl.ARRAY_BUFFER, 0, tfData);
+            gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, tfData);
+            gl.bindBuffer(gl.COPY_READ_BUFFER, null);
         } catch (e) {
             throw new Error("Transform feedback data readback failed: " + e.message);
         }
@@ -226,7 +231,9 @@ async function main() {
                 gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
                 gl.pixelStorei(gl.PACK_SKIP_PIXELS, 0);
                 gl.pixelStorei(gl.PACK_SKIP_ROWS, 0);
-                gl.readPixels(0, 0, 256, 256, gl.RGBA, gl.UNSIGNED_BYTE, pixelBuffer);
+                gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuffer);
+                gl.readPixels(0, 0, 256, 256, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+                gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
             } catch (e) {
                 throw new Error("readPixels failed: " + e.message);
             }

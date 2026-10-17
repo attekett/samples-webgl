@@ -12,7 +12,7 @@ const vertexCount = 128;
 const tfBufferSize = 8192;
 
 const elementArrayBuffer = 0x8893;
-const primitiveRestartFixedIndex = 0x8D69;
+const primitiveRestartFixedIndex = 0x0BD0;
 const tfTarget = 0x8C8E;
 const streamCopy = 0x88E2;
 
@@ -27,8 +27,10 @@ async function main() {
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
+    let vbo1, ibo1, tfBuf1, tfBuf2, tfBuf3;
+
     try {
-        const vbo1 = gl.createBuffer();
+        vbo1 = gl.createBuffer();
         const vbo2 = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, vbo1);
         gl.bindBuffer(gl.ARRAY_BUFFER, vbo2);
@@ -37,7 +39,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const ibo1 = gl.createBuffer();
+        ibo1 = gl.createBuffer();
         const ibo2 = gl.createBuffer();
         const ibo3 = gl.createBuffer();
         gl.bindBuffer(elementArrayBuffer, ibo1);
@@ -49,9 +51,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tfBuf1 = gl.createBuffer();
-        const tfBuf2 = gl.createBuffer();
-        const tfBuf3 = gl.createBuffer();
+        tfBuf1 = gl.createBuffer();
+        tfBuf2 = gl.createBuffer();
+        tfBuf3 = gl.createBuffer();
         gl.bindBuffer(tfTarget, tfBuf1);
         gl.bindBuffer(tfTarget, tfBuf2);
         gl.bindBuffer(tfTarget, tfBuf1);
@@ -59,7 +61,7 @@ async function main() {
         gl.bindBuffer(tfTarget, tfBuf3);
         gl.bufferData(tfTarget, tfBufferSize * 2, streamCopy);
         gl.bindBuffer(tfTarget, tfBuf2);
-        gl.bufferData(tfTarget, 4096, streamCopy);
+        gl.bufferData(tfTarget, tfBufferSize * 2, streamCopy);
     } catch(e) {}
 
     try {
@@ -136,21 +138,31 @@ async function main() {
     try {
         gl.enable(gl.RASTERIZER_DISCARD);
         gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, vertexCount);
+        gl.pauseTransformFeedback();
         gl.drawElements(gl.POINTS, indexCount, gl.UNSIGNED_SHORT, 0);
+        gl.resumeTransformFeedback();
         gl.endTransformFeedback();
     } catch(e) {}
 
     try {
+        gl.bindBufferBase(tfTarget, 1, tfBuf1);
         gl.bindBufferBase(tfTarget, 0, tfBuf2);
         gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, vertexCount);
+        gl.pauseTransformFeedback();
         gl.drawElementsInstanced(gl.POINTS, 128, gl.UNSIGNED_SHORT, 0, instanceCount);
+        gl.resumeTransformFeedback();
         gl.endTransformFeedback();
     } catch(e) {}
 
     try {
         gl.bindBufferBase(tfTarget, 0, tfBuf3);
         gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, 64);
+        gl.pauseTransformFeedback();
         gl.drawElements(gl.POINTS, 64, gl.UNSIGNED_SHORT, 0);
+        gl.resumeTransformFeedback();
         gl.endTransformFeedback();
     } catch(e) {}
 

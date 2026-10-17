@@ -48,16 +48,16 @@ async function main() {
 
     // SSBO for particle data
     const ssbo1 = gl.createBuffer();
-    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo1);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, ssbo1);
     const ssbo1Data = new Float32Array(bufferElements * 4);
     for (let i = 0; i < ssbo1Data.length; i++) ssbo1Data[i] = Math.sin(i * 0.01);
-    gl.bufferData(gl.SHADER_STORAGE_BUFFER, ssbo1Data, gl.DYNAMIC_COPY);
+    gl.bufferData(gl.UNIFORM_BUFFER, ssbo1Data, gl.DYNAMIC_COPY);
 
     const ssbo2 = gl.createBuffer();
-    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo2);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, ssbo2);
     const ssbo2Data = new Float32Array(bufferElements * 3);
     for (let i = 0; i < ssbo2Data.length; i++) ssbo2Data[i] = Math.cos(i * 0.007);
-    gl.bufferData(gl.SHADER_STORAGE_BUFFER, ssbo2Data, gl.DYNAMIC_COPY);
+    gl.bufferData(gl.UNIFORM_BUFFER, ssbo2Data, gl.DYNAMIC_COPY);
 
     // 3D Texture for volumetric data
     const volumeTex = gl.createTexture();
@@ -81,7 +81,7 @@ async function main() {
     for (let i = 0; i < 3; i++) {
         const tfBuf = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuf);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, new Float32Array(PARTICLE_COUNT * (i + 1)), gl.DYNAMIC_COPY);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, new Float32Array(PARTICLE_COUNT * 7 * (i + 1)), gl.DYNAMIC_COPY);
         tfBuffers.push(tfBuf);
     }
 
@@ -149,8 +149,8 @@ async function main() {
     // PHASE 4: RESOURCE BINDING - Complex binding patterns
     // =================================================================================
 
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, ssbo1);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, ssbo2);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ssbo1);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, ssbo2);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
 
     gl.useProgram(program);
@@ -217,7 +217,7 @@ async function main() {
     // =================================================================================
 
     gl.deleteBuffer(ssbo1);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, ssbo2); // Rebind different buffer
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ssbo2); // Rebind different buffer
 
     gl.deleteTexture(volumeTex);
     // Continue using deleted texture handle for fuzzing

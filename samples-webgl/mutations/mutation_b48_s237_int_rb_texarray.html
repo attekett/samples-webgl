@@ -76,6 +76,7 @@ async function main() {
 
     try {
         const intTexArray = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(textureTarget, intTexArray);
         gl.bindTexture(textureTarget, null);
         gl.bindTexture(textureTarget, intTexArray);
@@ -104,7 +105,7 @@ async function main() {
             gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
 
             if (i % 3 === 0) {
-                gl.renderbufferStorage(gl.RENDERBUFFER, gl.R32I, 512, 512);
+                gl.renderbufferStorage(gl.RENDERBUFFER, gl.R32I, 256, 256);
             } else if (i % 3 === 1) {
                 gl.renderbufferStorage(gl.RENDERBUFFER, gl.RG32I, 256, 256);
             } else {
@@ -246,6 +247,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.1, 0.1, 0.1, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[0]);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) {}
 }

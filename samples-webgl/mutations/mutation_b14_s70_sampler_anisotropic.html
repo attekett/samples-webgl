@@ -20,6 +20,7 @@ const wrapS = 0x2802;
 const wrapT = 0x2803;
 
 async function main() {
+    let program, tex1, tex2, tex3;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -66,7 +67,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -95,9 +96,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
 
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
@@ -113,11 +114,11 @@ async function main() {
         gl.generateMipmap(textureTarget);
 
         gl.bindTexture(textureTarget, tex2);
-        gl.texImage2D(textureTarget, 0, gl.RGBA, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(textureTarget, 0, gl.RGBA, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(512 * 512 * 4));
         gl.generateMipmap(textureTarget);
 
         gl.bindTexture(textureTarget, tex3);
-        gl.texImage2D(textureTarget, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(textureTarget, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(128 * 128 * 4));
         gl.generateMipmap(textureTarget);
     } catch(e) {}
 
@@ -195,9 +196,6 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
 
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(textureTarget, tex1);
@@ -241,10 +239,10 @@ async function main() {
 
     try {
         const sampler7 = gl.createSampler();
-        gl.deleteSampler(sampler7);
         gl.bindSampler(0, sampler7);
         gl.samplerParameterf(sampler7, anisoExt.TEXTURE_MAX_ANISOTROPY_EXT, maxAniso);
         gl.bindSampler(1, sampler7);
+        gl.deleteSampler(sampler7);
     } catch(e) {}
 }
 

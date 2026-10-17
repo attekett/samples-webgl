@@ -94,9 +94,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        gl.enable(0x8F9E);
-        gl.disable(0x8F9E);
-        gl.enable(0x8F9E);
+        gl.enable(gl.DITHER);
+        gl.disable(gl.DITHER);
+        gl.enable(gl.DITHER);
         gl.primitiveRestartFixedIndex();
     } catch(e) {}
 
@@ -106,12 +106,12 @@ async function main() {
         gl.bindBuffer(elementTarget, indexBuffer);
         gl.drawElements(0x0004, 8, indexType, 0);
         gl.drawElements(0x0005, 12, 0x1405, 32);
-        gl.disable(0x8F9E);
+        gl.disable(gl.DITHER);
         gl.drawElements(0x0004, indexCount, indexType, 0);
     } catch(e) {}
 
     try {
-        gl.enable(0x8F9E);
+        gl.enable(gl.DITHER);
         gl.bindBuffer(elementTarget, indexBuffer);
         gl.drawElements(0x0004, 16, indexType, 0);
         gl.drawElements(0x0000, primitiveCount, indexType, 64);
@@ -127,7 +127,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        gl.disable(0x8F9E);
+        gl.disable(gl.DITHER);
         gl.bindBuffer(elementTarget, indexBuffer);
         gl.deleteBuffer(indexBuffer);
         gl.deleteBuffer(vertexBuffer);

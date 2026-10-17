@@ -5,14 +5,14 @@
 <script>
 const REQUIRED_EXTENSIONS = [];
 
-const bufferSize = 1024;
+const bufferSize = 262144;
 const primitiveCount = 2048;
 const overflowQueries = 8;
 const vertexCount = 6;
 const tfPrimitives = 512;
 
 const tfPrimitivesWritten = 35976;
-const primitivesGenerated = 35975;
+const primitivesGenerated = 35887;
 const queryResultAvailable = 34919;
 const queryResult = 34918;
 
@@ -26,6 +26,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tfBuffer1, tfBuffer2, tfBuffer3;
 
     try {
         const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -37,7 +38,7 @@ async function main() {
             uniform float uScale;
             void main() {
                 vPosition = position * uScale;
-                vNormal = normalize(cross(dFdx(vPosition), dFdy(vPosition)));
+                vNormal = normalize(cross(vPosition, vec3(0.0, 1.0, 1.0)));
                 vTexCoord = position.xy * 0.5 + 0.5;
                 gl_Position = vec4(vPosition, 1.0);
             }
@@ -64,7 +65,7 @@ async function main() {
         gl.transformFeedbackVaryings(program, ['vPosition', 'vNormal', 'vTexCoord'], gl.INTERLEAVED_ATTRIBS);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const buffer = gl.createBuffer();
@@ -80,29 +81,29 @@ async function main() {
             0.0, -0.6, 0.0
         ]);
         gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        const tfBuffer1 = gl.createBuffer();
-        const tfBuffer2 = gl.createBuffer();
-        const tfBuffer3 = gl.createBuffer();
+        tfBuffer1 = gl.createBuffer();
+        tfBuffer2 = gl.createBuffer();
+        tfBuffer3 = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer2);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer3);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
         gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, bufferSize, gl.DYNAMIC_COPY);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer2);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 512, gl.DYNAMIC_COPY);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, bufferSize, gl.DYNAMIC_COPY);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer3);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 256, gl.DYNAMIC_COPY);
-    } catch(e) { console.log(e); }
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, bufferSize, gl.DYNAMIC_COPY);
+    } catch(e) {}
 
     try {
         const vao = gl.createVertexArray();
         gl.bindVertexArray(vao);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const tf = gl.createTransformFeedback();
@@ -117,22 +118,22 @@ async function main() {
         gl.endTransformFeedback();
         gl.endQuery(tfPrimitivesWritten);
         gl.endQuery(primitivesGenerated);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer2);
         const overflowQ1 = gl.createQuery();
         const overflowQ2 = gl.createQuery();
         gl.beginQuery(35976, overflowQ1);
-        gl.beginQuery(35975, overflowQ2);
+        gl.beginQuery(35887, overflowQ2);
         gl.beginTransformFeedback(gl.TRIANGLES);
         for (let i = 0; i < primitiveCount; i++) {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
         gl.endTransformFeedback();
         gl.endQuery(35976);
-        gl.endQuery(35975);
-    } catch(e) { console.log(e); }
+        gl.endQuery(35887);
+    } catch(e) {}
 
     try {
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer3);
@@ -153,7 +154,7 @@ async function main() {
             const r1 = gl.getQueryParameter(smallBufQ1, queryResult);
             const r2 = gl.getQueryParameter(smallBufQ2, queryResult);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < overflowQueries; i++) {
@@ -170,7 +171,7 @@ async function main() {
             gl.endQuery(tfPrimitivesWritten);
             gl.endQuery(primitivesGenerated);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer2);
@@ -179,24 +180,24 @@ async function main() {
         const comparisonQ3 = gl.createQuery();
         const comparisonQ4 = gl.createQuery();
         gl.beginQuery(35976, comparisonQ1);
-        gl.beginQuery(35975, comparisonQ2);
+        gl.beginQuery(35887, comparisonQ2);
         gl.beginTransformFeedback(gl.TRIANGLES);
         for (let i = 0; i < 128; i++) {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
         gl.endTransformFeedback();
         gl.endQuery(35976);
-        gl.endQuery(35975);
+        gl.endQuery(35887);
         gl.beginQuery(35976, comparisonQ3);
-        gl.beginQuery(35975, comparisonQ4);
+        gl.beginQuery(35887, comparisonQ4);
         gl.beginTransformFeedback(gl.TRIANGLES);
         for (let i = 0; i < 256; i++) {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
         gl.endTransformFeedback();
         gl.endQuery(35976);
-        gl.endQuery(35975);
-    } catch(e) { console.log(e); }
+        gl.endQuery(35887);
+    } catch(e) {}
 
     try {
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer3);
@@ -215,7 +216,7 @@ async function main() {
             const a1 = gl.getQueryParameter(recoveryQ1, queryResultAvailable);
             const a2 = gl.getQueryParameter(recoveryQ2, queryResultAvailable);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer1);
@@ -238,14 +239,14 @@ async function main() {
             const r1 = gl.getQueryParameter(multiOverflowQ1, queryResult);
             const r2 = gl.getQueryParameter(multiOverflowQ2, queryResult);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
         gl.clearColor(0.1, 0.15, 0.2, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

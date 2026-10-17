@@ -29,12 +29,13 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let mrtArray1, mrtArray2, mrtArray3, mrtArray4, fbo1;
 
     try {
-        const mrtArray1 = gl.createTexture();
-        const mrtArray2 = gl.createTexture();
-        const mrtArray3 = gl.createTexture();
-        const mrtArray4 = gl.createTexture();
+        mrtArray1 = gl.createTexture();
+        mrtArray2 = gl.createTexture();
+        mrtArray3 = gl.createTexture();
+        mrtArray4 = gl.createTexture();
         gl.bindTexture(arrayTarget, mrtArray1);
         gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
         gl.bindTexture(arrayTarget, mrtArray2);
@@ -43,10 +44,11 @@ async function main() {
         gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
         gl.bindTexture(arrayTarget, mrtArray4);
         gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
-    } catch(e) { console.log(e); }
+        gl.texSubImage3D(arrayTarget, 0, 0, 0, 0, texSize, texSize, layerCount, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * layerCount * 4));
+    } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
         const fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(36160, fbo1);
         gl.framebufferTextureLayer(36160, colorAttachment0, mrtArray1, 0, 0);
@@ -54,7 +56,7 @@ async function main() {
         gl.framebufferTextureLayer(36160, colorAttachment2, mrtArray3, 0, 0);
         gl.framebufferTextureLayer(36160, colorAttachment3, mrtArray4, 0, 0);
         gl.drawBuffers([colorAttachment0, colorAttachment1, colorAttachment2, colorAttachment3]);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < 8; i++) {
@@ -66,7 +68,7 @@ async function main() {
             gl.clearColor(i * 0.125, 0.5, 1.0 - i * 0.1, 1.0);
             gl.clear(16384);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(35633);
@@ -106,7 +108,7 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const buffer1 = gl.createBuffer();
@@ -119,7 +121,7 @@ async function main() {
         gl.bufferSubData(34962, 0, positions);
         gl.vertexAttribPointer(0, 3, 5126, false, 0, 0);
         gl.enableVertexAttribArray(0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let cycle = 0; cycle < layerSwapCount; cycle++) {
@@ -130,7 +132,7 @@ async function main() {
             gl.framebufferTextureLayer(36160, colorAttachment3, mrtArray4, 0, (layer + 3) % layerCount);
             gl.drawArrays(5, 0, 4);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs2 = gl.createShader(35633);
@@ -169,7 +171,7 @@ async function main() {
         gl.attachShader(program2, fs2);
         gl.linkProgram(program2);
         gl.useProgram(program2);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(3042);
@@ -177,7 +179,7 @@ async function main() {
         gl.disable(3042);
         gl.enable(3042);
         gl.blendEquation(32774);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(36160, null);
@@ -185,14 +187,17 @@ async function main() {
         gl.drawArrays(5, 0, 4);
         gl.drawArrays(4, 0, drawCycles);
         gl.drawArrays(5, 0, 4);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(arrayTarget, mrtArray1);
         gl.deleteTexture(mrtArray1);
+        mrtArray1 = gl.createTexture();
         gl.bindTexture(arrayTarget, mrtArray1);
+        gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, layerCount);
+        gl.bindFramebuffer(36160, fbo1);
         gl.framebufferTextureLayer(36160, colorAttachment0, mrtArray1, 0, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

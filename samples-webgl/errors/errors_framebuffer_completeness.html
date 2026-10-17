@@ -228,9 +228,9 @@ async function main() {
 
    // Delete renderbuffer before attaching
    const tempRB = gl.createRenderbuffer();
-   gl.deleteRenderbuffer(tempRB);
-
+   gl.bindRenderbuffer(gl.RENDERBUFFER, tempRB);
    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, tempRB);
+   gl.deleteRenderbuffer(tempRB);
    return gl.checkFramebufferStatus(gl.FRAMEBUFFER);
  }
 
@@ -291,7 +291,7 @@ async function main() {
  for (let i = 0; i < INVALID_OPERATION_ATTEMPTS; i++) {
    const fbo = gl.createFramebuffer();
    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-   // Attach nothing - incomplete framebuffer
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, textures[i % textures.length], 0);
 
    gl.useProgram(program);
    gl.bindVertexArray(vao);

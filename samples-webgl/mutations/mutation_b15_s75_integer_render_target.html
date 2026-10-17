@@ -13,11 +13,12 @@ const clearValue = 64;
 const texSize = 128;
 const fboCount = 3;
 
-const rgba32iFormat = 36227;
+const rgba32iFormat = 36226;
 const rgba32uiFormat = 36208;
-const textureTarget = 35866;
+const textureTarget = 3553;
 
 async function main() {
+    let program, tex1, tex2, tex3, tex4, fbo1, fbo2, fbo3;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -29,10 +30,10 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
-        const tex4 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
+        tex4 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
@@ -43,17 +44,17 @@ async function main() {
 
     try {
         gl.bindTexture(textureTarget, tex2);
-        gl.texStorage2D(textureTarget, 1, rgba32iFormat, 256, 256);
+        gl.texStorage2D(textureTarget, 1, rgba32iFormat, 128, 128);
         gl.bindTexture(textureTarget, tex3);
-        gl.texStorage2D(textureTarget, 1, rgba32uiFormat, 128, 128);
+        gl.texStorage2D(textureTarget, 1, rgba32iFormat, 128, 128);
         gl.bindTexture(textureTarget, tex4);
-        gl.texStorage2D(textureTarget, 1, rgba32iFormat, 64, 64);
+        gl.texStorage2D(textureTarget, 1, rgba32iFormat, 128, 128);
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
-        const fbo3 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
+        fbo3 = gl.createFramebuffer();
         gl.bindFramebuffer(36160, fbo1);
         gl.bindFramebuffer(36160, fbo2);
         gl.bindFramebuffer(36160, fbo1);
@@ -77,7 +78,7 @@ async function main() {
         gl.bindFramebuffer(36160, fbo2);
         gl.drawBuffers(drawBuffers);
         gl.bindFramebuffer(36160, fbo1);
-        gl.drawBuffers([36064]);
+        gl.drawBuffers(drawBuffers);
     } catch(e) {}
 
     try {
@@ -107,7 +108,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -133,11 +134,11 @@ async function main() {
 
     try {
         gl.bindFramebuffer(36160, fbo1);
-        gl.clearBufferiv(36064, 0, [clearValue, clearValue, clearValue, clearValue]);
+        gl.clearBufferiv(6144, 0, [clearValue, clearValue, clearValue, clearValue]);
         gl.bindFramebuffer(36160, fbo2);
-        gl.clearBufferiv(36064, 0, [0, 0, 0, 0]);
+        gl.clearBufferiv(6144, 0, [0, 0, 0, 0]);
         gl.bindFramebuffer(36160, fbo1);
-        gl.clearBufferiv(36065, 0, [clearValue, 0, 0, 127]);
+        gl.clearBufferiv(6144, 1, [clearValue, 0, 0, 127]);
     } catch(e) {}
 
     try {
@@ -158,25 +159,25 @@ async function main() {
         gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(5, 0, 4);
         gl.bindFramebuffer(36160, fbo2);
-        gl.viewport(0, 0, 256, 256);
+        gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(5, 0, 4);
         gl.bindFramebuffer(36160, fbo1);
         gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(5, 0, 4);
-        gl.bindFramebuffer(36160, null);
-        gl.viewport(0, 0, 256, 256);
+        gl.bindFramebuffer(36160, fbo2);
+        gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(5, 0, 4);
     } catch(e) {}
 
     try {
         gl.bindFramebuffer(36160, fbo1);
-        gl.deleteFramebuffer(fbo1);
         gl.bindFramebuffer(36160, fbo1);
         gl.bindFramebuffer(36160, fbo2);
-        gl.deleteFramebuffer(fbo2);
         gl.bindTexture(textureTarget, tex1);
-        gl.deleteTexture(tex1);
         gl.bindTexture(textureTarget, tex2);
+        gl.deleteFramebuffer(fbo1);
+        gl.deleteFramebuffer(fbo2);
+        gl.deleteTexture(tex1);
         gl.deleteTexture(tex2);
     } catch(e) {}
 }

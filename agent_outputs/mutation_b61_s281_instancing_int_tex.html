@@ -7,7 +7,7 @@ const REQUIRED_EXTENSIONS = [];
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
-    const gl = canvas.getContext('webgl2');
+    const gl = canvas.getContext('webgl2', {antialias: false});
     if (!gl) throw new Error("WebGL2 not supported");
 
     const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
@@ -252,20 +252,20 @@ void main() {
     } catch(e) {}
 
     try {
-        gl.deleteTexture(intTex);
         gl.bindTexture(gl.TEXTURE_2D, intTex);
         gl.deleteTexture(intTex);
-        gl.deleteTexture(uintTex);
+        gl.deleteTexture(intTex);
         gl.bindTexture(gl.TEXTURE_2D, uintTex);
-        gl.deleteBuffer(offsetBuf);
+        gl.deleteTexture(uintTex);
         gl.bindBuffer(gl.ARRAY_BUFFER, offsetBuf);
+        gl.deleteBuffer(offsetBuf);
         gl.deleteBuffer(offsetBuf);
         gl.deleteBuffer(scaleBuf);
         gl.deleteBuffer(instIdBuf);
         gl.deleteBuffer(posBuf);
         gl.deleteBuffer(idxBuf);
-        gl.deleteVertexArray(vao);
         gl.bindVertexArray(vao);
+        gl.deleteVertexArray(vao);
         gl.deleteVertexArray(vao);
         gl.deleteFramebuffer(fbo);
         gl.deleteTexture(colorTex);

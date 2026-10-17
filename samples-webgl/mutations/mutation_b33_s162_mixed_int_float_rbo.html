@@ -34,9 +34,9 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const rboFloat1 = gl.createRenderbuffer();
-        const rboFloat2 = gl.createRenderbuffer();
-        const rboFloat3 = gl.createRenderbuffer();
+        var rboFloat1 = gl.createRenderbuffer();
+        var rboFloat2 = gl.createRenderbuffer();
+        var rboFloat3 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboFloat1);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32F, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboFloat2);
@@ -46,9 +46,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rboInt1 = gl.createRenderbuffer();
-        const rboInt2 = gl.createRenderbuffer();
-        const rboInt3 = gl.createRenderbuffer();
+        var rboInt1 = gl.createRenderbuffer();
+        var rboInt2 = gl.createRenderbuffer();
+        var rboInt3 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboInt1);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32I, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboInt2);
@@ -58,8 +58,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rboDepth1 = gl.createRenderbuffer();
-        const rboDepth2 = gl.createRenderbuffer();
+        var rboDepth1 = gl.createRenderbuffer();
+        var rboDepth2 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboDepth1);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboDepth2);
@@ -67,10 +67,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const rboF1 = gl.createRenderbuffer();
-        const rboI1 = gl.createRenderbuffer();
-        const rboD1 = gl.createRenderbuffer();
+        var fbo1 = gl.createFramebuffer();
+        var rboF1 = gl.createRenderbuffer();
+        var rboI1 = gl.createRenderbuffer();
+        var rboD1 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboF1);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32F, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboI1);
@@ -84,9 +84,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo2 = gl.createFramebuffer();
-        const rboF2 = gl.createRenderbuffer();
-        const rboI2 = gl.createRenderbuffer();
+        var fbo2 = gl.createFramebuffer();
+        var rboF2 = gl.createRenderbuffer();
+        var rboI2 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboF2);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA16F, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboI2);
@@ -97,9 +97,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo3 = gl.createFramebuffer();
-        const rboF3 = gl.createRenderbuffer();
-        const rboI3 = gl.createRenderbuffer();
+        var fbo3 = gl.createFramebuffer();
+        var rboF3 = gl.createRenderbuffer();
+        var rboI3 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboF3);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.R32F, smallSize, smallSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboI3);
@@ -130,40 +130,40 @@ async function main() {
 
     const fsInt = `#version 300 es
     precision highp int;
-    out ivec4 fragColor;
+    layout(location = 1) out ivec4 fragColor;
     void main() {
         fragColor = ivec4(42, -128, 255, 1024);
     }`;
 
     try {
-        const vsF = gl.createShader(gl.VERTEX_SHADER);
+        var vsF = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vsF, vsFloat);
         gl.compileShader(vsF);
-        const fsF = gl.createShader(gl.FRAGMENT_SHADER);
+        var fsF = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fsF, fsFloat);
         gl.compileShader(fsF);
-        const progFloat = gl.createProgram();
+        var progFloat = gl.createProgram();
         gl.attachShader(progFloat, vsF);
         gl.attachShader(progFloat, fsF);
         gl.linkProgram(progFloat);
     } catch(e) {}
 
     try {
-        const vsI = gl.createShader(gl.VERTEX_SHADER);
+        var vsI = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vsI, vsInt);
         gl.compileShader(vsI);
-        const fsI = gl.createShader(gl.FRAGMENT_SHADER);
+        var fsI = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fsI, fsInt);
         gl.compileShader(fsI);
-        const progInt = gl.createProgram();
+        var progInt = gl.createProgram();
         gl.attachShader(progInt, vsI);
         gl.attachShader(progInt, fsI);
         gl.linkProgram(progInt);
     } catch(e) {}
 
     try {
-        const verts = new Float32Array([-1,-1, 1,-1, 0,1]);
-        const vbo = gl.createBuffer();
+        var verts = new Float32Array([-1,-1, 1,-1, 0,1]);
+        var vbo = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
         gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
@@ -171,28 +171,32 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
+        gl.useProgram(progFloat);
         gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
         gl.clearBufferfv(gl.COLOR, 0, [clearValF, 0.5, 0.25, 1.0]);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.drawBuffers([gl.COLOR_ATTACHMENT1]);
-        gl.clearBufferiv(gl.COLOR, 0, [clearValI, -128, 255, 1024]);
+        gl.drawBuffers([gl.NONE, gl.COLOR_ATTACHMENT1]);
+        gl.clearBufferiv(gl.COLOR, 1, [clearValI, -128, 255, 1024]);
+        gl.useProgram(progInt);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } catch(e) {}
 
     try {
         gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
         gl.clearBufferfv(gl.COLOR, 0, [0.1, 0.2, 0.3, 0.4]);
-        gl.drawBuffers([gl.COLOR_ATTACHMENT1]);
-        gl.clearBufferiv(gl.COLOR, 0, [10, 20, 30, 40]);
+        gl.drawBuffers([gl.NONE, gl.COLOR_ATTACHMENT1]);
+        gl.clearBufferiv(gl.COLOR, 1, [10, 20, 30, 40]);
         gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
         gl.clearBufferfv(gl.COLOR, 0, [0.9, 0.8, 0.7, 0.6]);
     } catch(e) {}
 
     try {
-        gl.drawBuffers([gl.COLOR_ATTACHMENT1]);
-        gl.clearBufferiv(gl.COLOR, 0, [999, -999, 2048, -2048]);
+        gl.drawBuffers([gl.NONE, gl.COLOR_ATTACHMENT1]);
+        gl.clearBufferiv(gl.COLOR, 1, [999, -999, 2048, -2048]);
         gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
         gl.clearBufferfv(gl.COLOR, 0, [1.0, 0.0, 1.0, 1.0]);
+        gl.useProgram(progFloat);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } catch(e) {}
 
@@ -200,8 +204,8 @@ async function main() {
         for (let i = 0; i < switchCount; i++) {
             gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
             gl.clearBufferfv(gl.COLOR, 0, [0.5, 0.5, 0.5, 1.0]);
-            gl.drawBuffers([gl.COLOR_ATTACHMENT1]);
-            gl.clearBufferiv(gl.COLOR, 0, [i, -i, i*2, -i*2]);
+            gl.drawBuffers([gl.NONE, gl.COLOR_ATTACHMENT1]);
+            gl.clearBufferiv(gl.COLOR, 1, [i, -i, i*2, -i*2]);
         }
     } catch(e) {}
 

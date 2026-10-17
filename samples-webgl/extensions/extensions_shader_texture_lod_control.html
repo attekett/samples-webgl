@@ -24,7 +24,6 @@ async function main() {
  }
 
  // WebGL2 confirmed available
- console.log("WebGL2 context acquired successfully");
 
  // ==========================================
  // COMPLEX IMPLEMENTATION STARTS HERE
@@ -99,7 +98,6 @@ async function main() {
  gl.compileShader(fragmentShader);
  if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
    const errorLog = gl.getShaderInfoLog(fragmentShader);
-   console.error('Fragment shader compilation failed:', errorLog);
    throw new Error('Fragment shader compilation failed: ' + errorLog);
  }
 
@@ -110,7 +108,6 @@ async function main() {
  gl.linkProgram(program);
  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
    const errorLog = gl.getProgramInfoLog(program);
-   console.error('Program linking failed:', errorLog);
    throw new Error('Program linking failed: ' + errorLog);
  }
  gl.useProgram(program);
@@ -145,7 +142,7 @@ async function main() {
  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, textureSize, textureSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
 
  // Generate mipmaps manually for explicit control
- for (let level = 1; level < lodLevels; level++) {
+ for (let level = 1; level <= lodLevels; level++) {
    const levelSize = textureSize >> level;
    if (levelSize < 1) break;
 
@@ -265,9 +262,7 @@ async function main() {
  }
 }
 
-main().catch(err => {
- console.error(err);
-});
+main().catch(err => { throw err; });
 </script>
 </body>
 </html>

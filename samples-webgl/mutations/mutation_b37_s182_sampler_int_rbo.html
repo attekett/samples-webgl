@@ -18,7 +18,7 @@ const rboCount = 4;
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
-    const gl = canvas.getContext('webgl2');
+    const gl = canvas.getContext('webgl2', {antialias: false});
     if (!gl) throw new Error("WebGL2 not supported");
 
     const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
@@ -26,10 +26,11 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let intRbo1, intRbo2, fbo, vs, intProg, quadBuffer, shadowSampler1, shadowSampler2, regularSampler, floatRbo, floatFbo, displayProg;
 
     try {
-        const intRbo1 = gl.createRenderbuffer();
-        const intRbo2 = gl.createRenderbuffer();
+        intRbo1 = gl.createRenderbuffer();
+        intRbo2 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, intRbo1);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32I, rboSize, rboSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, intRbo2);
@@ -39,7 +40,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo = gl.createFramebuffer();
+        fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, intRbo1);
         const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
@@ -48,7 +49,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec2 pos;
             out vec2 vUv;
@@ -72,7 +73,7 @@ async function main() {
         `);
         gl.compileShader(intFs);
 
-        const intProg = gl.createProgram();
+        intProg = gl.createProgram();
         gl.attachShader(intProg, vs);
         gl.attachShader(intProg, intFs);
         gl.linkProgram(intProg);
@@ -80,7 +81,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const quadBuffer = gl.createBuffer();
+        quadBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
         const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
         gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
@@ -106,8 +107,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const shadowSampler1 = gl.createSampler();
-        const shadowSampler2 = gl.createSampler();
+        shadowSampler1 = gl.createSampler();
+        shadowSampler2 = gl.createSampler();
         gl.bindSampler(0, shadowSampler1);
         gl.samplerParameteri(shadowSampler1, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
         gl.samplerParameteri(shadowSampler1, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
@@ -124,13 +125,14 @@ async function main() {
         gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, 256, 256);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 256, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, new Uint32Array(256 * 256));
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, depthTex);
         gl.bindSampler(0, shadowSampler1);
     } catch(e) {}
 
     try {
-        const regularSampler = gl.createSampler();
+        regularSampler = gl.createSampler();
         gl.bindSampler(2, regularSampler);
         gl.samplerParameteri(regularSampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.samplerParameteri(regularSampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -140,10 +142,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const floatRbo = gl.createRenderbuffer();
+        floatRbo = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, floatRbo);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 256, 256);
-        const floatFbo = gl.createFramebuffer();
+        floatFbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, floatFbo);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, floatRbo);
     } catch(e) {}
@@ -153,16 +155,16 @@ async function main() {
         gl.shaderSource(displayFs, `#version 300 es
             precision highp float;
             in vec2 vUv;
-            uniform sampler2D shadowTex;
+            uniform mediump sampler2DShadow shadowTex;
             out vec4 fragColor;
             void main() {
-                float shadowVal = texture(shadowTex, vUv);
+                float shadowVal = texture(shadowTex, vec3(vUv, 0.5));
                 fragColor = vec4(shadowVal, shadowVal, shadowVal, 1.0);
             }
         `);
         gl.compileShader(displayFs);
 
-        const displayProg = gl.createProgram();
+        displayProg = gl.createProgram();
         gl.attachShader(displayProg, vs);
         gl.attachShader(displayProg, displayFs);
         gl.linkProgram(displayProg);
@@ -190,14 +192,14 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.bindSampler(0, shadowSampler1);
+        gl.bindSampler(1, shadowSampler2);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, intRbo1);
         gl.deleteSampler(shadowSampler1);
         gl.deleteSampler(shadowSampler2);
         gl.deleteSampler(regularSampler);
-        gl.bindSampler(0, shadowSampler1);
-        gl.bindSampler(1, shadowSampler2);
         gl.deleteRenderbuffer(intRbo1);
         gl.deleteRenderbuffer(intRbo2);
-        gl.bindRenderbuffer(gl.RENDERBUFFER, intRbo1);
     } catch(e) {}
 
     try {

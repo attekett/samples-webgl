@@ -3,7 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [];
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
 
 const mrtCount = 8;
 const texSize = 256;
@@ -26,12 +26,13 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let rbo0, rbo1, rbo2, rbo3, rbo4, rbo5, rbo6, rbo7, mrtFbo, status, vs, mrtFs, mrtProg, quadBuffer, vertices, posLoc, data0, data1, data2, data3, texArray, sampler0, sampler1, sampler2, sampler3, sampler4, sampler5, sampler6, sampler7, displayFs, displayProg, texLoc;
 
     try {
-        const rbo0 = gl.createRenderbuffer();
-        const rbo1 = gl.createRenderbuffer();
-        const rbo2 = gl.createRenderbuffer();
-        const rbo3 = gl.createRenderbuffer();
+        rbo0 = gl.createRenderbuffer();
+        rbo1 = gl.createRenderbuffer();
+        rbo2 = gl.createRenderbuffer();
+        rbo3 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo0);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 256, 256);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo1);
@@ -43,10 +44,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo4 = gl.createRenderbuffer();
-        const rbo5 = gl.createRenderbuffer();
-        const rbo6 = gl.createRenderbuffer();
-        const rbo7 = gl.createRenderbuffer();
+        rbo4 = gl.createRenderbuffer();
+        rbo5 = gl.createRenderbuffer();
+        rbo6 = gl.createRenderbuffer();
+        rbo7 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo4);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 256, 256);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo5);
@@ -58,7 +59,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const mrtFbo = gl.createFramebuffer();
+        mrtFbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFbo);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rbo0);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.RENDERBUFFER, rbo1);
@@ -75,11 +76,11 @@ async function main() {
             gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3,
             gl.COLOR_ATTACHMENT4, gl.COLOR_ATTACHMENT5, gl.COLOR_ATTACHMENT6, gl.COLOR_ATTACHMENT7
         ]);
-        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     } catch(e) {}
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec2 pos;
             out vec2 vUv;
@@ -90,7 +91,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const mrtFs = gl.createShader(gl.FRAGMENT_SHADER);
+        mrtFs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(mrtFs, `#version 300 es
             precision highp float;
             in vec2 vUv;
@@ -115,7 +116,7 @@ async function main() {
         `);
         gl.compileShader(mrtFs);
 
-        const mrtProg = gl.createProgram();
+        mrtProg = gl.createProgram();
         gl.attachShader(mrtProg, vs);
         gl.attachShader(mrtProg, mrtFs);
         gl.linkProgram(mrtProg);
@@ -123,11 +124,11 @@ async function main() {
     } catch(e) {}
 
     try {
-        const quadBuffer = gl.createBuffer();
+        quadBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
-        const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
+        vertices = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
         gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-        const posLoc = gl.getAttribLocation(mrtProg, 'pos');
+        posLoc = gl.getAttribLocation(mrtProg, 'pos');
         gl.enableVertexAttribArray(posLoc);
         gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 8, 0);
     } catch(e) {}
@@ -147,14 +148,14 @@ async function main() {
     } catch(e) {}
 
     try {
-        const data0 = new Uint8Array(256 * 256 * 4);
+        data0 = new Uint8Array(256 * 256 * 4);
         gl.readBuffer(gl.COLOR_ATTACHMENT0);
         gl.pixelStorei(gl.PACK_ALIGNMENT, packAlign1);
         gl.readPixels(0, 0, 256, 256, gl.RGBA, gl.UNSIGNED_BYTE, data0);
     } catch(e) {}
 
     try {
-        const data1 = new Uint8Array(256 * 256 * 4);
+        data1 = new Uint8Array(256 * 256 * 4);
         gl.readBuffer(gl.COLOR_ATTACHMENT1);
         gl.pixelStorei(gl.PACK_ALIGNMENT, packAlign4);
         gl.pixelStorei(gl.PACK_ROW_LENGTH, packRowLen);
@@ -162,15 +163,15 @@ async function main() {
     } catch(e) {}
 
     try {
-        const data2 = new Uint8Array(256 * 256 * 4);
+        data2 = new Uint8Array(256 * 256 * 4);
         gl.readBuffer(gl.COLOR_ATTACHMENT2);
-        gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
+        gl.pixelStorei(gl.PACK_ROW_LENGTH, packRowLen);
         gl.pixelStorei(gl.PACK_SKIP_PIXELS, skipPix);
         gl.readPixels(0, 0, 254, 256, gl.RGBA, gl.UNSIGNED_BYTE, data2);
     } catch(e) {}
 
     try {
-        const data3 = new Uint8Array(256 * 256 * 4);
+        data3 = new Uint8Array(256 * 256 * 4);
         gl.readBuffer(gl.COLOR_ATTACHMENT3);
         gl.pixelStorei(gl.PACK_SKIP_PIXELS, 0);
         gl.pixelStorei(gl.PACK_SKIP_ROWS, skipRow);
@@ -178,13 +179,14 @@ async function main() {
     } catch(e) {}
 
     try {
-        const texArray = gl.createTexture();
+        texArray = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray);
         gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 256, 256, 8);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
         gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
         gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, 256, 256, 8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(256 * 256 * 8 * 4));
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, 256, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, data0);
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 1, 256, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, data1);
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 2, 254, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, data2);
@@ -192,10 +194,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const sampler0 = gl.createSampler();
-        const sampler1 = gl.createSampler();
-        const sampler2 = gl.createSampler();
-        const sampler3 = gl.createSampler();
+        sampler0 = gl.createSampler();
+        sampler1 = gl.createSampler();
+        sampler2 = gl.createSampler();
+        sampler3 = gl.createSampler();
         gl.bindSampler(0, sampler0);
         gl.samplerParameteri(sampler0, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.samplerParameteri(sampler0, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -211,10 +213,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const sampler4 = gl.createSampler();
-        const sampler5 = gl.createSampler();
-        const sampler6 = gl.createSampler();
-        const sampler7 = gl.createSampler();
+        sampler4 = gl.createSampler();
+        sampler5 = gl.createSampler();
+        sampler6 = gl.createSampler();
+        sampler7 = gl.createSampler();
         gl.bindSampler(4, sampler4);
         gl.samplerParameteri(sampler4, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.samplerParameterf(sampler4, gl.TEXTURE_MIN_LOD, 0.0);
@@ -230,9 +232,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const displayFs = gl.createShader(gl.FRAGMENT_SHADER);
+        displayFs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(displayFs, `#version 300 es
             precision highp float;
+            precision highp sampler2DArray;
             in vec2 vUv;
             uniform sampler2DArray texArray;
             out vec4 fragColor;
@@ -247,7 +250,7 @@ async function main() {
         `);
         gl.compileShader(displayFs);
 
-        const displayProg = gl.createProgram();
+        displayProg = gl.createProgram();
         gl.attachShader(displayProg, vs);
         gl.attachShader(displayProg, displayFs);
         gl.linkProgram(displayProg);
@@ -258,7 +261,7 @@ async function main() {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray);
         gl.bindSampler(0, sampler0);
-        const texLoc = gl.getUniformLocation(displayProg, 'texArray');
+        texLoc = gl.getUniformLocation(displayProg, 'texArray');
         gl.uniform1i(texLoc, 0);
     } catch(e) {}
 
@@ -267,7 +270,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.0, 0.0, 0.0, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-        const posLoc = gl.getAttribLocation(displayProg, 'pos');
+        posLoc = gl.getAttribLocation(displayProg, 'pos');
         gl.enableVertexAttribArray(posLoc);
         gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
         gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 8, 0);
@@ -275,6 +278,8 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.bindSampler(0, sampler0);
+        gl.bindSampler(1, sampler1);
         gl.deleteSampler(sampler0);
         gl.deleteSampler(sampler1);
         gl.deleteSampler(sampler2);
@@ -283,18 +288,16 @@ async function main() {
         gl.deleteSampler(sampler5);
         gl.deleteSampler(sampler6);
         gl.deleteSampler(sampler7);
-        gl.bindSampler(0, sampler0);
-        gl.bindSampler(1, sampler1);
     } catch(e) {}
 
     try {
-        gl.deleteTexture(texArray);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo0);
+        gl.deleteTexture(texArray);
         gl.deleteRenderbuffer(rbo0);
         gl.deleteRenderbuffer(rbo1);
         gl.deleteRenderbuffer(rbo2);
         gl.deleteRenderbuffer(rbo3);
-        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo0);
     } catch(e) {}
 }
 

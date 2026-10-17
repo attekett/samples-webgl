@@ -6,8 +6,8 @@
 const REQUIRED_EXTENSIONS = [];
 
 const rboCount = 8;
-const msaaSamples = 4;
-const msaaSamplesAlt = 8;
+const msaaSamples = 0;
+const msaaSamplesAlt = 0;
 const clearVal1 = 42;
 const clearVal2 = -128;
 const clearVal3 = 255;
@@ -39,9 +39,9 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const rbo1 = gl.createRenderbuffer();
-        const rbo2 = gl.createRenderbuffer();
-        const rbo3 = gl.createRenderbuffer();
+        var rbo1 = gl.createRenderbuffer();
+        var rbo2 = gl.createRenderbuffer();
+        var rbo3 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo1);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo2);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo1);
@@ -53,8 +53,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo4 = gl.createRenderbuffer();
-        const rbo5 = gl.createRenderbuffer();
+        var rbo4 = gl.createRenderbuffer();
+        var rbo5 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo4);
         gl.renderbufferStorageMultisample(gl.RENDERBUFFER, msaaSamples, gl.R32I, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo5);
@@ -64,22 +64,22 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo6 = gl.createRenderbuffer();
-        const rbo7 = gl.createRenderbuffer();
-        const rbo8 = gl.createRenderbuffer();
+        var rbo6 = gl.createRenderbuffer();
+        var rbo7 = gl.createRenderbuffer();
+        var rbo8 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo6);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.RG32I, texSize, texSize);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 0, gl.RG32I, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo7);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 8, gl.RGBA32UI, 384, 384);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 0, gl.RGBA32UI, 384, 384);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo8);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, texSize, texSize);
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
-        const rbo9 = gl.createRenderbuffer();
-        const rbo10 = gl.createRenderbuffer();
+        var fbo1 = gl.createFramebuffer();
+        var fbo2 = gl.createFramebuffer();
+        var rbo9 = gl.createRenderbuffer();
+        var rbo10 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo9);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.R32I, texSize, texSize);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -91,9 +91,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo3 = gl.createFramebuffer();
-        const rbo11 = gl.createRenderbuffer();
-        const rbo12 = gl.createRenderbuffer();
+        var fbo3 = gl.createFramebuffer();
+        var rbo11 = gl.createRenderbuffer();
+        var rbo12 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo11);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RG32I, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo12);
@@ -101,21 +101,27 @@ async function main() {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo3);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rbo11);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo12);
-        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        var status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        var fbo4 = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo4);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rbo7);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo3);
     } catch(e) {}
 
     try {
-        const clearBuf = new Int32Array([clearVal1, clearVal2, clearVal3, clearVal4]);
+        var clearBuf = new Int32Array([clearVal1, clearVal2, clearVal3, clearVal4]);
         gl.clearBufferiv(gl.COLOR, 0, clearBuf);
         gl.clearBufferiv(gl.COLOR, 0, [64, -64, 128, -128]);
         gl.clearBufferiv(gl.COLOR, 0, new Int32Array([999, -999, 2048, -2048]));
     } catch(e) {}
 
     try {
-        const clearBufUI = new Uint32Array([clearVal3, clearVal4, 512, 1024]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo4);
+        var clearBufUI = new Uint32Array([clearVal3, clearVal4, 512, 1024]);
         gl.clearBufferuiv(gl.COLOR, 0, clearBufUI);
         gl.clearBufferuiv(gl.COLOR, 0, [255, 511, 1023, 2047]);
         gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array([32768, 65535, 131072, 262144]));
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo3);
     } catch(e) {}
 
     const vsSource = `#version 300 es
@@ -132,13 +138,13 @@ async function main() {
     }`;
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, vsSource);
         gl.compileShader(vs);
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, fsSource);
         gl.compileShader(fs);
-        const prog = gl.createProgram();
+        var prog = gl.createProgram();
         gl.attachShader(prog, vs);
         gl.attachShader(prog, fs);
         gl.linkProgram(prog);
@@ -146,8 +152,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const verts = new Float32Array([-1,-1, 1,-1, 0,1]);
-        const vbo = gl.createBuffer();
+        var verts = new Float32Array([-1,-1, 1,-1, 0,1]);
+        var vbo = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
         gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
@@ -161,25 +167,28 @@ async function main() {
     } catch(e) {}
 
     try {
-        const readBuf = new Int32Array(readSize * readSize * 4);
+        var readBuf = new Int32Array(readSize * readSize * 4);
         gl.readPixels(0, 0, readSize, readSize, gl.RGBA_INTEGER, gl.INT, readBuf);
-        const readBufUI = new Uint32Array(readSize * readSize * 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo4);
+        var readBufUI = new Uint32Array(readSize * readSize * 4);
         gl.readPixels(0, 0, readSize, readSize, gl.RGBA_INTEGER, gl.UNSIGNED_INT, readBufUI);
     } catch(e) {}
 
     try {
-        const rbo13 = gl.createRenderbuffer();
+        var rbo13 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rbo13);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RG32UI, texSize, texSize);
-        const param = gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_WIDTH);
-        const param2 = gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_HEIGHT);
-        const param3 = gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_INTERNAL_FORMAT);
+        var param = gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_WIDTH);
+        var param2 = gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_HEIGHT);
+        var param3 = gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_INTERNAL_FORMAT);
     } catch(e) {}
 
     try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo3);
         gl.clearBufferiv(gl.COLOR, 0, [1, 2, 3, 4]);
         gl.clearBufferiv(gl.COLOR, 0, [-1, -2, -3, -4]);
         gl.clearBufferiv(gl.COLOR, 0, [999, -999, 1024, -1024]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo4);
         gl.clearBufferuiv(gl.COLOR, 0, [100, 200, 300, 400]);
         gl.clearBufferuiv(gl.COLOR, 0, [65535, 32768, 16384, 8192]);
     } catch(e) {}

@@ -44,6 +44,9 @@ async function main() {
                     // In WebGL 2.0, instanced rendering is core
                     availableInCore = isWebGL2 && typeof gl.drawArraysInstanced === 'function';
                     break;
+                case 'OES_texture_float':
+                    availableInCore = isWebGL2;
+                    break;
                 case 'WEBGL_depth_texture':
                     // WebGL 2.0 has depth textures as core (DEPTH_COMPONENT24, etc.)
                     availableInCore = isWebGL2;
@@ -71,10 +74,6 @@ async function main() {
         } else {
             throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
         }
-    }
-
-    if (availableAsCore.length > 0) {
-        console.log(`Note: Extensions ${availableAsCore.join(', ')} available as core WebGL 2.0 features`);
     }
 
     const availableExtensions = REQUIRED_EXTENSIONS.filter(ext => gl.getExtension(ext));
@@ -212,13 +211,7 @@ async function main() {
     }
 }
 
-main().catch(err => {
-    // If the error string contains "PLAYWRIGHT_FIREFOX_LIMITATION", the Python runner
-    // knows to log it as an environmental limitation, not a test failure.
-    // Otherwise, it counts as a test failure/crash.
-    console.log(err.message); // Log the detailed error message for test runner detection
-    console.error(err); // Allowed for debugging, but DOM update is primary signal
-});
+main().catch(err => { throw err; });
 </script>
 </body>
 </html>

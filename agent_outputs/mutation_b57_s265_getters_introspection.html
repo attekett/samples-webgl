@@ -308,13 +308,13 @@ void main() {
         gl.deleteQuery(query1);
         gl.deleteQuery(query2);
         gl.bindBuffer(uboTarget, uboBuffer);
-        gl.deleteBuffer(uboBuffer);
         gl.bindBuffer(uboTarget, uboBuffer);
+        gl.deleteBuffer(uboBuffer);
         gl.deleteTransformFeedback(tf);
-        gl.deleteBuffer(tfBuffer);
         gl.bindBuffer(tfTarget, tfBuffer);
-        gl.deleteTexture(tex1);
+        gl.deleteBuffer(tfBuffer);
         gl.bindTexture(textureTarget, tex1);
+        gl.deleteTexture(tex1);
         gl.deleteTexture(tex2);
         gl.deleteTexture(tex3);
         gl.deleteFramebuffer(fbo1);

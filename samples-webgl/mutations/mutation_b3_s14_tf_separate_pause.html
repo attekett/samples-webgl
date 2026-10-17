@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let inputData, inputBuffer, tfBuffer1, tfBuffer2, tfBuffer3, vs, fs, program, posLoc, tf, readData1, readData2, readData3;
 
     const varyingCount = 3;
     const bufferCount = 3;
@@ -24,16 +25,16 @@ async function main() {
 
     const tfMode = gl.SEPARATE_ATTRIBS;
     const bufferTarget = gl.ARRAY_BUFFER;
-    const bufferUsage = gl.DYNAMIC_COPY;
+    const bufferUsage = gl.DYNAMIC_READ;
     const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
     const primitiveMode = gl.POINTS;
 
     try {
-        const inputData = new Float32Array(vertexCount * 3);
+        inputData = new Float32Array(vertexCount * 3);
         for (let i = 0; i < vertexCount * 3; i++) {
             inputData[i] = (Math.random() - 0.5) * 1.8;
         }
-        const inputBuffer = gl.createBuffer();
+        inputBuffer = gl.createBuffer();
         gl.bindBuffer(bufferTarget, inputBuffer);
         gl.bindBuffer(bufferTarget, null);
         gl.bindBuffer(bufferTarget, inputBuffer);
@@ -43,13 +44,13 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tfBuffer1 = gl.createBuffer();
-        const tfBuffer2 = gl.createBuffer();
-        const tfBuffer3 = gl.createBuffer();
+        tfBuffer1 = gl.createBuffer();
+        tfBuffer2 = gl.createBuffer();
+        tfBuffer3 = gl.createBuffer();
         gl.bindBuffer(tfTarget, tfBuffer1);
         gl.bufferData(tfTarget, bufferSize, bufferUsage);
         gl.bindBuffer(tfTarget, tfBuffer2);
-        gl.bufferData(tfTarget, 1024, gl.STREAM_COPY);
+        gl.bufferData(tfTarget, 2048, gl.STREAM_READ);
         gl.bindBuffer(tfTarget, tfBuffer3);
         gl.bufferData(tfTarget, bufferSize, bufferUsage);
         gl.bindBuffer(tfTarget, tfBuffer1);
@@ -57,7 +58,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 position;
             out vec3 v_position;
@@ -73,7 +74,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             out vec4 fragColor;
@@ -83,7 +84,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.transformFeedbackVaryings(program, ['v_position', 'v_velocity', 'v_lifetime'], tfMode);
@@ -92,14 +93,14 @@ async function main() {
     } catch(e) {}
 
     try {
-        const posLoc = gl.getAttribLocation(program, 'position');
+        posLoc = gl.getAttribLocation(program, 'position');
         gl.bindBuffer(bufferTarget, inputBuffer);
         gl.enableVertexAttribArray(posLoc);
         gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
     } catch(e) {}
 
     try {
-        const tf = gl.createTransformFeedback();
+        tf = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
@@ -150,9 +151,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const readData1 = new Float32Array(128);
-        const readData2 = new Float32Array(128);
-        const readData3 = new Float32Array(128);
+        readData1 = new Float32Array(128);
+        readData2 = new Float32Array(128);
+        readData3 = new Float32Array(128);
         gl.bindBuffer(tfTarget, tfBuffer1);
         gl.getBufferSubData(tfTarget, 0, readData1);
         gl.bindBuffer(tfTarget, tfBuffer2);
@@ -170,12 +171,12 @@ async function main() {
 
     try {
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
-        gl.deleteTransformFeedback(tf);
-        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
-        gl.bindBuffer(tfTarget, tfBuffer1);
-        gl.deleteBuffer(tfBuffer1);
         gl.bindBuffer(tfTarget, tfBuffer1);
         gl.bindBufferBase(tfTarget, 0, tfBuffer1);
+        gl.deleteTransformFeedback(tf);
+        gl.isTransformFeedback(tf);
+        gl.deleteBuffer(tfBuffer1);
+        gl.isBuffer(tfBuffer1);
     } catch(e) {}
 }
 

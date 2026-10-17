@@ -261,9 +261,9 @@ void main() {
         gl.getShaderPrecisionFormat(gl.VERTEX_SHADER, gl.HIGH_INT);
 
         gl.isFramebuffer(fbo);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.deleteFramebuffer(fbo);
         gl.isFramebuffer(fbo);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.getError();
 
         gl.isFramebuffer(fbo2);
@@ -271,9 +271,9 @@ void main() {
         gl.isFramebuffer(fbo2);
 
         gl.isRenderbuffer(rbo);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
         gl.deleteRenderbuffer(rbo);
         gl.isRenderbuffer(rbo);
-        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
         gl.getError();
 
         gl.isRenderbuffer(rbo2);
@@ -318,17 +318,17 @@ void main() {
 
         gl.deleteTexture(tex1);
         gl.deleteTexture(tex2);
+        gl.bindBuffer(bufferTarget, buffer1);
         gl.deleteBuffer(buffer1);
         gl.deleteBuffer(buffer2);
         gl.deleteBuffer(indexBuffer);
-        gl.bindBuffer(bufferTarget, buffer1);
         gl.getError();
 
         gl.detachShader(program, vs);
         gl.detachShader(program, fs);
         gl.getAttachedShaders(program);
-        gl.deleteProgram(program);
         gl.useProgram(program);
+        gl.deleteProgram(program);
         gl.getError();
     } catch(e) {}
 }

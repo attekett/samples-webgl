@@ -32,13 +32,14 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const texArray1 = gl.createTexture();
-        const texArray2 = gl.createTexture();
-        const texArray3 = gl.createTexture();
+        var texArray1 = gl.createTexture();
+        var texArray2 = gl.createTexture();
+        var texArray3 = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray1);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray2);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray1);
         gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, texSize, texSize, layerCount);
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, texSize, texSize, layerCount, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * layerCount * 4));
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray2);
         gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 64, 64, 16);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray3);
@@ -46,9 +47,9 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const tfBuffer1 = gl.createBuffer();
-        const tfBuffer2 = gl.createBuffer();
-        const tfBuffer3 = gl.createBuffer();
+        var tfBuffer1 = gl.createBuffer();
+        var tfBuffer2 = gl.createBuffer();
+        var tfBuffer3 = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer2);
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
@@ -60,7 +61,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 position;
             in float layerIndex;
@@ -78,7 +79,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             precision highp sampler2DArray;
@@ -95,7 +96,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.transformFeedbackVaryings(program, ['tfOut1', 'tfOut2'], gl.INTERLEAVED_ATTRIBS);
@@ -104,15 +105,15 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const buffer = gl.createBuffer();
+        var buffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        const vertices = new Float32Array([
+        var vertices = new Float32Array([
             -1, -1, 0, 0, 1, -1, 0, 4, -1, 1, 0, 8,
             -1, 1, 0, 12, 1, -1, 0, 16, 1, 1, 0, 20
         ]);
         gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-        const posLoc = gl.getAttribLocation(program, 'position');
-        const layerLoc = gl.getAttribLocation(program, 'layerIndex');
+        var posLoc = gl.getAttribLocation(program, 'position');
+        var layerLoc = gl.getAttribLocation(program, 'layerIndex');
         gl.enableVertexAttribArray(posLoc);
         gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 16, 0);
         gl.enableVertexAttribArray(layerLoc);
@@ -120,7 +121,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const tf = gl.createTransformFeedback();
+        var tf = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer1);
         gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 1, tfBuffer2, 0, 4096);
@@ -128,8 +129,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        var fbo1 = gl.createFramebuffer();
+        var fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, texArray1, 0, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
@@ -139,9 +140,9 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const sync1 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        const sync2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-        const sync3 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        var sync1 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        var sync2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        var sync3 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.flush();
     } catch(e) { console.log(e); }
 
@@ -156,8 +157,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const status1 = gl.clientWaitSync(sync1, 0, 0);
-        const status2 = gl.clientWaitSync(sync2, gl.SYNC_FLUSH_COMMANDS_BIT, 1000);
+        var status1 = gl.clientWaitSync(sync1, 0, 0);
+        var status2 = gl.clientWaitSync(sync2, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
         gl.flush();
     } catch(e) { console.log(e); }
 
@@ -170,10 +171,10 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const sync4 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        var sync4 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.flush();
-        const status = gl.getSyncParameter(sync4, gl.SYNC_STATUS);
-        const condition = gl.getSyncParameter(sync4, gl.SYNC_CONDITION);
+        var status = gl.getSyncParameter(sync4, gl.SYNC_STATUS);
+        var condition = gl.getSyncParameter(sync4, gl.SYNC_CONDITION);
     } catch(e) { console.log(e); }
 
     try {
@@ -183,21 +184,21 @@ async function main() {
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray1);
-        const arrayLoc = gl.getUniformLocation(program, 'arrayTex');
+        var arrayLoc = gl.getUniformLocation(program, 'arrayTex');
         gl.uniform1i(arrayLoc, 0);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     } catch(e) { console.log(e); }
 
     try {
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray1);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray1);
+        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
+        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
         gl.deleteSync(sync1);
         gl.deleteSync(sync2);
         gl.deleteSync(sync3);
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray1);
         gl.deleteTexture(texArray1);
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray1);
-        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
         gl.deleteBuffer(tfBuffer1);
-        gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer1);
     } catch(e) { console.log(e); }
 }
 

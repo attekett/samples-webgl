@@ -170,10 +170,10 @@ void main() { fragColor = vec4(0.8, 0.4, 0.2, 1.0); }`;
         sync3 = gl.fenceSync(syncCond, 0);
         gl.flush();
         gl.waitSync(sync3, 0, gl.TIMEOUT_IGNORED);
-        gl.deleteSync(sync1);
-        gl.deleteSync(sync2);
         gl.clientWaitSync(sync1, syncFlag, 0);
         gl.getSyncParameter(sync1, gl.SYNC_STATUS);
+        gl.deleteSync(sync1);
+        gl.deleteSync(sync2);
         gl.isSync(sync1);
         gl.deleteSync(sync1);
         gl.waitSync(sync3, 0, gl.TIMEOUT_IGNORED);
@@ -198,13 +198,13 @@ void main() { fragColor = vec4(0.8, 0.4, 0.2, 1.0); }`;
         const qinfo1 = gl.getQuery(gl.ANY_SAMPLES_PASSED, gl.CURRENT_QUERY);
         const qinfo2 = gl.getQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, gl.CURRENT_QUERY);
         const qinfo3 = gl.getQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, gl.CURRENT_QUERY);
+        gl.getQueryParameter(q1, gl.QUERY_RESULT_AVAILABLE);
         gl.deleteQuery(q1);
         gl.deleteQuery(q2);
         gl.deleteQuery(q3);
         gl.deleteQuery(q4);
         gl.deleteQuery(q5);
         gl.deleteQuery(q1);
-        gl.getQueryParameter(q1, gl.QUERY_RESULT_AVAILABLE);
         gl.isQuery(q1);
     } catch(e) {}
 }

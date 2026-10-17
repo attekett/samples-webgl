@@ -16,7 +16,6 @@ async function main() {
     const isWebGL2 = gl instanceof WebGL2RenderingContext;
 
 // Check extension availability, but be smart about WebGL 2.0 core features
-const isWebGL2 = gl instanceof WebGL2RenderingContext;
 const missingExtensions = [];
 const availableAsCore = [];
 
@@ -54,10 +53,6 @@ if (missingExtensions.length > 0) {
     } else {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
-}
-
-if (availableAsCore.length > 0) {
-    console.log(`Note: Extensions ${availableAsCore.join(', ')} available as core WebGL 2.0 features`);
 }
 
 // Enable required extensions
@@ -223,15 +218,16 @@ void main() {
  gl.clear(gl.COLOR_BUFFER_BIT);
 
  // Simple tone mapping shader for screen display
- const screenFragmentShaderSource = `
+ const screenFragmentShaderSource = `#version 300 es
   precision highp float;
-  varying vec2 v_texCoord;
+  in vec2 v_texCoord;
+  out vec4 fragColor;
   uniform sampler2D u_hdrTexture;
   void main() {
-   vec4 hdrColor = texture2D(u_hdrTexture, v_texCoord);
+   vec4 hdrColor = texture(u_hdrTexture, v_texCoord);
    // Simple Reinhard tone mapping
    vec3 ldrColor = hdrColor.rgb / (hdrColor.rgb + vec3(1.0));
-   gl_FragColor = vec4(ldrColor, 1.0);
+   fragColor = vec4(ldrColor, 1.0);
   }
  `;
 
@@ -269,13 +265,7 @@ void main() {
  }
 }
 
-main().catch(err => {
-    // If the error string contains "PLAYWRIGHT_FIREFOX_LIMITATION", the Python runner
-    // knows to log it as an environmental limitation, not a test failure.
-    // Otherwise, it counts as a test failure/crash.
-    console.log(err.message); // Log the detailed error message for test runner detection
-    console.error(err); // Allowed for debugging, but DOM update is primary signal
-});
+main().catch(err => { throw err; });
 </script>
 </body>
 </html>

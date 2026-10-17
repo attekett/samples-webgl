@@ -24,7 +24,6 @@
                 gl.compileShader(shader);
                 if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
                     const log = gl.getShaderInfoLog(shader);
-                    console.error("Shader Compile Error:", log);
                     throw new Error("Shader Compile Error: " + log);
                 }
                 return shader;
@@ -37,7 +36,6 @@
                 gl.linkProgram(program);
                 if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
                     const log = gl.getProgramInfoLog(program);
-                    console.error("Program Link Error:", log);
                     throw new Error("Program Link Error: " + log);
                 }
                 return program;
@@ -284,16 +282,11 @@
 
             const error = gl.getError();
             if (error !== gl.NO_ERROR) {
-                console.error("WebGL Error Code:", error);
                 throw new Error("WebGL Error: " + error);
             }
-            console.log("Success");
         }
 
-        main().catch(e => {
-            console.error("Exception:", e.message);
-            console.error(e.stack);
-        });
+        main().catch(err => { throw err; });
     </script>
 </body>
 

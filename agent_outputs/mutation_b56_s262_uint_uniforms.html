@@ -138,15 +138,15 @@ async function main() {
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
-        gl.texImage2D(textureTarget, 0, texInternalFmt, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(textureTarget, 0, texInternalFmt, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * 4));
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(textureTarget, tex2);
-        gl.texImage2D(textureTarget, 0, texInternalFmt, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(textureTarget, 0, texInternalFmt, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(128 * 128 * 4));
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(textureTarget, tex3);
-        gl.texImage2D(textureTarget, 0, texInternalFmt, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(textureTarget, 0, texInternalFmt, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(64 * 64 * 4));
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(textureTarget, tex1);
@@ -276,16 +276,16 @@ async function main() {
         gl.uniform1ui(loc_val1, 0);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
 
+        gl.bindFramebuffer(fboTarget, fbo1);
         gl.deleteFramebuffer(fbo1);
         gl.deleteFramebuffer(fbo2);
-        gl.bindFramebuffer(fboTarget, fbo1);
 
-        gl.deleteBuffer(vbo2);
         gl.bindBuffer(bufferTarget, vbo2);
+        gl.deleteBuffer(vbo2);
 
+        gl.bindTexture(textureTarget, tex2);
         gl.deleteTexture(tex2);
         gl.deleteTexture(tex3);
-        gl.bindTexture(textureTarget, tex2);
     } catch(e) {}
 }
 

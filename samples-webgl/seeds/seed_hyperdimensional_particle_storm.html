@@ -88,19 +88,19 @@ async function main() {
     let tfInputs = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
     let tfOutputs = [gl.createBuffer(), gl.createBuffer(), gl.createBuffer()];
 
-    const particleData = new Float32Array(PARTICLE_COUNT * 4); // position + velocity
+    const particleStateData = new Float32Array(PARTICLE_COUNT * 4); // position + velocity
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-        particleData[i * 4] = (Math.random() - 0.5) * 4.0;
-        particleData[i * 4 + 1] = (Math.random() - 0.5) * 4.0;
-        particleData[i * 4 + 2] = (Math.random() - 0.5) * 4.0;
-        particleData[i * 4 + 3] = 1.0;
+        particleStateData[i * 4] = (Math.random() - 0.5) * 4.0;
+        particleStateData[i * 4 + 1] = (Math.random() - 0.5) * 4.0;
+        particleStateData[i * 4 + 2] = (Math.random() - 0.5) * 4.0;
+        particleStateData[i * 4 + 3] = 1.0;
     }
 
     for (let i = 0; i < 3; i++) {
         gl.bindBuffer(gl.ARRAY_BUFFER, tfInputs[i]);
-        gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.STREAM_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, particleStateData, gl.STREAM_DRAW);
         gl.bindBuffer(gl.ARRAY_BUFFER, tfOutputs[i]);
-        gl.bufferData(gl.ARRAY_BUFFER, particleData, gl.STREAM_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, particleStateData, gl.STREAM_DRAW);
     }
 
     // 5. CREATE TRANSFORM FEEDBACK OBJECT
@@ -396,6 +396,12 @@ async function main() {
 
     // PASS 2: Render to Multiple Targets with Instancing and Queries
     gl.useProgram(renderProgram);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, particleTexture);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_3D, volumeTexture);
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'uParticleTex'), 1);
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'uVolumeTex'), 2);
     gl.bindVertexArray(renderVAO);
     gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFramebuffer);
 

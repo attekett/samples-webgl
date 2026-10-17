@@ -170,7 +170,7 @@ async function main() {
         gl.colorMask(true, true, true, true);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
 
-        gl.drawBuffers([drawBuffer1, drawBuffer2]);
+        gl.drawBuffers([gl.NONE, drawBuffer1, drawBuffer2]);
         gl.colorMask(true, false, true, false);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
 
@@ -190,9 +190,9 @@ async function main() {
         gl.bindTexture(textureTarget, textures[0]);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
 
-        gl.drawBuffers([drawBuffer0]);
-        gl.drawBuffers([drawBuffer0, drawBuffer1]);
-        gl.drawBuffers([drawBuffer0, drawBuffer1, drawBuffer2, drawBuffer3]);
+        gl.drawBuffers([gl.BACK]);
+        gl.drawBuffers([gl.NONE]);
+        gl.drawBuffers([gl.BACK]);
         gl.colorMask(true, false, true, false);
         gl.colorMask(true, true, true, true);
     } catch(e) { throw e; }

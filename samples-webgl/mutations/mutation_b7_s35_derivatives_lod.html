@@ -15,6 +15,8 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tex1, tex2, tex3;
+    let blk1_buf1, blk1_buf2, blk1_buf3;
 
     const texSize = 256;
     const texPixels = texSize * texSize;
@@ -90,29 +92,32 @@ async function main() {
             4, 4,
             0, 4
         ]);
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
-        gl.bindBuffer(bufferTarget, buffer1);
-        gl.bindBuffer(bufferTarget, buffer2);
-        gl.bindBuffer(bufferTarget, buffer1);
+        blk1_buf1 = gl.createBuffer();
+        blk1_buf2 = gl.createBuffer();
+        blk1_buf3 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, blk1_buf1);
+        gl.bindBuffer(bufferTarget, blk1_buf2);
+        gl.bindBuffer(bufferTarget, blk1_buf1);
         gl.bufferData(bufferTarget, positions, bufferUsage);
         gl.bufferData(bufferTarget, 1024, bufferUsage);
         gl.bufferData(bufferTarget, positions, bufferUsage);
-        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, blk1_buf2);
         gl.bufferData(bufferTarget, texCoords, bufferUsage);
     } catch(e) {}
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
         gl.texStorage2D(textureTarget, mipLevels, gl.RGBA8, texSize, texSize);
+        gl.bindTexture(textureTarget, tex2);
         gl.texStorage2D(textureTarget, 4, gl.RGBA8, 512, 512);
+        gl.bindTexture(textureTarget, tex3);
         gl.texStorage2D(textureTarget, mipLevels, gl.RGBA8, texSize, texSize);
+        gl.bindTexture(textureTarget, tex1);
         for (let level = 0; level < mipLevels; level++) {
             const levelSize = texSize >> level;
             if (levelSize < 1) break;
@@ -179,11 +184,9 @@ async function main() {
         gl.enableVertexAttribArray(tcLoc);
         gl.disableVertexAttribArray(tcLoc);
         gl.enableVertexAttribArray(tcLoc);
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, blk1_buf1);
         gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, blk1_buf2);
         gl.vertexAttribPointer(tcLoc, 2, gl.FLOAT, false, 0, 0);
     } catch(e) {}
 
@@ -199,8 +202,8 @@ async function main() {
         gl.activeTexture(gl.TEXTURE0);
         gl.activeTexture(gl.TEXTURE1);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(textureTarget, gl.createTexture());
-        gl.bindTexture(textureTarget, gl.createTexture());
+        gl.bindTexture(textureTarget, tex1);
+        gl.bindTexture(textureTarget, tex1);
     } catch(e) {}
 
     try {
@@ -223,7 +226,7 @@ async function main() {
             gl.uniform1f(lodLoc, lod * 1.5);
             gl.uniform1f(lodLoc, lod);
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-            gl.drawArrays(gl.TRIANGLES, 0, 12);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
             gl.uniform1f(lodLoc, lod * 0.5);
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
@@ -237,9 +240,9 @@ async function main() {
         gl.useProgram(null);
         const delTex = gl.createTexture();
         gl.bindTexture(textureTarget, delTex);
-        gl.deleteTexture(delTex);
         gl.bindTexture(textureTarget, delTex);
         gl.texImage2D(textureTarget, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.deleteTexture(delTex);
     } catch(e) {}
 }
 

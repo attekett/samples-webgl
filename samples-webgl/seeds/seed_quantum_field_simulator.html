@@ -270,9 +270,11 @@ void main() { discard; }`);
     gl.bindTexture(gl.TEXTURE_2D, fieldDataTexture);
     gl.bindVertexArray(particleVAO);
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+    gl.enable(gl.RASTERIZER_DISCARD);
     gl.beginTransformFeedback(gl.POINTS);
     gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
     gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
 
     // MRT rendering to framebuffer
     gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFramebuffer);
@@ -283,6 +285,8 @@ void main() { discard; }`);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, fieldTextureArray);
     gl.uniform1i(gl.getUniformLocation(renderProgram, 'fieldTexture'), 0);
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'mrtTexture0'), 2);
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'mrtTexture1'), 2);
     gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
 
     // Final composite to screen

@@ -4,13 +4,11 @@
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
 // CONFIGURATION: Define required extensions here
-const REQUIRED_EXTENSIONS = [
- 'WEBGL_draw_buffers'
-];
+const REQUIRED_EXTENSIONS = [];
 
 async function main() {
  const canvas = document.getElementById('webgl-canvas');
- const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+ const gl = canvas.getContext('webgl2');
  if (!gl) throw new Error("WebGL not supported");
 
  // 1. EXTENSION GATING
@@ -21,7 +19,6 @@ async function main() {
  }
 
  // 2. ENABLE REQUIRED EXTENSIONS
- const drawBuffersExt = gl.getExtension('WEBGL_draw_buffers');
 
  // ==========================================
  // COMPLEX IMPLEMENTATION STARTS HERE
@@ -29,15 +26,15 @@ async function main() {
 
  // Fuzzing variables for MRT configuration
  const mrtTargets = 4; // Number of render targets to use
- const drawBuffers = [drawBuffersExt.COLOR_ATTACHMENT0_WEBGL, drawBuffersExt.COLOR_ATTACHMENT1_WEBGL, drawBuffersExt.COLOR_ATTACHMENT2_WEBGL, drawBuffersExt.COLOR_ATTACHMENT3_WEBGL];
+ const drawBuffers = [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3];
  const blendMode = gl.FUNC_ADD; // Blend equation for MRT
  const attachmentCount = 4; // Attachments to configure
 
  // Create vertex shader for MRT geometry
- const vertexShaderSource = `
-   attribute vec2 a_position;
-   attribute vec3 a_color;
-   varying vec3 v_color;
+ const vertexShaderSource = `#version 300 es
+   layout(location = 0) in vec2 a_position;
+   layout(location = 1) in vec3 a_color;
+   out vec3 v_color;
    void main() {
      gl_Position = vec4(a_position, 0.0, 1.0);
      v_color = a_color;
@@ -45,9 +42,9 @@ async function main() {
  `;
 
  // Create fragment shader for MRT outputs (deferred rendering style)
- const fragmentShaderSource = `
+ const fragmentShaderSource = `#version 300 es
    precision mediump float;
-   varying vec3 v_color;
+   in vec3 v_color;
 
    // MRT outputs for deferred rendering
    layout(location = 0) out vec4 fragColor0; // Albedo
@@ -126,12 +123,12 @@ async function main() {
    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-   gl.framebufferTexture2D(gl.FRAMEBUFFER, drawBuffersExt.COLOR_ATTACHMENT0_WEBGL + i, gl.TEXTURE_2D, texture, 0);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, texture, 0);
    colorTextures.push(texture);
  }
 
  // Configure draw buffers (MRT)
- drawBuffersExt.drawBuffersWEBGL(drawBuffers.slice(0, mrtTargets));
+ gl.drawBuffers(drawBuffers.slice(0, mrtTargets));
 
  // Check framebuffer completeness
  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
@@ -182,10 +179,10 @@ async function main() {
  }
 
  // Redundant MRT state changes (fragile state machine)
- drawBuffersExt.drawBuffersWEBGL([drawBuffersExt.NONE]);
- drawBuffersExt.drawBuffersWEBGL(drawBuffers.slice(0, 1));
- drawBuffersExt.drawBuffersWEBGL(drawBuffers.slice(0, 2));
- drawBuffersExt.drawBuffersWEBGL(drawBuffers.slice(0, mrtTargets));
+ gl.drawBuffers([gl.NONE]);
+ gl.drawBuffers(drawBuffers.slice(0, 1));
+ gl.drawBuffers(drawBuffers.slice(0, 2));
+ gl.drawBuffers(drawBuffers.slice(0, mrtTargets));
 
  // Render to MRT framebuffer
  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
@@ -201,32 +198,33 @@ async function main() {
  gl.clear(gl.COLOR_BUFFER_BIT);
 
  // Simple shader to display MRT results (composite the attachments)
- const displayVertexShaderSource = `
-   attribute vec2 a_position;
-   attribute vec2 a_texCoord;
-   varying vec2 v_texCoord;
+ const displayVertexShaderSource = `#version 300 es
+   layout(location = 0) in vec2 a_position;
+   layout(location = 1) in vec2 a_texCoord;
+   out vec2 v_texCoord;
    void main() {
      gl_Position = vec4(a_position, 0.0, 1.0);
      v_texCoord = a_texCoord;
    }
  `;
 
- const displayFragmentShaderSource = `
+ const displayFragmentShaderSource = `#version 300 es
    precision mediump float;
-   varying vec2 v_texCoord;
+   in vec2 v_texCoord;
+   out vec4 fragColor;
    uniform sampler2D u_texture0;
    uniform sampler2D u_texture1;
    uniform sampler2D u_texture2;
    uniform sampler2D u_texture3;
 
    void main() {
-     vec4 albedo = texture2D(u_texture0, v_texCoord);
-     vec4 normal = texture2D(u_texture1, v_texCoord);
-     vec4 position = texture2D(u_texture2, v_texCoord);
-     vec4 material = texture2D(u_texture3, v_texCoord);
+     vec4 albedo = texture(u_texture0, v_texCoord);
+     vec4 normal = texture(u_texture1, v_texCoord);
+     vec4 position = texture(u_texture2, v_texCoord);
+     vec4 material = texture(u_texture3, v_texCoord);
 
      // Composite MRT results for visual demonstration
-     gl_FragColor = (albedo + normal + position + material) * 0.25;
+     fragColor = (albedo + normal + position + material) * 0.25;
    }
  `;
 
@@ -298,12 +296,7 @@ async function main() {
  }
 }
 
-main().catch(err => {
- // If the error string contains "UNSUPPORTED_EXTENSIONS", the Python runner
- // knows to log it to UNSUPPORTED.md and skip.
- // Otherwise, it counts as a test failure/crash.
- console.error(err); // Allowed for debugging, but DOM update is primary signal
-});
+main().catch(err => { throw err; });
 </script>
 </body>
 </html>

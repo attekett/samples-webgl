@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let buffer1, buffer2, buffer3, tex1, tex2, tex3;
 
     const arraySize = 8;
     const texSize = 128;
@@ -80,9 +81,9 @@ async function main() {
             0, 1
         ]);
         const layers = new Float32Array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3]);
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
+        buffer3 = gl.createBuffer();
         const buffer4 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bindBuffer(bufferTarget, buffer2);
@@ -95,15 +96,18 @@ async function main() {
     } catch(e) {}
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(arrayTarget, tex1);
         gl.bindTexture(arrayTarget, tex2);
         gl.bindTexture(arrayTarget, tex1);
         gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, arraySize);
+        gl.bindTexture(arrayTarget, tex2);
         gl.texStorage3D(arrayTarget, 1, gl.RGBA8, 256, 256, 16);
+        gl.bindTexture(arrayTarget, tex3);
         gl.texStorage3D(arrayTarget, 1, textureFormat, texSize, texSize, arraySize);
+        gl.bindTexture(arrayTarget, tex1);
         for (let layer = 0; layer < arraySize; layer++) {
             const data = new Uint8Array(texPixels * 4);
             for (let i = 0; i < texPixels; i++) {
@@ -165,9 +169,6 @@ async function main() {
         gl.enableVertexAttribArray(posLoc);
         gl.enableVertexAttribArray(tcLoc);
         gl.enableVertexAttribArray(layerLoc);
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
         gl.bindBuffer(bufferTarget, buffer2);
@@ -184,8 +185,8 @@ async function main() {
         gl.activeTexture(gl.TEXTURE0);
         gl.activeTexture(gl.TEXTURE1);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(arrayTarget, gl.createTexture());
-        gl.bindTexture(arrayTarget, gl.createTexture());
+        gl.bindTexture(arrayTarget, tex1);
+        gl.bindTexture(arrayTarget, tex1);
     } catch(e) {}
 
     try {
@@ -210,7 +211,7 @@ async function main() {
             const layerLoc = gl.getAttribLocation(program, 'a_layer');
             gl.vertexAttribPointer(layerLoc, 1, gl.FLOAT, false, 0, 0);
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-            gl.drawArrays(gl.TRIANGLES, 0, 18);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         }
     } catch(e) {}

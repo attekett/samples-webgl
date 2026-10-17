@@ -30,14 +30,14 @@ async function main() {
  // Additional shared buffer for complex operations
  const sharedBuffer = gl.createBuffer();
  gl.bindBuffer(gl.ARRAY_BUFFER, sharedBuffer);
- const sharedData = new Float32Array(2048);
- for (let i = 0; i < 2048; i++) sharedData[i] = Math.sin(i * 0.01) * Math.cos(i * 0.005);
- gl.bufferData(gl.ARRAY_BUFFER, sharedData, gl.STATIC_DRAW);
+ const sharedBufferData = new Float32Array(2048);
+ for (let i = 0; i < 2048; i++) sharedBufferData[i] = Math.sin(i * 0.01) * Math.cos(i * 0.005);
+ gl.bufferData(gl.ARRAY_BUFFER, sharedBufferData, gl.STATIC_DRAW);
 
  // 3D texture for complex sampling
  const tex3D = gl.createTexture();
  gl.bindTexture(gl.TEXTURE_3D, tex3D);
- gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 32, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+ gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 32, 32, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(32 * 32 * 32 * 4));
  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
  gl.generateMipmap(gl.TEXTURE_3D);
@@ -81,18 +81,18 @@ async function main() {
  const vertSrc = `#version 300 es
  layout(location = 0) in vec4 position;
  layout(location = 1) in vec4 instanceData;
- layout(std140, binding = 1) uniform SharedData {
-  float data[1024];
+ layout(std140) uniform SharedData {
+  vec4 data[256];
  };
  uniform mat4 mvp;
  out vec4 tfPos;
  out vec4 tfData;
  void main() {
-  uint idx = uint(gl_InstanceID) % 1024u;
+  uint idx = uint(gl_InstanceID) % 256u;
   vec4 pos = mvp * position + instanceData;
   gl_Position = pos;
   tfPos = pos;
-  tfData = instanceData * 2.0 + vec4(data[idx], data[(idx + 1u) % 1024u], data[(idx + 2u) % 1024u], 1.0);
+  tfData = instanceData * 2.0 + vec4(data[idx].x, data[(idx + 1u) % 256u].x, data[(idx + 2u) % 256u].x, 1.0);
  }
  `;
  const fragSrc = `#version 300 es
@@ -120,6 +120,7 @@ async function main() {
  gl.attachShader(renderProgram, fragShader);
  gl.transformFeedbackVaryings(renderProgram, ['tfPos', 'tfData'], gl.SEPARATE_ATTRIBS);
  gl.linkProgram(renderProgram);
+ gl.uniformBlockBinding(renderProgram, gl.getUniformBlockIndex(renderProgram, 'SharedData'), 1);
 
  // Post-process shaders
  const ppVertSrc = `#version 300 es

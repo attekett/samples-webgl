@@ -45,6 +45,7 @@ void main() {
 
     const fsInstanced = `#version 300 es
 precision highp float;
+precision highp sampler3D;
 in vec3 texCoord;
 out vec4 fragColor;
 uniform sampler3D tex3D;
@@ -123,6 +124,7 @@ void main() {
     gl.beginTransformFeedback(gl.TRIANGLES);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.endTransformFeedback();
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
 
     gl.disableVertexAttribArray(posLocFb);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -142,12 +144,12 @@ void main() {
 
     const mvpLocIn = gl.getUniformLocation(programInstanced, 'modelViewProjection');
     gl.uniformMatrix4fv(mvpLocIn, false, mvp);
-    const texLoc = gl.getUniformLocation(programInstanced, 'tex3D');
+    let texLoc = gl.getUniformLocation(programInstanced, 'tex3D');
     gl.uniform1i(texLoc, 0);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_3D, tex3D);
-    const texLoc = gl.getUniformLocation(programInstanced, 'tex3D');
+    texLoc = gl.getUniformLocation(programInstanced, 'tex3D');
     gl.uniform1i(texLoc, 0);
 
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, 3);

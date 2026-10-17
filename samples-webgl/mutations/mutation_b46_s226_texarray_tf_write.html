@@ -136,7 +136,7 @@ async function main() {
         for (let i = 0; i < numLayers; i++) {
             const tfBuffer = gl.createBuffer();
             gl.bindBuffer(tfTarget, tfBuffer);
-            gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_COPY);
+            gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_READ);
             tfBuffers.push(tfBuffer);
             const tf = gl.createTransformFeedback();
             gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
@@ -213,6 +213,7 @@ async function main() {
     try {
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, transformFeedbacks[0]);
         gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.endTransformFeedback();
         gl.beginTransformFeedback(gl.TRIANGLES);
     } catch(e) {}
 
@@ -222,7 +223,8 @@ async function main() {
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, texArray, 0, 200);
+        gl.bindTexture(texTarget, null);
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, texArray, 0, 100);
         gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) {}

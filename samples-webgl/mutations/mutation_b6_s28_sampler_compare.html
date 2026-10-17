@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let depthTex, sampler1, sampler2, sampler3, fbo;
 
     const texSize = 256;
     const samplerCount = 3;
@@ -25,28 +26,28 @@ async function main() {
     const bufferTarget = gl.ARRAY_BUFFER;
 
     try {
-        const depthTex = gl.createTexture();
+        depthTex = gl.createTexture();
         gl.bindTexture(textureTarget, depthTex);
         gl.bindTexture(textureTarget, null);
         gl.bindTexture(textureTarget, depthTex);
         gl.texStorage2D(textureTarget, 1, gl.DEPTH_COMPONENT24, texSize, texSize);
-        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     } catch(e) {}
 
     try {
-        const sampler1 = gl.createSampler();
-        const sampler2 = gl.createSampler();
-        const sampler3 = gl.createSampler();
+        sampler1 = gl.createSampler();
+        sampler2 = gl.createSampler();
+        sampler3 = gl.createSampler();
         gl.bindSampler(0, sampler1);
         gl.bindSampler(0, sampler2);
         gl.bindSampler(0, sampler1);
         gl.samplerParameteri(sampler1, gl.TEXTURE_COMPARE_MODE, compareMode);
         gl.samplerParameteri(sampler1, gl.TEXTURE_COMPARE_FUNC, compareFunc);
-        gl.samplerParameteri(sampler1, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.samplerParameteri(sampler1, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.samplerParameteri(sampler1, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.samplerParameteri(sampler1, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     } catch(e) {}
 
     try {
@@ -59,9 +60,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        gl.samplerParameteri(sampler3, gl.TEXTURE_COMPARE_MODE, gl.NONE);
-        gl.samplerParameteri(sampler3, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.samplerParameteri(sampler3, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.samplerParameteri(sampler3, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+        gl.samplerParameteri(sampler3, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.samplerParameteri(sampler3, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.samplerParameteri(sampler3, gl.TEXTURE_WRAP_S, gl.REPEAT);
         gl.samplerParameteri(sampler3, gl.TEXTURE_WRAP_T, gl.REPEAT);
         gl.bindSampler(0, sampler1);
@@ -97,6 +98,7 @@ async function main() {
 
     const fragmentShaderSource = `#version 300 es
         precision highp float;
+        precision highp sampler2DShadow;
         in vec2 vTexCoord;
         in float vDepthRef;
         uniform sampler2DShadow uShadowMap;
@@ -133,7 +135,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo = gl.createFramebuffer();
+        fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
@@ -157,16 +159,16 @@ async function main() {
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         gl.bindSampler(0, sampler2);
-        gl.drawArrays(gl.TRIANGLES, 0, 12);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.bindSampler(0, sampler3);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) {}
 
     try {
         gl.bindSampler(0, sampler1);
-        gl.deleteSampler(sampler1);
         gl.bindSampler(0, sampler1);
         gl.samplerParameteri(sampler1, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.deleteSampler(sampler1);
     } catch(e) {}
 }
 

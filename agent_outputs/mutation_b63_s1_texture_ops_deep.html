@@ -183,14 +183,14 @@ void main() {
 
     try {
         gl.bindTexture(texTarget, tex0);
-        gl.deleteTexture(tex0);
         gl.bindTexture(texTarget, tex0);
+        gl.deleteTexture(tex0);
         gl.isTexture(tex0);
         gl.bindTexture(texTarget, tex1);
-        gl.deleteTexture(tex1);
         gl.bindTexture(texTarget, tex1);
-        gl.deleteTexture(tex2);
+        gl.deleteTexture(tex1);
         gl.bindTexture(texTarget, tex2);
+        gl.deleteTexture(tex2);
         gl.deleteFramebuffer(fbo);
         gl.deleteBuffer(vBuf);
         gl.deleteShader(vs);

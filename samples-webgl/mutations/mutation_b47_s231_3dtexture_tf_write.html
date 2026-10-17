@@ -32,6 +32,7 @@ void main() {
 
 const fsSource = `#version 300 es
 precision highp float;
+precision highp sampler3D;
 in vec3 v_texCoord;
 in float v_sliceIdx;
 out vec4 fragColor;
@@ -114,12 +115,12 @@ async function main() {
         for (let i = 0; i < TF_BUFFER_COUNT; i++) {
             const coordBuf = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, coordBuf);
-            gl.bufferData(gl.ARRAY_BUFFER, 6 * 3 * 4, gl.DYNAMIC_COPY);
+            gl.bufferData(gl.ARRAY_BUFFER, 6 * 3 * 4, gl.DYNAMIC_READ);
             tfCoordBuffers.push(coordBuf);
 
             const idxBuf = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, idxBuf);
-            gl.bufferData(gl.ARRAY_BUFFER, 6 * 4, gl.DYNAMIC_COPY);
+            gl.bufferData(gl.ARRAY_BUFFER, 6 * 4, gl.DYNAMIC_READ);
             tfBuffers.push(idxBuf);
         }
     } catch (e) { throw e; }

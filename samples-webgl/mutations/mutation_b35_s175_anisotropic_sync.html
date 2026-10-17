@@ -160,7 +160,7 @@ async function main() {
 
         try {
             if (draw % 2 === 0) {
-                gl.clientWaitSync(syncs[syncs.length - 1], flushCommandsFlag, gl.TIMEOUT_IGNORED);
+                gl.clientWaitSync(syncs[syncs.length - 1], flushCommandsFlag, 0);
             } else {
                 gl.clientWaitSync(syncs[syncs.length - 1], 0, 0);
             }

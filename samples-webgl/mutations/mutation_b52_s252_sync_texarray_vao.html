@@ -155,7 +155,7 @@ async function main() {
         gl.clear(gl.COLOR_BUFFER_BIT);
     } catch(e) {}
 
-    const timeouts = [0, gl.TIMEOUT_IGNORED, 1000000, 10000000];
+    const timeouts = [0, 1, 1000000, 10000000];
     try {
         for (let batch = 0; batch < numLayers / layerBatchSize; batch++) {
             const syncIdx = batch % numSyncs;
@@ -193,7 +193,7 @@ async function main() {
         const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.uniform1f(uLayerLoc, 128);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
-        gl.clientWaitSync(sync, gl.SYNC_FLUSH_COMMANDS_BIT, gl.TIMEOUT_IGNORED);
+        gl.clientWaitSync(sync, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
         gl.deleteSync(sync);
         gl.bindVertexArray(null);
     } catch(e) {}
@@ -219,7 +219,7 @@ async function main() {
         const sync2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.uniform1f(uLayerLoc, 64);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
-        gl.clientWaitSync(sync2, 0, gl.TIMEOUT_IGNORED);
+        gl.clientWaitSync(sync2, 0, 0);
         gl.deleteSync(sync1);
         gl.deleteSync(sync2);
     } catch(e) {}

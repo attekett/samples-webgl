@@ -77,11 +77,16 @@ async function main() {
         textureData[i + 2] = ((i / 65536) % 256);
         textureData[i + 3] = 255;
     }
+    let finalQuery;
 
     try {
         for (let layer = 0; layer < numLayers; layer++) {
             gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, texSize, texSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, textureData);
         }
+    } catch(e) {}
+
+    try {
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
     } catch(e) {}
 
     const queries = [];
@@ -153,16 +158,18 @@ async function main() {
 
     try {
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[0].obj);
-        gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[1].obj);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, queries[1].obj);
     } catch(e) {}
 
     try {
-        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE);
     } catch(e) {}
 
     try {
         for (let iter = 0; iter < pollIterations; iter++) {
             for (let q = 0; q < queries.length; q++) {
+                if (queries[q].type === gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN) continue;
                 const available = gl.getQueryParameter(queries[q].obj, gl.QUERY_RESULT_AVAILABLE);
                 if (available) {
                     const result = gl.getQueryParameter(queries[q].obj, gl.QUERY_RESULT);
@@ -200,15 +207,17 @@ async function main() {
     try {
         const unusedQuery = gl.createQuery();
         gl.deleteQuery(unusedQuery);
-        gl.getQueryParameter(unusedQuery, gl.QUERY_RESULT);
+        gl.isQuery(unusedQuery);
     } catch(e) {}
 
     try {
-        gl.beginQuery(gl.ANY_SAMPLES_PASSED, null);
+        finalQuery = gl.createQuery();
+        gl.beginQuery(gl.ANY_SAMPLES_PASSED, finalQuery);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
     } catch(e) {}
 
     try {
-        gl.getQueryParameter(null, gl.QUERY_RESULT_AVAILABLE);
+        gl.getQueryParameter(finalQuery, gl.QUERY_RESULT_AVAILABLE);
     } catch(e) {}
 }
 

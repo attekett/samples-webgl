@@ -234,6 +234,8 @@ async function main() {
         }
     }
 
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+
     for (let layer = 0; layer < 8; layer++) {
         try {
             gl.bindFramebuffer(gl.FRAMEBUFFER, arrayFbo);
@@ -252,6 +254,8 @@ async function main() {
             throw e;
         }
     }
+
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArray);
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);

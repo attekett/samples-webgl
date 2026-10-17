@@ -19,7 +19,7 @@ async function main() {
 
     let queryDeleteCount = 12;
     let vertexCount = 640;
-    let tfBufferSize = 16384;
+    let tfBufferSize = 32768;
     let deleteIterations = 8;
     let recreateCount = 6;
     let uafAttempts = 4;
@@ -206,9 +206,10 @@ async function main() {
         gl.endTransformFeedback();
         gl.endQuery(TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
 
-        gl.deleteQuery(deleteThenReadQuery);
-
         let uafResult = gl.getQueryParameter(deleteThenReadQuery, QUERY_RESULT_AVAILABLE);
+
+        gl.deleteQuery(deleteThenReadQuery);
+        let uafIs = gl.isQuery(deleteThenReadQuery);
 
         gl.disable(gl.RASTERIZER_DISCARD);
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
@@ -223,13 +224,12 @@ async function main() {
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, deletedTf);
         gl.bindBufferBase(tfBufferTarget, 0, tfBuffer);
 
-        gl.deleteTransformFeedback(deletedTf);
-
         gl.beginTransformFeedback(tfMode);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount / 4);
         gl.endTransformFeedback();
 
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.deleteTransformFeedback(deletedTf);
         gl.disable(gl.RASTERIZER_DISCARD);
         gl.bindVertexArray(null);
     } catch (e) {}

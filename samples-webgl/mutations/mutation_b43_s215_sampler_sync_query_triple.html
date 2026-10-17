@@ -207,7 +207,7 @@ async function main() {
     try {
         for (let i = 0; i < fences.length; i++) {
             if (fences[i]) {
-                const status = gl.clientWaitSync(fences[i], gl.SYNC_FLUSH_COMMANDS_BIT, 1000);
+                const status = gl.clientWaitSync(fences[i], gl.SYNC_FLUSH_COMMANDS_BIT, 0);
             }
         }
     } catch(e) {}

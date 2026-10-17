@@ -14,7 +14,7 @@ async function main() {
     // Biomass: Multiple texture views on same resource, MSAA with sparse allocation, GPU-driven indirect pattern
 
     // FUZZING PARAMETERS: Mix literals with variables for mutation surface
-    const SPARSE_LEVELS = 16;
+    const SPARSE_LEVELS = 9;
     const MSAA_SAMPLES = 4;
     const INDIRECT_COUNT = 64;
     const TEXTURE_VIEW_COUNT = 6;
@@ -36,8 +36,8 @@ async function main() {
     const primitiveRestart = gl.UNDEFINED;
 
     // STATE CHURN SEEDS
-    const enableCaps = [gl.DEPTH_TEST, gl.STENCIL_TEST, gl.BLEND, gl.CULL_FACE, gl.SCISSOR_TEST, gl.DITHER, gl.POLYGON_OFFSET_FILL, gl.RASTERIZER_DISCARD, gl.MULTISAMPLE];
-    const disableCaps = [gl.DEPTH_TEST, gl.STENCIL_TEST, gl.BLEND, gl.CULL_FACE, gl.SCISSOR_TEST, gl.DITHER, gl.POLYGON_OFFSET_FILL, gl.RASTERIZER_DISCARD, gl.MULTISAMPLE];
+    const enableCaps = [gl.DEPTH_TEST, gl.STENCIL_TEST, gl.BLEND, gl.CULL_FACE, gl.SCISSOR_TEST, gl.DITHER, gl.POLYGON_OFFSET_FILL, gl.RASTERIZER_DISCARD, gl.SAMPLE_COVERAGE];
+    const disableCaps = [gl.DEPTH_TEST, gl.STENCIL_TEST, gl.BLEND, gl.CULL_FACE, gl.SCISSOR_TEST, gl.DITHER, gl.POLYGON_OFFSET_FILL, gl.RASTERIZER_DISCARD, gl.SAMPLE_COVERAGE];
     const activeTextureUnits = [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3, gl.TEXTURE4, gl.TEXTURE5, gl.TEXTURE6, gl.TEXTURE7, gl.TEXTURE8, gl.TEXTURE9, gl.TEXTURE10, gl.TEXTURE11, gl.TEXTURE12, gl.TEXTURE13, gl.TEXTURE14, gl.TEXTURE15];
 
     // Phase 1: EXTREME STATE POISONING - State machine fragility creation
@@ -53,6 +53,7 @@ async function main() {
         disableCaps.forEach(cap => { gl.enable(cap); gl.disable(cap); gl.enable(cap); });
     }
 
+    gl.disable(gl.RASTERIZER_DISCARD);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 
     // Configure depth/stencil
@@ -91,7 +92,7 @@ async function main() {
         }
 
         // Use texImage2D with null data for storage
-        gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(size));
 
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, level);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, level);
@@ -117,20 +118,22 @@ async function main() {
         const viewWrapS = wrapModes[i % wrapModes.length];
         const viewWrapT = wrapModes[(i + 1) % wrapModes.length];
         const viewSwizzle = [
-            (i % 4) === 0 ? gl.RED : gl.ZERO,
-            (i % 4) === 1 ? gl.GREEN : gl.ZERO,
-            (i % 4) === 2 ? gl.BLUE : gl.ZERO,
-            (i % 4) === 3 ? gl.ALPHA : gl.ZERO
+            (i % 4) === 0 ? gl.REPEAT : gl.CLAMP_TO_EDGE,
+            (i % 4) === 1 ? 1 : 0,
+            (i % 4) === 2 ? 8 : 1,
+            (i % 4) === 3 ? gl.GEQUAL : gl.LEQUAL
         ];
+
+        gl.texStorage2D(gl.TEXTURE_2D, SPARSE_LEVELS, gl.RGBA8, 256, 256);
 
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, viewMinFilter);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, viewWrapS);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, viewWrapT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_SWIZZLE_R, viewSwizzle[0]);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_SWIZZLE_G, viewSwizzle[1]);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_SWIZZLE_B, viewSwizzle[2]);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_SWIZZLE_A, viewSwizzle[3]);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_R, viewSwizzle[0]);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_LOD, viewSwizzle[1]);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LOD, viewSwizzle[2]);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, viewSwizzle[3]);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, i % SPARSE_LEVELS);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, (i + 2) % SPARSE_LEVELS);
 
@@ -160,8 +163,13 @@ async function main() {
         }
 
         // Fill with integer data
-        const texImage = gl.texImage2D ? null : gl.texImage3D(texType, 0, format, 64, 64, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-        gl.texImage2D(texType, 0, format, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        const scratchTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, scratchTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        const scratchArray = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, scratchArray);
+        gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 64, 64, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindTexture(texType, tex);
 
         integerTexes.push(tex);
     }
@@ -294,34 +302,19 @@ async function main() {
     `);
     gl.compileShader(fragmentShader);
 
-    const computeShader = gl.createShader(gl.COMPUTE_SHADER);
+    const computeShader = gl.createShader(gl.FRAGMENT_SHADER);
     gl.shaderSource(computeShader, `#version 300 es
     precision highp float;
 
-    layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+    in vec2 vTexCoord;
+    in vec3 vNormal;
+    in vec4 vColor;
 
-    layout(binding = 0, rgba8ui) uniform uimage2D uImage2D;
-    layout(binding = 1, rgba8ui) uniform uimage2DArray uImage2DArray;
-
-    layout(std430, binding = 2) buffer IndirectData {
-        uint drawCount;
-        uint instanceCount;
-        uint firstVertex;
-        uint firstInstance;
-    };
+    layout(location = 0) out vec4 fragColor;
 
     void main() {
-        ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-        if (coord.x >= 64 || coord.y >= 64) return;
-
-        // Atomic operations for compute shader
-        uint sum = 0;
-        for (int i = 0; i < 8; i++) {
-            sum += imageAtomicAdd(uImage2D, coord, i);
-        }
-
-        uvec4 value = uvec4(sum, sum * 2, sum * 3, sum * 4);
-        imageStore(uImage2D, coord, value);
+        uvec4 value = uvec4(vColor * 255.0);
+        fragColor = vec4(value) / 255.0 + vec4(vNormal * 0.0, 0.0) + vec4(vTexCoord * 0.0, 0.0, 0.0);
     }
     `);
     gl.compileShader(computeShader);
@@ -333,6 +326,7 @@ async function main() {
     gl.linkProgram(renderProgram);
 
     const computeProgram = gl.createProgram();
+    gl.attachShader(computeProgram, vertexShader);
     gl.attachShader(computeProgram, computeShader);
     gl.linkProgram(computeProgram);
 
@@ -346,6 +340,7 @@ async function main() {
 
     // Phase 11: BINDING LAYOUTS
     // Bind textures to texture units for shaders
+    gl.useProgram(renderProgram);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texViews[0].texture);
     gl.uniform1i(gl.getUniformLocation(renderProgram, 'uTexView0'), 0);
@@ -361,7 +356,7 @@ async function main() {
     // Bind integer textures to storage
     for (let i = 0; i < STORAGE_FORMATS; i++) {
         gl.activeTexture(gl.TEXTURE3 + i);
-        gl.bindTexture(gl.TEXTURE_2D, integerTexes[i]);
+        gl.bindTexture(textureViews[i % textureViews.length], integerTexes[i]);
     }
 
     // Bind copy buffers
@@ -369,10 +364,6 @@ async function main() {
         gl.bindBuffer(gl.COPY_READ_BUFFER, copyPairs[i].src);
         gl.bindBuffer(gl.COPY_WRITE_BUFFER, copyPairs[i].dst);
     }
-
-    // Bind compute texture images
-    gl.bindImageTexture(0, integerTexes[0], 0, false, 0, gl.READ_WRITE, gl.RGBA8UI);
-    gl.bindImageTexture(1, integerTexes[1], 0, false, 0, gl.READ_WRITE, gl.RGBA8UI);
 
     // Phase 12: EXECUTION - MSAA RENDERING
     gl.bindFramebuffer(gl.FRAMEBUFFER, msaFBO);
@@ -408,7 +399,7 @@ async function main() {
     gl.vertexAttribPointer(2, 3, gl.FLOAT, false, stride, 4 * 4);
 
     gl.enableVertexAttribArray(3);
-    gl.vertexAttribPointer(3, 4, gl.FLOAT, false, stride, 7 * 4);
+    gl.vertexAttribPointer(3, 4, gl.FLOAT, false, stride, 3 * 4);
 
     // Set uniform matrices
     gl.uniformMatrix4fv(gl.getUniformLocation(renderProgram, 'uModel'), false, new Float32Array([
@@ -449,7 +440,7 @@ async function main() {
     }
 
     // Execute compute shader
-    gl.dispatchCompute(4, 4, 1);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     // Phase 14: FINAL READBACK AND CLEANUP
     // Read MSAA sample counts
@@ -459,6 +450,11 @@ async function main() {
 
     // Blit MSAA framebuffer to regular framebuffer
     const regularFBO = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, regularFBO);
+    const regularColorTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, regularColorTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, regularColorTex, 0);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msaFBO);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, regularFBO);
     gl.blitFramebuffer(0, 0, 256, 256, 0, 0, 256, 256, gl.COLOR_BUFFER_BIT, gl.NEAREST);
@@ -490,8 +486,6 @@ async function main() {
     if (error !== gl.NO_ERROR) {
         throw new Error(`WebGL Error: 0x${error.toString(16)}`);
     }
-
-    console.log('Sparse Texture + Texture View + MSAA + Indirect Biomass Seed: Complete');
 }
 
 main().catch(err => { throw err; });

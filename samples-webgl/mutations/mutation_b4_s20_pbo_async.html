@@ -10,10 +10,10 @@ const pboCount = 2;
 const transferSize = texSize * texSize * 4;
 const pixelCount = texSize * texSize;
 
-const pboTarget = 0x88EB;
+const pboTarget = 0x88EC;
 const textureTarget = 0x0DE1;
 const bufferUsage = 0x88E9;
-const packTarget = 0x88EC;
+const packTarget = 0x88EB;
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -25,19 +25,21 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let pbo1, pbo2, texture1, texture2, program, fbo;
 
     try {
-        const pbo1 = gl.createBuffer();
-        const pbo2 = gl.createBuffer();
+        pbo1 = gl.createBuffer();
+        pbo2 = gl.createBuffer();
         gl.bindBuffer(pboTarget, pbo1);
         gl.bufferData(pboTarget, transferSize, bufferUsage);
         gl.bindBuffer(pboTarget, pbo2);
-        gl.bufferData(pboTarget, 524288, 0x88E8);
+        gl.bufferData(pboTarget, 1048576, 0x88E8);
+        gl.bindBuffer(pboTarget, null);
     } catch(e) {}
 
     try {
-        const texture1 = gl.createTexture();
-        const texture2 = gl.createTexture();
+        texture1 = gl.createTexture();
+        texture2 = gl.createTexture();
         gl.bindTexture(textureTarget, texture1);
         gl.texImage2D(textureTarget, 0, 0x8058, texSize, texSize, 0, 0x1908, 0x1401, null);
         gl.texParameteri(textureTarget, 0x2801, 0x2601);
@@ -69,7 +71,7 @@ async function main() {
             }
         `);
         gl.compileShader(fs);
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -77,7 +79,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo = gl.createFramebuffer();
+        fbo = gl.createFramebuffer();
         gl.bindFramebuffer(0x8D40, fbo);
         gl.bindTexture(textureTarget, texture1);
         gl.framebufferTexture2D(0x8D40, 0x8CE0, textureTarget, texture1, 0);
@@ -109,6 +111,7 @@ async function main() {
         gl.viewport(0, 0, texSize, texSize);
         gl.clearColor(0.3, 0.5, 0.7, 1.0);
         gl.clear(0x4000);
+        gl.bindTexture(textureTarget, texture2);
         gl.drawArrays(0x0004, 0, 6);
         gl.bindFramebuffer(0x8D40, null);
     } catch(e) {}

@@ -45,8 +45,17 @@ async function main() {
         const vertexShader = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vertexShader, vertexShaderSource);
         gl.compileShader(vertexShader);
+        const passFragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(passFragmentShader, `#version 300 es
+    precision highp float;
+    out vec4 fragColor;
+    void main() {
+        fragColor = vec4(1.0);
+    }`);
+        gl.compileShader(passFragmentShader);
         program = gl.createProgram();
         gl.attachShader(program, vertexShader);
+        gl.attachShader(program, passFragmentShader);
         gl.transformFeedbackVaryings(program, ['v_layerData', 'v_texCoord', 'v_index'], gl.INTERLEAVED_ATTRIBS);
         gl.linkProgram(program);
         gl.useProgram(program);
@@ -106,7 +115,7 @@ async function main() {
         for (let i = 0; i < numLayers; i++) {
             const tfBuffer = gl.createBuffer();
             gl.bindBuffer(tfTarget, tfBuffer);
-            gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_COPY);
+            gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_READ);
             tfBuffers.push(tfBuffer);
             const tf = gl.createTransformFeedback();
             gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
@@ -241,7 +250,9 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.useProgram(program);
         gl.beginTransformFeedback(gl.POINTS);
+        gl.endTransformFeedback();
         gl.beginTransformFeedback(gl.POINTS);
     } catch(e) {}
 

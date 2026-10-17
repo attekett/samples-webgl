@@ -10,7 +10,7 @@ const REQUIRED_EXTENSIONS = [
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
-    const gl = canvas.getContext('webgl2');
+    const gl = canvas.getContext('webgl2', {antialias: false});
     if (!gl) throw new Error("WebGL2 not supported");
 
     const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
@@ -141,9 +141,12 @@ void main() { fragColor = vec4(1.5, 2.5, 3.5, 1.0); }`);
     try {
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fboResolve);
         gl.readBuffer(gl.COLOR_ATTACHMENT0);
-        var pixels = new Float32Array(texSize * texSize * 4);
-        gl.readPixels(0, 0, texSize, texSize, gl.RGBA, gl.FLOAT, pixels);
-        gl.readPixels(0, 0, texSize, texSize, gl.RGBA, gl.FLOAT, pixels, 0);
+        var packBuf = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, packBuf);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, readBytes, gl.STREAM_READ);
+        gl.readPixels(0, 0, texSize, texSize, gl.RGBA, gl.FLOAT, 0);
+        gl.readPixels(0, 0, texSize, texSize, gl.RGBA, gl.FLOAT, 0);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     } catch(e) {}
 
     try {

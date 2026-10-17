@@ -30,12 +30,13 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tex0, tex1, tex2, tex3, fbo1, fbo2;
 
     try {
-        const tex0 = gl.createTexture();
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex0 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex0);
         gl.bindTexture(gl.TEXTURE_2D, tex1);
         gl.bindTexture(gl.TEXTURE_2D, tex0);
@@ -46,28 +47,28 @@ async function main() {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindTexture(gl.TEXTURE_2D, tex3);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 512, 512, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, attach0, gl.TEXTURE_2D, tex0, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, attach1, gl.TEXTURE_2D, tex1, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, attach2, gl.TEXTURE_2D, tex2, 0);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, attach3, gl.TEXTURE_2D, tex3, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, attach0, gl.TEXTURE_2D, tex2, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, attach1, gl.TEXTURE_2D, tex3, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, attach0, gl.TEXTURE_2D, tex0, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.drawBuffers([attach0, attach1]);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
-        gl.drawBuffers([attach2, attach3]);
+        gl.drawBuffers([attach0, attach1]);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -96,7 +97,7 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const buffer = gl.createBuffer();
@@ -105,7 +106,7 @@ async function main() {
         gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(blendMode);
@@ -114,7 +115,7 @@ async function main() {
         gl.blendFunc(srcAlpha, oneMinusSrcAlpha);
         gl.disable(blendMode);
         gl.enable(blendMode);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -125,7 +126,7 @@ async function main() {
         gl.blendFunci(1, gl.ONE, gl.ONE);
         gl.disable(blendMode);
         gl.enable(blendMode);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < blendToggles; i++) {
@@ -135,7 +136,7 @@ async function main() {
             gl.disablei(blendMode, 1);
             gl.enablei(blendMode, 0);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -145,7 +146,7 @@ async function main() {
         gl.enablei(blendMode, 1);
         gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < equationCycles; i++) {
@@ -155,7 +156,7 @@ async function main() {
             gl.blendEquationi(1, gl.FUNC_ADD);
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
@@ -167,7 +168,7 @@ async function main() {
         gl.blendFunci(1, srcAlpha, oneMinusSrcAlpha);
         gl.viewport(0, 0, 512, 512);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < drawIterations; i++) {
@@ -180,21 +181,22 @@ async function main() {
             gl.disablei(blendMode, 1);
             gl.drawArrays(gl.TRIANGLES, 0, 6);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.deleteFramebuffer(fbo1);
+        fbo1 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
         gl.deleteFramebuffer(fbo2);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.clearColor(0.3, 0.4, 0.5, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

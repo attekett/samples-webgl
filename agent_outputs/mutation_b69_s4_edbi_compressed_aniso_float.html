@@ -13,7 +13,7 @@ const REQUIRED_EXTENSIONS = [
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
-    const gl = canvas.getContext('webgl2');
+    const gl = canvas.getContext('webgl2', {antialias: false});
     if (!gl) throw new Error("WebGL2 not supported");
 
     const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
@@ -25,6 +25,7 @@ async function main() {
     gl.getExtension('WEBGL_compressed_texture_etc');
     gl.getExtension('OES_texture_float_linear');
     gl.getExtension('EXT_color_buffer_float');
+    gl.getExtension('EXT_float_blend');
 
     const cTexSize = 32;
     const fpSize = 64;
@@ -124,7 +125,7 @@ void main() {
         var attArr = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, attArr);
         gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, fpFmt, fpSize, fpSize, layers);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, fpSize, fpSize, 1, gl.RGBA, gl.FLOAT, fBytes);
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, fpSize, fpSize, layers, gl.RGBA, gl.FLOAT, new Float32Array(fpSize * fpSize * layers * 4));
     } catch(e) {}
 
     try {
@@ -154,7 +155,7 @@ void main() {
 
     try {
         var sampler = gl.createSampler();
-        gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, minFilter);
+        gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.samplerParameteri(sampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.samplerParameterf(sampler, extAniso.TEXTURE_MAX_ANISOTROPY_EXT, anisoLevel);
         gl.getSamplerParameter(sampler, extAniso.TEXTURE_MAX_ANISOTROPY_EXT);

@@ -11,7 +11,7 @@ const VERTEX_COUNT = 1024;
 const vsSource = `#version 300 es
 in vec3 a_position;
 in ivec3 a_intData;
-out ivec3 v_intOutput;
+flat out ivec3 v_intOutput;
 flat out int v_vertexId;
 
 uniform mat4 u_transform;
@@ -35,7 +35,7 @@ const fsSource = `#version 300 es
 precision highp float;
 precision highp isampler3D;
 
-in ivec3 v_intOutput;
+flat in ivec3 v_intOutput;
 flat in int v_vertexId;
 
 layout(location = 0) out vec4 fragColor0;
@@ -131,9 +131,9 @@ async function main() {
     const tfVertexIdBuffer = gl.createBuffer();
     try {
         gl.bindBuffer(gl.ARRAY_BUFFER, tfIntBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * 3 * 4, gl.DYNAMIC_COPY);
+        gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * 3 * 4, gl.DYNAMIC_READ);
         gl.bindBuffer(gl.ARRAY_BUFFER, tfVertexIdBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * 4, gl.DYNAMIC_COPY);
+        gl.bufferData(gl.ARRAY_BUFFER, VERTEX_COUNT * 4, gl.DYNAMIC_READ);
     } catch (e) { throw e; }
 
     let intTexture3D;

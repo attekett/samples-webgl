@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let array1, array2, array3, program, fbo1, fbo2, fbo3, buffer1, buffer2, layerLoc, layerIntLoc;
 
     const layerCount = 16;
     const texSize = 128;
@@ -29,9 +30,9 @@ async function main() {
     const bufferUsage = gl.STATIC_DRAW;
 
     try {
-        const array1 = gl.createTexture();
-        const array2 = gl.createTexture();
-        const array3 = gl.createTexture();
+        array1 = gl.createTexture();
+        array2 = gl.createTexture();
+        array3 = gl.createTexture();
         gl.bindTexture(arrayTarget, array1);
         gl.bindTexture(arrayTarget, array2);
         gl.bindTexture(arrayTarget, array1);
@@ -117,7 +118,7 @@ async function main() {
         if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
             throw new Error(gl.getShaderInfoLog(fragmentShader));
         }
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
         gl.linkProgram(program);
@@ -128,9 +129,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
-        const fbo3 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
+        fbo3 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -151,8 +152,8 @@ async function main() {
              1.0, -1.0, 1.0, 0.0,
              1.0,  1.0, 1.0, 1.0
         ]);
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
         const buffer3 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bindBuffer(bufferTarget, buffer2);
@@ -168,8 +169,8 @@ async function main() {
         const posLoc = gl.getAttribLocation(program, 'position');
         const texLoc = gl.getAttribLocation(program, 'texCoord');
         const arrayLoc = gl.getUniformLocation(program, 'uTexArray');
-        const layerLoc = gl.getUniformLocation(program, 'uLayer');
-        const layerIntLoc = gl.getUniformLocation(program, 'uLayerInt');
+        layerLoc = gl.getUniformLocation(program, 'uLayer');
+        layerIntLoc = gl.getUniformLocation(program, 'uLayerInt');
         gl.enableVertexAttribArray(posLoc);
         gl.disableVertexAttribArray(posLoc);
         gl.enableVertexAttribArray(posLoc);

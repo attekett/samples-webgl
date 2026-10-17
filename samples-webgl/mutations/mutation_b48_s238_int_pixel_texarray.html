@@ -18,7 +18,7 @@ async function main() {
     const texSize = 256;
     const layerCount = 128;
     const vertexCount = 6;
-    const copySize = 128;
+    const copySize = 64;
     const readSize = 64;
 
     const textureTarget = gl.TEXTURE_2D_ARRAY;
@@ -73,6 +73,7 @@ async function main() {
 
     try {
         const intTexArray = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(textureTarget, intTexArray);
         gl.bindTexture(textureTarget, null);
         gl.bindTexture(textureTarget, intTexArray);
@@ -133,7 +134,10 @@ async function main() {
 
     try {
         const srcFbo = gl.createFramebuffer();
-        const dstTex = gl.getParameter(gl.TEXTURE_BINDING_2D_ARRAY);
+        const srcTex = gl.getParameter(gl.TEXTURE_BINDING_2D_ARRAY);
+        const dstTex = gl.createTexture();
+        gl.bindTexture(textureTarget, dstTex);
+        gl.texStorage3D(textureTarget, 1, intTextureFormat, texSize, texSize, layerCount);
 
         for (let i = 0; i < fbos.length; i++) {
             gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbos[i]);
@@ -145,15 +149,17 @@ async function main() {
                 gl.copyTexSubImage3D(textureTarget, 0, 0, j * 64, dstLayer, 0, 0, copySize, copySize);
             }
         }
+        gl.bindTexture(textureTarget, srcTex);
     } catch(e) {}
 
     try {
-        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 512);
         gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 8);
         gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 4);
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 512);
 
-        const uintData = new Uint32Array(512 * 512);
+        const uintData = new Uint32Array(512 * 768);
         for (let i = 0; i < uintData.length; i++) {
             uintData[i] = ((i % 4) << 30) | (((i * 11) & 1023) << 20) | (((i * 13) & 1023) << 10) | ((i * 17) & 1023);
         }
@@ -166,6 +172,7 @@ async function main() {
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
         gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
         gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+        gl.pixelStorei(gl.UNPACK_IMAGE_HEIGHT, 0);
     } catch(e) {}
 
     try {
@@ -177,7 +184,7 @@ async function main() {
         const readFbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, readFbo);
 
-        const uintPixels = new Uint32Array(readSize * readSize);
+        const uintPixels = new Uint32Array(256 * 256);
         for (let i = 0; i < layerCount; i += 8) {
             gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.getParameter(gl.TEXTURE_BINDING_2D_ARRAY), 0, i);
             gl.readPixels(0, 0, readSize, readSize, gl.RGBA_INTEGER, gl.UNSIGNED_INT_2_10_10_10_REV, uintPixels);
@@ -230,6 +237,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.1, 0.1, 0.1, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[0]);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) {}
 }

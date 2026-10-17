@@ -63,7 +63,7 @@ async function main() {
         for (let layer = 0; layer < sliceCount; layer++) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
             gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, tex3D, 0, layer);
-            gl.clearBufferiv(gl.COLOR, 0, new Int32Array([layer * 64]));
+            gl.clearBufferiv(gl.COLOR, 0, new Int32Array([layer * 64, 0, 0, 0]));
         }
     } catch(e) {}
 
@@ -171,6 +171,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.2, 0.2, 0.2, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, 128);
     } catch(e) {}
 

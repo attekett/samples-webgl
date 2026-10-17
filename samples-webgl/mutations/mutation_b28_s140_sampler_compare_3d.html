@@ -30,12 +30,12 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
+        var buffer1 = gl.createBuffer();
+        var buffer2 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bindBuffer(bufferTarget, buffer2);
         gl.bindBuffer(bufferTarget, buffer1);
-        const vertexData = new Float32Array([
+        var vertexData = new Float32Array([
             -1, -1, 0, 1, -1, 0, -1, 1, 0,
             -1, 1, 0, 1, -1, 0, 1, 1, 0
         ]);
@@ -43,10 +43,10 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const texture1 = gl.createTexture();
-        const texture2 = gl.createTexture();
-        const texture3 = gl.createTexture();
-        const texture3d1 = gl.createTexture();
+        var texture1 = gl.createTexture();
+        var texture2 = gl.createTexture();
+        var texture3 = gl.createTexture();
+        var texture3d1 = gl.createTexture();
         gl.bindTexture(textureTarget, texture1);
         gl.bindTexture(textureTarget, texture2);
         gl.bindTexture(textureTarget, texture1);
@@ -64,9 +64,9 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const sampler1 = gl.createSampler();
-        const sampler2 = gl.createSampler();
-        const sampler3 = gl.createSampler();
+        var sampler1 = gl.createSampler();
+        var sampler2 = gl.createSampler();
+        var sampler3 = gl.createSampler();
         gl.samplerParameteri(sampler1, compareMode, compareModeValue);
         gl.samplerParameteri(sampler1, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
         gl.samplerParameteri(sampler1, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -78,9 +78,9 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const sampler4 = gl.createSampler();
-        const sampler5 = gl.createSampler();
-        const sampler6 = gl.createSampler();
+        var sampler4 = gl.createSampler();
+        var sampler5 = gl.createSampler();
+        var sampler6 = gl.createSampler();
         gl.samplerParameteri(sampler4, compareMode, compareModeValue);
         gl.samplerParameteri(sampler4, gl.TEXTURE_COMPARE_FUNC, gl.GREATER);
         gl.samplerParameteri(sampler5, compareMode, compareModeValue);
@@ -104,7 +104,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 position;
             out vec3 vTexCoord;
@@ -117,7 +117,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             precision highp sampler2DShadow;
@@ -132,7 +132,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -140,8 +140,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vao1 = gl.createVertexArray();
-        const vao2 = gl.createVertexArray();
+        var vao1 = gl.createVertexArray();
+        var vao2 = gl.createVertexArray();
         gl.bindVertexArray(vao1);
         gl.bindVertexArray(vao2);
         gl.bindVertexArray(vao1);
@@ -152,8 +152,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        var fbo1 = gl.createFramebuffer();
+        var fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -181,12 +181,12 @@ async function main() {
 
     try {
         gl.bindSampler(0, sampler1);
-        gl.deleteSampler(sampler1);
         gl.bindSampler(0, sampler1);
         gl.bindTexture(textureTarget, texture1);
-        gl.deleteTexture(texture1);
         gl.bindTexture(textureTarget, texture1);
         gl.bindTexture(textureTarget3D, texture3d1);
+        gl.deleteSampler(sampler1);
+        gl.deleteTexture(texture1);
         gl.deleteTexture(texture3d1);
     } catch(e) { console.log(e); }
 }

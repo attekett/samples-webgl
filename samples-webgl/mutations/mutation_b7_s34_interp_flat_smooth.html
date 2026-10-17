@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let blk1_buf1, blk1_buf2, blk1_buf3, blk2_buf1, blk2_buf2, blk2_buf3, blk3_buf1, blk3_buf2, blk3_buf3;
 
     const varyingCount = 8;
     const vertexCount = 12;
@@ -85,12 +86,12 @@ async function main() {
             0.4, -0.8, 0.8, -0.8, 0.6, -0.4,
             -0.8, 0.0, -0.4, 0.0, -0.6, 0.4
         ]);
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
-        gl.bindBuffer(bufferTarget, buffer1);
-        gl.bindBuffer(bufferTarget, buffer2);
-        gl.bindBuffer(bufferTarget, buffer1);
+        blk1_buf1 = gl.createBuffer();
+        blk1_buf2 = gl.createBuffer();
+        blk1_buf3 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, blk1_buf1);
+        gl.bindBuffer(bufferTarget, blk1_buf2);
+        gl.bindBuffer(bufferTarget, blk1_buf1);
         gl.bufferData(bufferTarget, positions, bufferUsage);
         gl.bufferData(bufferTarget, 2048, bufferUsage);
         gl.bufferData(bufferTarget, positions, bufferUsage);
@@ -115,16 +116,16 @@ async function main() {
             colors3[i * 4 + 2] = 1.0;
             colors3[i * 4 + 3] = 1.0;
         }
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
-        gl.bindBuffer(bufferTarget, buffer1);
-        gl.bindBuffer(bufferTarget, buffer2);
-        gl.bindBuffer(bufferTarget, buffer1);
+        blk2_buf1 = gl.createBuffer();
+        blk2_buf2 = gl.createBuffer();
+        blk2_buf3 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, blk2_buf1);
+        gl.bindBuffer(bufferTarget, blk2_buf2);
+        gl.bindBuffer(bufferTarget, blk2_buf1);
         gl.bufferData(bufferTarget, colors1, bufferUsage);
-        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, blk2_buf2);
         gl.bufferData(bufferTarget, colors2, bufferUsage);
-        gl.bindBuffer(bufferTarget, buffer3);
+        gl.bindBuffer(bufferTarget, blk2_buf3);
         gl.bufferData(bufferTarget, colors3, bufferUsage);
     } catch(e) {}
 
@@ -139,16 +140,16 @@ async function main() {
             data2[i * 2 + 1] = Math.sin(i * 0.7 + 1.0);
             indices[i] = i;
         }
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
-        gl.bindBuffer(bufferTarget, buffer1);
-        gl.bindBuffer(bufferTarget, buffer2);
-        gl.bindBuffer(bufferTarget, buffer1);
+        blk3_buf1 = gl.createBuffer();
+        blk3_buf2 = gl.createBuffer();
+        blk3_buf3 = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, blk3_buf1);
+        gl.bindBuffer(bufferTarget, blk3_buf2);
+        gl.bindBuffer(bufferTarget, blk3_buf1);
         gl.bufferData(bufferTarget, data1, bufferUsage);
-        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, blk3_buf2);
         gl.bufferData(bufferTarget, data2, bufferUsage);
-        gl.bindBuffer(bufferTarget, buffer3);
+        gl.bindBuffer(bufferTarget, blk3_buf3);
         gl.bufferData(bufferTarget, indices, bufferUsage);
     } catch(e) {}
 
@@ -212,26 +213,19 @@ async function main() {
         const data1Loc = gl.getAttribLocation(program, 'a_data1');
         const data2Loc = gl.getAttribLocation(program, 'a_data2');
         const indexLoc = gl.getAttribLocation(program, 'a_index');
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
-        const buffer3 = gl.createBuffer();
-        const buffer4 = gl.createBuffer();
-        const buffer5 = gl.createBuffer();
-        const buffer6 = gl.createBuffer();
-        const buffer7 = gl.createBuffer();
-        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindBuffer(bufferTarget, blk1_buf1);
         gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(bufferTarget, buffer2);
+        gl.bindBuffer(bufferTarget, blk2_buf1);
         gl.vertexAttribPointer(color1Loc, 4, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(bufferTarget, buffer3);
+        gl.bindBuffer(bufferTarget, blk2_buf2);
         gl.vertexAttribPointer(color2Loc, 4, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(bufferTarget, buffer4);
+        gl.bindBuffer(bufferTarget, blk2_buf3);
         gl.vertexAttribPointer(color3Loc, 4, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(bufferTarget, buffer5);
+        gl.bindBuffer(bufferTarget, blk3_buf1);
         gl.vertexAttribPointer(data1Loc, 2, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(bufferTarget, buffer6);
+        gl.bindBuffer(bufferTarget, blk3_buf2);
         gl.vertexAttribPointer(data2Loc, 2, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(bufferTarget, buffer7);
+        gl.bindBuffer(bufferTarget, blk3_buf3);
         gl.vertexAttribPointer(indexLoc, 1, gl.FLOAT, false, 0, 0);
     } catch(e) {}
 
@@ -251,11 +245,11 @@ async function main() {
 
     try {
         gl.drawArrays(primitiveType, 0, vertexCount);
-        gl.drawArrays(primitiveType, 0, 18);
+        gl.drawArrays(primitiveType, 0, 12);
         gl.drawArrays(primitiveType, 0, vertexCount);
         gl.drawArrays(gl.TRIANGLE_FAN, 0, 9);
         gl.drawArrays(primitiveType, 0, vertexCount);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 15);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 12);
         gl.drawArrays(primitiveType, 0, vertexCount);
     } catch(e) {}
 
@@ -265,9 +259,9 @@ async function main() {
         gl.useProgram(null);
         const delBuffer = gl.createBuffer();
         gl.bindBuffer(bufferTarget, delBuffer);
-        gl.deleteBuffer(delBuffer);
         gl.bindBuffer(bufferTarget, delBuffer);
         gl.bufferData(bufferTarget, 256, gl.STATIC_DRAW);
+        gl.deleteBuffer(delBuffer);
     } catch(e) {}
 }
 

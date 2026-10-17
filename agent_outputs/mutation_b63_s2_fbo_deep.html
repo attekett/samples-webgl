@@ -233,9 +233,9 @@ void main() {
 
     try {
         gl.bindFramebuffer(fbTarget, fbo0);
-        gl.deleteFramebuffer(fbo0);
         gl.isFramebuffer(fbo0);
         gl.bindFramebuffer(fbTarget, fbo0);
+        gl.deleteFramebuffer(fbo0);
         gl.deleteFramebuffer(fbo1);
         gl.deleteFramebuffer(fbo2);
         gl.deleteFramebuffer(fboLayer);

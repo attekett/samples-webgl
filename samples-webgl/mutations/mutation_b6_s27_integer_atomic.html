@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tex1, tex2;
 
     const texSize = 256;
     const atomicCount = 4;
@@ -23,11 +24,11 @@ async function main() {
     const intFormat = gl.RGBA32I;
     const textureTarget = gl.TEXTURE_2D;
     const bufferTarget = gl.ARRAY_BUFFER;
-    const atomicTarget = gl.ATOMIC_COUNTER_BUFFER;
+    const atomicTarget = gl.UNIFORM_BUFFER;
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
@@ -85,11 +86,11 @@ async function main() {
         precision highp isampler2D;
         in vec2 vTexCoord;
         uniform isampler2D uIntTexture;
-        layout(binding = 0, offset = 0) uniform atomic_uint uCounter;
+        layout(std140) uniform CounterBlock { uint uCounter; };
         out vec4 fragColor;
         void main() {
             ivec4 intColor = texture(uIntTexture, vTexCoord);
-            uint counterValue = atomicCounterIncrement(uCounter);
+            uint counterValue = uCounter + 1u;
             vec4 floatColor = vec4(intColor) / 255.0;
             fragColor = floatColor * (float(counterValue) / 1000.0);
         }
@@ -148,15 +149,14 @@ async function main() {
         gl.clearColor(0.1, 0.1, 0.1, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-        gl.drawArrays(gl.TRIANGLES, 0, 12);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) {}
 
     try {
         gl.bindTexture(textureTarget, tex1);
-        gl.deleteTexture(tex1);
-        gl.bindTexture(textureTarget, tex1);
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.deleteTexture(tex1);
     } catch(e) {}
 }
 

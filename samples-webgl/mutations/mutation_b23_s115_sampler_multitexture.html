@@ -36,7 +36,7 @@ async function main() {
         gl.texImage2D(tex2DTarget, 0, gl.RGBA, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindTexture(tex2DTarget, tex2D_2);
         gl.texImage2D(tex2DTarget, 0, gl.RGBA8, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const tex3D_1 = gl.createTexture();
@@ -45,7 +45,7 @@ async function main() {
         gl.texImage3D(tex3DTarget, 0, gl.RGBA, 64, 64, tex3DDepth, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindTexture(tex3DTarget, tex3D_2);
         gl.texImage3D(tex3DTarget, 0, gl.RGBA8, 32, 32, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const texArray_1 = gl.createTexture();
@@ -54,7 +54,7 @@ async function main() {
         gl.texImage3D(texArrayTarget, 0, gl.RGBA, texSize, texSize, texArrayLayers, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindTexture(texArrayTarget, texArray_2);
         gl.texImage3D(texArrayTarget, 0, gl.RGBA8, 64, 64, 8, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const texCube_1 = gl.createTexture();
@@ -67,7 +67,7 @@ async function main() {
         for (let face = 0; face < 6; face++) {
             gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA8, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const sam1 = gl.createSampler();
@@ -76,7 +76,7 @@ async function main() {
         gl.samplerParameteri(sam1, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.samplerParameteri(sam2, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.samplerParameteri(sam2, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const shared1 = gl.createSampler();
@@ -95,7 +95,7 @@ async function main() {
         gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(texArrayTarget, gl.createTexture());
         gl.bindSampler(2, shared2);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < samplerCount; i++) {
@@ -106,7 +106,7 @@ async function main() {
             gl.bindSampler(i + 4, multiSam);
             gl.bindSampler(i + 8, multiSam);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const reuseSam = gl.createSampler();
@@ -124,7 +124,7 @@ async function main() {
         gl.activeTexture(gl.TEXTURE3);
         gl.bindTexture(texCubeTarget, gl.createTexture());
         gl.bindSampler(3, reuseSam);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -167,7 +167,11 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+        gl.uniform1i(gl.getUniformLocation(program, 'uTex2D'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uTex3D'), 1);
+        gl.uniform1i(gl.getUniformLocation(program, 'uTexArray'), 2);
+        gl.uniform1i(gl.getUniformLocation(program, 'uTexCube'), 3);
+    } catch(e) {}
 
     try {
         const buffer = gl.createBuffer();
@@ -183,28 +187,28 @@ async function main() {
         gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.activeTexture(gl.TEXTURE0);
         const t2D = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, t2D);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(128 * 128 * 4));
         gl.activeTexture(gl.TEXTURE1);
         const t3D = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_3D, t3D);
-        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA, 64, 64, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA, 64, 64, 32, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(64 * 64 * 32 * 4));
         gl.activeTexture(gl.TEXTURE2);
         const tArray = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, tArray);
-        gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA, 128, 128, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA, 128, 128, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(128 * 128 * 16 * 4));
         gl.activeTexture(gl.TEXTURE3);
         const tCube = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_CUBE_MAP, tCube);
         for (let face = 0; face < 6; face++) {
-            gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(128 * 128 * 4));
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < sharedBindings; i++) {
@@ -216,7 +220,7 @@ async function main() {
             gl.bindSampler(3, sharedSam);
             gl.drawArrays(gl.TRIANGLES, 0, 6);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const final1 = gl.createSampler();
@@ -228,7 +232,7 @@ async function main() {
         gl.bindSampler(2, final1);
         gl.bindSampler(3, final2);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

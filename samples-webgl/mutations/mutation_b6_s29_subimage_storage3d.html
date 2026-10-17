@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tex3D1, tex3D2;
 
     const texSize = 128;
     const texDepth = 8;
@@ -26,8 +27,8 @@ async function main() {
     const bufferTarget = gl.ARRAY_BUFFER;
 
     try {
-        const tex3D1 = gl.createTexture();
-        const tex3D2 = gl.createTexture();
+        tex3D1 = gl.createTexture();
+        tex3D2 = gl.createTexture();
         gl.bindTexture(tex3DTarget, tex3D1);
         gl.bindTexture(tex3DTarget, tex3D2);
         gl.bindTexture(tex3DTarget, tex3D1);
@@ -56,6 +57,7 @@ async function main() {
             redLayer[i + 2] = 0;
             redLayer[i + 3] = 255;
         }
+        gl.texSubImage3D(tex3DTarget, 0, 0, 0, 0, texSize, texSize, texDepth, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * texDepth * 4));
         gl.texSubImage3D(tex3DTarget, 0, 0, 0, 0, texSize, texSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, redLayer);
         gl.texSubImage3D(tex3DTarget, 0, 0, 0, 1, texSize, texSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * 4).fill(128));
         gl.texSubImage3D(tex3DTarget, 0, 0, 0, 2, texSize, texSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * 4).fill(64));
@@ -105,6 +107,7 @@ async function main() {
 
     const fragmentShaderSource = `#version 300 es
         precision highp float;
+        precision highp sampler3D;
         in vec2 vTexCoord;
         in float vDepth;
         uniform sampler3D uTexture3D;
@@ -155,15 +158,15 @@ async function main() {
         gl.clearColor(0.2, 0.2, 0.2, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-        gl.drawArrays(gl.TRIANGLES, 0, 12);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) {}
 
     try {
         gl.bindTexture(tex3DTarget, tex3D1);
-        gl.deleteTexture(tex3D1);
         gl.bindTexture(tex3DTarget, tex3D1);
         gl.texParameteri(tex3DTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.deleteTexture(tex3D1);
     } catch(e) {}
 }
 

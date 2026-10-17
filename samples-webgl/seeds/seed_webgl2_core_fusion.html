@@ -156,6 +156,14 @@ void main() {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, textureArray);
     gl.uniform1i(gl.getUniformLocation(program, 'texArray'), 0);
+    const sampleTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, sampleTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 4, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(64));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.uniform1i(gl.getUniformLocation(program, 'mrtTex0'), 3);
+    gl.uniform1i(gl.getUniformLocation(program, 'mrtTex1'), 3);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
     // Final pass

@@ -18,7 +18,7 @@ async function main() {
     const numLayers = 256;
     const numQueries = 16;
     const texSize = 128;
-    const tfBufferSize = 24;
+    const tfBufferSize = 30;
 
     const vertexShaderSource = `#version 300 es
     in vec4 a_position;
@@ -116,7 +116,7 @@ async function main() {
     try {
         tfBuffer = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer);
-        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_COPY);
+        gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_READ);
         tf = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffer);
@@ -182,16 +182,19 @@ async function main() {
 
     try {
         gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, queries[0]);
+        gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
         gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, queries[1]);
     } catch(e) {}
 
     try {
         gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.endTransformFeedback();
         gl.beginTransformFeedback(gl.TRIANGLES);
     } catch(e) {}
 
     try {
         gl.endTransformFeedback();
+        gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
     } catch(e) {}
 
     try {
@@ -208,7 +211,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        gl.getQueryParameter(queries[0], gl.QUERY_RESULT);
+        gl.isQuery(queries[0]);
     } catch(e) {}
 
     try {

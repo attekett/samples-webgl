@@ -94,6 +94,7 @@ async function main() {
         gl.bindTexture(textureTarget, texture1);
         gl.bindTexture(textureTarget, texture2);
         gl.bindTexture(textureTarget, texture1);
+        gl.bindBuffer(unpackTarget, null);
         gl.texImage2D(textureTarget, 0, gl.RGBA, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);

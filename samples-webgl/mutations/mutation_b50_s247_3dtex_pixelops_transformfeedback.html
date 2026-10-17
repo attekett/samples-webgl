@@ -3,7 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [];
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -20,7 +20,7 @@ async function main() {
     const texSize = 128;
     const sliceCount = 128;
     const vertexCount = 6;
-    const tfStride = 7;
+    const tfStride = 10;
     const readSize = 64;
 
     const vsSource = `#version 300 es

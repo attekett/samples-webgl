@@ -28,25 +28,25 @@ async function main() {
     gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
     const ssbo1 = gl.createBuffer();
-    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo1);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, ssbo1);
     const ssbo1Data = new Float32Array(DATA_SIZE * 4);
     for (let i = 0; i < ssbo1Data.length; i++) ssbo1Data[i] = Math.sin(i * 0.01) * Math.cos(i * 0.007);
-    gl.bufferData(gl.SHADER_STORAGE_BUFFER, ssbo1Data, gl.DYNAMIC_COPY);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, ssbo1);
+    gl.bufferData(gl.UNIFORM_BUFFER, ssbo1Data, gl.DYNAMIC_COPY);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ssbo1);
 
     const ssbo2 = gl.createBuffer();
-    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo2);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, ssbo2);
     const ssbo2Data = new Uint32Array(256);
     for (let i = 0; i < ssbo2Data.length; i++) ssbo2Data[i] = i % 8;
-    gl.bufferData(gl.SHADER_STORAGE_BUFFER, ssbo2Data, gl.DYNAMIC_COPY);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, ssbo2);
+    gl.bufferData(gl.UNIFORM_BUFFER, ssbo2Data, gl.DYNAMIC_COPY);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, ssbo2);
 
     const ssbo3 = gl.createBuffer();
-    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo3);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, ssbo3);
     const ssbo3Data = new Float32Array(64 * 16);
     for (let i = 0; i < ssbo3Data.length; i++) ssbo3Data[i] = (i % 16) * 0.1;
-    gl.bufferData(gl.SHADER_STORAGE_BUFFER, ssbo3Data, gl.DYNAMIC_COPY);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, ssbo3);
+    gl.bufferData(gl.UNIFORM_BUFFER, ssbo3Data, gl.DYNAMIC_COPY);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, ssbo3);
 
     const transformVS = gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(transformVS, `#version 300 es
@@ -54,12 +54,12 @@ layout(location = 0) in vec3 position;
 layout(location = 1) in vec2 texCoord;
 layout(location = 2) in vec3 normal;
 
-layout(std430, binding = 0) readonly buffer SSBO1 {
-    vec4 computeData[];
+layout(std140) uniform SSBO1 {
+    vec4 computeData[256];
 };
 
-layout(std430, binding = 2) readonly buffer SSBO3 {
-    mat4 matrices[];
+layout(std140) uniform SSBO3 {
+    mat4 matrices[32];
 };
 
 uniform mat4 mvpMatrix;
@@ -72,9 +72,9 @@ out vec3 vNormal;
 out vec4 vComputeData;
 
 void main() {
-    uint idx = uint(instanceId * 3 + gl_InstanceID) % 16384u;
+    uint idx = uint(instanceId * 3 + gl_InstanceID) % 256u;
     vec4 data = computeData[idx];
-    mat4 transform = matrices[instanceId % 32u];
+    mat4 transform = matrices[uint(instanceId) % 32u];
 
     vPosition = (transform * vec4(position, 1.0)).xyz;
     vTexCoord = texCoord + data.xy * 0.1;
@@ -89,9 +89,12 @@ void main() {
     const transformFS = gl.createShader(gl.FRAGMENT_SHADER);
     gl.shaderSource(transformFS, `#version 300 es
 precision highp float;
+precision highp int;
+precision highp sampler2DArray;
+precision highp sampler3D;
 
-layout(std430, binding = 0) readonly buffer SSBO1 {
-    vec4 computeData[];
+layout(std140) uniform SSBO1 {
+    vec4 computeData[256];
 };
 
 uniform sampler2DArray texArray;
@@ -110,7 +113,7 @@ layout(location = 2) out vec4 color2;
 layout(location = 3) out vec4 color3;
 
 void main() {
-    uint idx = uint(instanceId * 3 + int(gl_FragCoord.x)) % 16384u;
+    uint idx = uint(instanceId * 3 + int(gl_FragCoord.x)) % 256u;
     vec4 data = computeData[idx];
 
     vec4 tex2DArray = texture(texArray, vec3(vTexCoord, float(instanceId % ${TEXTURE_LAYERS})));
@@ -129,6 +132,8 @@ void main() {
     gl.attachShader(transformProgram, transformFS);
     gl.transformFeedbackVaryings(transformProgram, ['vPosition', 'vTexCoord', 'vNormal', 'vComputeData'], gl.INTERLEAVED_ATTRIBS);
     gl.linkProgram(transformProgram);
+    gl.uniformBlockBinding(transformProgram, gl.getUniformBlockIndex(transformProgram, 'SSBO1'), 0);
+    gl.uniformBlockBinding(transformProgram, gl.getUniformBlockIndex(transformProgram, 'SSBO3'), 2);
 
     const vertexData = new Float32Array([
         -0.5, -0.5, 0.0,  0.0, 0.0,  0.0, 0.0, 1.0,
@@ -210,9 +215,9 @@ void main() {
     ];
 
     for (let pass = 0; pass < 3; pass++) {
-        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, ssbo1);
-        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, ssbo2);
-        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, ssbo3);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ssbo1);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, ssbo2);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, ssbo3);
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
@@ -226,7 +231,7 @@ void main() {
 
         if (pass === 0) {
             gl.beginQuery(gl.ANY_SAMPLES_PASSED, query);
-            gl.beginQuery(gl.TIME_ELAPSED_EXT, timerQuery);
+            gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, timerQuery);
         }
 
         gl.useProgram(transformProgram);
@@ -256,11 +261,11 @@ void main() {
 
         if (pass === 0) {
             gl.endQuery(gl.ANY_SAMPLES_PASSED);
-            gl.endQuery(gl.TIME_ELAPSED_EXT);
+            gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
         }
 
-        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, null);
-        gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, null);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, null);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, null);
     }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);

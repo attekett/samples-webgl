@@ -32,23 +32,23 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const texInt1 = gl.createTexture();
-        const texInt2 = gl.createTexture();
-        const texInt3 = gl.createTexture();
+        var texInt1 = gl.createTexture();
+        var texInt2 = gl.createTexture();
+        var texInt3 = gl.createTexture();
         gl.bindTexture(texture2DTarget, texInt1);
         gl.bindTexture(texture2DTarget, texInt2);
         gl.bindTexture(texture2DTarget, texInt1);
         gl.texImage2D(texture2DTarget, 0, gl.RGBA32I, texSize, texSize, 0, gl.RGBA_INTEGER, gl.INT, null);
         gl.texParameteri(texture2DTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.bindTexture(texture2DTarget, texInt2);
-        gl.texImage2D(texture2DTarget, 0, gl.RGBA32UI, 128, 128, 0, gl.RGBA_INTEGER, gl.UNSIGNED_INT, null);
+        gl.texImage2D(texture2DTarget, 0, gl.RGBA32UI, texSize, texSize, 0, gl.RGBA_INTEGER, gl.UNSIGNED_INT, null);
         gl.bindTexture(texture2DTarget, texInt3);
         gl.texImage2D(texture2DTarget, 0, gl.RGBA32I, texSize, texSize, 0, gl.RGBA_INTEGER, gl.INT, null);
     } catch(e) {}
 
     try {
-        const texUint1 = gl.createTexture();
-        const texUint2 = gl.createTexture();
+        var texUint1 = gl.createTexture();
+        var texUint2 = gl.createTexture();
         gl.bindTexture(texture2DTarget, texUint1);
         gl.bindTexture(texture2DTarget, texUint2);
         gl.bindTexture(texture2DTarget, texUint1);
@@ -59,9 +59,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
-        const fbo3 = gl.createFramebuffer();
+        var fbo1 = gl.createFramebuffer();
+        var fbo2 = gl.createFramebuffer();
+        var fbo3 = gl.createFramebuffer();
         gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.bindFramebuffer(framebufferTarget, fbo2);
         gl.bindFramebuffer(framebufferTarget, fbo1);
@@ -73,7 +73,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 position;
             void main() {
@@ -82,7 +82,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             precision highp int;
@@ -93,7 +93,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -112,6 +112,7 @@ async function main() {
         gl.bindFramebuffer(framebufferTarget, fbo2);
         gl.clearBufferuiv(gl.COLOR, 0, [clearValue1, clearValue0, clearValue3, clearValue2]);
         gl.clearBufferuiv(gl.COLOR, 0, [255, 127, 191, 63]);
+        gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.viewport(0, 0, 128, 128);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     } catch(e) {}
@@ -120,16 +121,16 @@ async function main() {
         gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.readBuffer(colorAttachment0);
         gl.readBuffer(colorAttachment0);
-        const pixelsInt = new Int32Array(byteCount);
+        var pixelsInt = new Int32Array(byteCount);
         gl.readPixels(0, 0, texSize, texSize, gl.RGBA_INTEGER, gl.INT, pixelsInt);
-        const pixelsInt2 = new Int32Array(16384);
+        var pixelsInt2 = new Int32Array(16384);
         gl.readPixels(0, 0, 64, 64, gl.RGBA_INTEGER, gl.INT, pixelsInt2);
     } catch(e) {}
 
     try {
         gl.bindFramebuffer(framebufferTarget, fbo2);
         gl.readBuffer(colorAttachment0);
-        const pixelsUint = new Uint32Array(byteCount);
+        var pixelsUint = new Uint32Array(byteCount);
         gl.readPixels(0, 0, 128, 128, gl.RGBA_INTEGER, gl.UNSIGNED_INT, pixelsUint);
         gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
         gl.readPixels(0, 0, 128, 128, gl.RGBA_INTEGER, gl.UNSIGNED_INT, pixelsUint);
@@ -137,7 +138,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fboMrt = gl.createFramebuffer();
+        var fboMrt = gl.createFramebuffer();
         gl.bindFramebuffer(framebufferTarget, fboMrt);
         gl.framebufferTexture2D(framebufferTarget, colorAttachment0, texture2DTarget, texInt1, 0);
         gl.framebufferTexture2D(framebufferTarget, colorAttachment1, texture2DTarget, texInt2, 0);
@@ -156,21 +157,24 @@ async function main() {
 
     try {
         gl.readBuffer(colorAttachment0);
-        const pixels0 = new Int32Array(byteCount);
+        var pixels0 = new Int32Array(byteCount);
         gl.readPixels(0, 0, texSize, texSize, gl.RGBA_INTEGER, gl.INT, pixels0);
         gl.readBuffer(colorAttachment1);
-        const pixels1 = new Uint32Array(byteCount);
+        var pixels1 = new Uint32Array(byteCount);
         gl.readPixels(0, 0, 128, 128, gl.RGBA_INTEGER, gl.UNSIGNED_INT, pixels1);
         gl.readBuffer(colorAttachment2);
-        const pixels2 = new Int32Array(byteCount);
+        var pixels2 = new Int32Array(byteCount);
         gl.readPixels(0, 0, texSize, texSize, gl.RGBA_INTEGER, gl.INT, pixels2);
     } catch(e) {}
 
     try {
+        gl.readBuffer(colorAttachment0);
         gl.bindTexture(texture2DTarget, texInt3);
         gl.copyTexSubImage2D(texture2DTarget, 0, 0, 0, 0, 0, 128, 128);
+        gl.readBuffer(colorAttachment1);
         gl.bindTexture(texture2DTarget, texUint1);
         gl.copyTexSubImage2D(texture2DTarget, 0, 0, 0, 0, 0, texSize, texSize);
+        gl.readBuffer(colorAttachment2);
         gl.bindTexture(texture2DTarget, texInt1);
         gl.copyTexSubImage2D(texture2DTarget, 0, 64, 64, 0, 0, 128, 128);
     } catch(e) {}
@@ -178,8 +182,8 @@ async function main() {
     try {
         gl.readBuffer(colorAttachment3);
         gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
-        gl.pixelStorei(gl.PACK_ROW_LENGTH, 128);
-        const pixels3 = new Uint32Array(byteCount);
+        gl.pixelStorei(gl.PACK_ROW_LENGTH, 256);
+        var pixels3 = new Uint32Array(byteCount);
         gl.readPixels(0, 0, texSize, texSize, gl.RGBA_INTEGER, gl.UNSIGNED_INT, pixels3);
         gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);
         gl.pixelStorei(gl.PACK_ALIGNMENT, 4);

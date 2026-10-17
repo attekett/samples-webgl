@@ -18,6 +18,7 @@ const compareToTexture = 0x884E;
 const depthComponent = 0x1902;
 
 async function main() {
+    let program, depthTex1, depthTex2, depthTex3, depthTex4;
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 not supported");
@@ -47,6 +48,7 @@ async function main() {
         const fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
+            precision highp sampler2DShadow;
             in vec2 vTexCoord;
             in vec4 vLightSpace;
             out vec4 fragColor;
@@ -68,7 +70,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -97,24 +99,24 @@ async function main() {
     } catch(e) {}
 
     try {
-        const depthTex1 = gl.createTexture();
-        const depthTex2 = gl.createTexture();
-        const depthTex3 = gl.createTexture();
-        const depthTex4 = gl.createTexture();
+        depthTex1 = gl.createTexture();
+        depthTex2 = gl.createTexture();
+        depthTex3 = gl.createTexture();
+        depthTex4 = gl.createTexture();
 
         gl.bindTexture(textureTarget, depthTex1);
         gl.bindTexture(textureTarget, depthTex2);
         gl.bindTexture(textureTarget, depthTex1);
-        gl.texImage2D(textureTarget, 0, gl.DEPTH_COMPONENT24, shadowMapSize, shadowMapSize, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+        gl.texImage2D(textureTarget, 0, gl.DEPTH_COMPONENT24, shadowMapSize, shadowMapSize, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, new Uint32Array(shadowMapSize * shadowMapSize));
 
         gl.bindTexture(textureTarget, depthTex2);
-        gl.texImage2D(textureTarget, 0, gl.DEPTH_COMPONENT32F, texSize, texSize, 0, gl.DEPTH_COMPONENT, gl.FLOAT, null);
+        gl.texImage2D(textureTarget, 0, gl.DEPTH_COMPONENT32F, texSize, texSize, 0, gl.DEPTH_COMPONENT, gl.FLOAT, new Float32Array(texSize * texSize));
 
         gl.bindTexture(textureTarget, depthTex3);
-        gl.texImage2D(textureTarget, 0, gl.DEPTH_COMPONENT24, 1024, 1024, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+        gl.texImage2D(textureTarget, 0, gl.DEPTH_COMPONENT24, 1024, 1024, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, new Uint32Array(1024 * 1024));
 
         gl.bindTexture(textureTarget, depthTex4);
-        gl.texImage2D(textureTarget, 0, gl.DEPTH_COMPONENT16, 128, 128, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, null);
+        gl.texImage2D(textureTarget, 0, gl.DEPTH_COMPONENT16, 128, 128, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, new Uint16Array(128 * 128));
     } catch(e) {}
 
     try {
@@ -179,9 +181,6 @@ async function main() {
     } catch(e) {}
 
     try {
-        const depthTex1 = gl.createTexture();
-        const depthTex2 = gl.createTexture();
-        const depthTex3 = gl.createTexture();
 
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(textureTarget, depthTex1);
@@ -239,10 +238,10 @@ async function main() {
 
     try {
         const sampler7 = gl.createSampler();
-        gl.deleteSampler(sampler7);
         gl.bindSampler(0, sampler7);
         gl.samplerParameteri(sampler7, compareMode, compareToTexture);
         gl.bindSampler(1, sampler7);
+        gl.deleteSampler(sampler7);
     } catch(e) {}
 }
 

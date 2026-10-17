@@ -31,12 +31,13 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tex0, tex1, tex2, tex3, depthTex1, depthTex2, depthTex3, depthTex4, fbo1, fbo2, fbo3, fbo4;
 
     try {
-        const tex0 = gl.createTexture();
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex0 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex0);
         gl.bindTexture(gl.TEXTURE_2D, tex1);
         gl.bindTexture(gl.TEXTURE_2D, tex0);
@@ -44,54 +45,54 @@ async function main() {
         gl.bindTexture(gl.TEXTURE_2D, tex1);
         gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, texSize, texSize);
         gl.bindTexture(gl.TEXTURE_2D, tex2);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 512, 512);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, texSize, texSize);
         gl.bindTexture(gl.TEXTURE_2D, tex3);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 512, 512);
-    } catch(e) { console.log(e); }
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, texSize, texSize);
+    } catch(e) {}
 
     try {
-        const depthTex1 = gl.createTexture();
-        const depthTex2 = gl.createTexture();
-        const depthTex3 = gl.createTexture();
-        const depthTex4 = gl.createTexture();
+        depthTex1 = gl.createTexture();
+        depthTex2 = gl.createTexture();
+        depthTex3 = gl.createTexture();
+        depthTex4 = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, depthTex1);
         gl.texStorage2D(gl.TEXTURE_2D, 1, depth16, texSize, texSize);
         gl.bindTexture(gl.TEXTURE_2D, depthTex2);
         gl.texStorage2D(gl.TEXTURE_2D, 1, depth24, texSize, texSize);
         gl.bindTexture(gl.TEXTURE_2D, depthTex3);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, depth32f, 512, 512);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, depth32f, texSize, texSize);
         gl.bindTexture(gl.TEXTURE_2D, depthTex4);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, depth16, 512, 512);
-    } catch(e) { console.log(e); }
+        gl.texStorage2D(gl.TEXTURE_2D, 1, depth16, texSize, texSize);
+    } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
-        const fbo3 = gl.createFramebuffer();
-        const fbo4 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
+        fbo3 = gl.createFramebuffer();
+        fbo4 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, attach0, gl.TEXTURE_2D, tex0, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, attach1, gl.TEXTURE_2D, tex1, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, depthAttach, gl.TEXTURE_2D, depthTex1, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, attach2, gl.TEXTURE_2D, tex2, 0);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, attach3, gl.TEXTURE_2D, tex3, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, attach0, gl.TEXTURE_2D, tex2, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, attach1, gl.TEXTURE_2D, tex3, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, depthAttach, gl.TEXTURE_2D, depthTex2, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo3);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, attach0, gl.TEXTURE_2D, tex0, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, depthAttach, gl.TEXTURE_2D, depthTex3, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.drawBuffers([attach0, attach1]);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
-        gl.drawBuffers([attach2, attach3]);
+        gl.drawBuffers([attach0, attach1]);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo3);
         gl.drawBuffers([attach0]);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const vs = gl.createShader(gl.VERTEX_SHADER);
@@ -121,7 +122,7 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const buffer = gl.createBuffer();
@@ -130,7 +131,7 @@ async function main() {
         gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.enable(gl.DEPTH_TEST);
@@ -140,7 +141,7 @@ async function main() {
         gl.depthMask(true);
         gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.DEPTH_TEST);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -151,7 +152,7 @@ async function main() {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, depthAttach, gl.TEXTURE_2D, depthTex3, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo4);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, depthAttach, gl.TEXTURE_2D, depthTex4, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < depthCycles; i++) {
@@ -165,7 +166,7 @@ async function main() {
             gl.depthFunc(gl.GREATER);
             gl.depthMask(true);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
@@ -174,7 +175,7 @@ async function main() {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.viewport(0, 0, texSize, texSize);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < drawIterations; i++) {
@@ -184,44 +185,46 @@ async function main() {
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
             gl.clear(gl.DEPTH_BUFFER_BIT);
-            gl.viewport(0, 0, 512, 512);
+            gl.viewport(0, 0, texSize, texSize);
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbo3);
             gl.clear(gl.DEPTH_BUFFER_BIT);
-            gl.viewport(0, 0, 512, 512);
+            gl.viewport(0, 0, texSize, texSize);
             gl.drawArrays(gl.TRIANGLES, 0, 6);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, depthAttach, gl.TEXTURE_2D, depthTex4, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, depthAttach, gl.TEXTURE_2D, depthTex1, 0);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.deleteFramebuffer(fbo1);
+        fbo1 = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
         gl.deleteFramebuffer(fbo2);
         gl.deleteFramebuffer(fbo3);
         gl.deleteFramebuffer(fbo4);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindTexture(gl.TEXTURE_2D, depthTex1);
         gl.deleteTexture(depthTex1);
+        depthTex1 = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, depthTex1);
         gl.deleteTexture(depthTex2);
         gl.deleteTexture(depthTex3);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.clearColor(0.2, 0.3, 0.4, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

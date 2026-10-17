@@ -157,7 +157,7 @@ async function main() {
 
     try {
         for (let i = 0; i < churnIterations; i += 64) {
-            gl.bindSampler(0, samplers[deletionIndices[0]]);
+            gl.bindSampler(0, samplers[deletionIndices[0] + 1]);
             gl.bindSampler(0, null);
         }
     } catch (e) {

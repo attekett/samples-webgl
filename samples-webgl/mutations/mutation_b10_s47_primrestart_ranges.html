@@ -108,16 +108,17 @@ async function main() {
         gl.enableVertexAttribArray(0);
         const buffer = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer);
+        gl.bufferData(bufferTarget, bufferSize, bufferUsage);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     } catch(e) {}
 
     try {
-        gl.enable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
-        gl.disable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
-        gl.enable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
-        gl.disable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
-        gl.enable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.enable(gl.DITHER);
+        gl.disable(gl.DITHER);
+        gl.enable(gl.DITHER);
+        gl.disable(gl.DITHER);
+        gl.enable(gl.DITHER);
     } catch(e) {}
 
     try {
@@ -138,15 +139,16 @@ async function main() {
     try {
         const indexBuffer = gl.createBuffer();
         gl.bindBuffer(indexTarget, indexBuffer);
+        gl.bufferData(indexTarget, indexBufferSize, bufferUsage);
         gl.drawElements(primitiveMode, indexCount, indexType, 0);
         gl.drawElements(primitiveMode, 20, indexType, 0);
         gl.drawElements(primitiveMode, indexCount, indexType, 0);
     } catch(e) {}
 
     try {
-        gl.disable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
-        gl.enable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
-        gl.disable(gl.PRIMITIVE_RESTART_FIXED_INDEX);
+        gl.disable(gl.DITHER);
+        gl.enable(gl.DITHER);
+        gl.disable(gl.DITHER);
         gl.drawElements(primitiveMode, 10, indexType, 0);
         gl.drawElements(primitiveMode, 15, indexType, 20);
     } catch(e) {}

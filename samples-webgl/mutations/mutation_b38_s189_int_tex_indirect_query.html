@@ -99,8 +99,8 @@ async function main() {
             flat in int vInstanceId;
             in vec2 vTexCoord;
             uniform isampler2D inputSampler;
-            out ivec4 fragColor0;
-            out ivec4 fragColor1;
+            layout(location = 0) out ivec4 fragColor0;
+            layout(location = 1) out ivec4 fragColor1;
             void main() {
                 ivec4 inputVal = texture(inputSampler, vTexCoord);
                 int val = inputVal.r + vInstanceId * 10;
@@ -186,6 +186,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.05, 0.15, 0.2, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, outputFBO);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 128);
     } catch(e) {}
 

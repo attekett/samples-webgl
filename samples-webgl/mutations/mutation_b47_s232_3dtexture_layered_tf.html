@@ -129,7 +129,7 @@ async function main() {
         for (let i = 0; i < SLICE_BATCH; i++) {
             const buf = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-            gl.bufferData(gl.ARRAY_BUFFER, INSTANCE_COUNT * 6 * (3 * 4 + 4 + 4), gl.DYNAMIC_COPY);
+            gl.bufferData(gl.ARRAY_BUFFER, INSTANCE_COUNT * 6 * (3 * 4 + 4 + 4), gl.DYNAMIC_READ);
             tfBuffers.push(buf);
         }
     } catch (e) { throw e; }
@@ -138,7 +138,7 @@ async function main() {
     try {
         texture3D = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_3D, texture3D);
-        gl.texImage3D(gl.TEXTURE_3D, 0, gl.R16F, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_DEPTH, 0, gl.RED, gl.HALF_FLOAT, null);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.R16F, TEXTURE_SIZE, TEXTURE_SIZE, TEXTURE_DEPTH, 0, gl.RED, gl.HALF_FLOAT, new Uint16Array(TEXTURE_SIZE * TEXTURE_SIZE * TEXTURE_DEPTH));
         gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
@@ -190,6 +190,7 @@ async function main() {
     gl.uniform1f(brightnessLoc, 0.8);
 
     try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         for (let batchIdx = 0; batchIdx < SLICE_BATCH; batchIdx++) {
             gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
             gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffers[batchIdx]);

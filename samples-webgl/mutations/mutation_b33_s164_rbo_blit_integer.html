@@ -8,7 +8,7 @@ const REQUIRED_EXTENSIONS = [];
 const texSize = 256;
 const halfSize = 128;
 const quarterSize = 64;
-const msaaSamples = 4;
+const msaaSamples = 0;
 const blitCount = 8;
 const clearVal = 42;
 
@@ -31,17 +31,17 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const rboMSI1 = gl.createRenderbuffer();
-        const rboMSI2 = gl.createRenderbuffer();
+        var rboMSI1 = gl.createRenderbuffer();
+        var rboMSI2 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboMSI1);
         gl.renderbufferStorageMultisample(gl.RENDERBUFFER, msaaSamples, gl.RGBA32I, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboMSI2);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.RG32I, halfSize, halfSize);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 0, gl.RG32I, halfSize, halfSize);
     } catch(e) {}
 
     try {
-        const rboSS1 = gl.createRenderbuffer();
-        const rboSS2 = gl.createRenderbuffer();
+        var rboSS1 = gl.createRenderbuffer();
+        var rboSS2 = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboSS1);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32I, texSize, texSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboSS2);
@@ -49,23 +49,23 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fboMS = gl.createFramebuffer();
-        const rboMS = gl.createRenderbuffer();
+        var fboMS = gl.createFramebuffer();
+        var rboMS = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboMS);
         gl.renderbufferStorageMultisample(gl.RENDERBUFFER, msaaSamples, gl.RGBA32I, texSize, texSize);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fboMS);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rboMS);
-        const status1 = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        var status1 = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     } catch(e) {}
 
     try {
-        const fboSS = gl.createFramebuffer();
-        const rboSS = gl.createRenderbuffer();
+        var fboSS = gl.createFramebuffer();
+        var rboSS = gl.createRenderbuffer();
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboSS);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32I, texSize, texSize);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fboSS);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rboSS);
-        const status2 = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        var status2 = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     } catch(e) {}
 
     const vsSrc = `#version 300 es
@@ -82,13 +82,13 @@ async function main() {
     }`;
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, vsSrc);
         gl.compileShader(vs);
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, fsSrc);
         gl.compileShader(fs);
-        const prog = gl.createProgram();
+        var prog = gl.createProgram();
         gl.attachShader(prog, vs);
         gl.attachShader(prog, fs);
         gl.linkProgram(prog);
@@ -96,8 +96,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const verts = new Float32Array([-1,-1, 1,-1, 0,1]);
-        const vbo = gl.createBuffer();
+        var verts = new Float32Array([-1,-1, 1,-1, 0,1]);
+        var vbo = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
         gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
@@ -105,10 +105,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fboMS = gl.createFramebuffer();
-        const fboSS = gl.createFramebuffer();
-        const rboMS = gl.createRenderbuffer();
-        const rboSS = gl.createRenderbuffer();
+        var fboMS = gl.createFramebuffer();
+        var fboSS = gl.createFramebuffer();
+        var rboMS = gl.createRenderbuffer();
+        var rboSS = gl.createRenderbuffer();
 
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboMS);
         gl.renderbufferStorageMultisample(gl.RENDERBUFFER, msaaSamples, gl.RGBA32I, texSize, texSize);
@@ -127,13 +127,13 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fboMSUI = gl.createFramebuffer();
-        const fboSSUI = gl.createFramebuffer();
-        const rboMSUI = gl.createRenderbuffer();
-        const rboSSUI = gl.createRenderbuffer();
+        var fboMSUI = gl.createFramebuffer();
+        var fboSSUI = gl.createFramebuffer();
+        var rboMSUI = gl.createRenderbuffer();
+        var rboSSUI = gl.createRenderbuffer();
 
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboMSUI);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.RGBA32UI, halfSize, halfSize);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 0, gl.RGBA32UI, halfSize, halfSize);
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboSSUI);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA32UI, halfSize, halfSize);
 
@@ -171,10 +171,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fboSrc = gl.createFramebuffer();
-        const fboDst = gl.createFramebuffer();
-        const rboSrc = gl.createRenderbuffer();
-        const rboDst = gl.createRenderbuffer();
+        var fboSrc = gl.createFramebuffer();
+        var fboDst = gl.createFramebuffer();
+        var rboSrc = gl.createRenderbuffer();
+        var rboDst = gl.createRenderbuffer();
 
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboSrc);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.R32I, texSize, texSize);
@@ -192,13 +192,13 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fboMS1 = gl.createFramebuffer();
-        const fboSS1 = gl.createFramebuffer();
-        const rboMS1 = gl.createRenderbuffer();
-        const rboSS1 = gl.createRenderbuffer();
+        var fboMS1 = gl.createFramebuffer();
+        var fboSS1 = gl.createFramebuffer();
+        var rboMS1 = gl.createRenderbuffer();
+        var rboSS1 = gl.createRenderbuffer();
 
         gl.bindRenderbuffer(gl.RENDERBUFFER, rboMS1);
-        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 4, gl.RGBA16I, texSize, texSize);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, 0, gl.RGBA16I, texSize, texSize);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fboMS1);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rboMS1);
         gl.clearBufferiv(gl.COLOR, 0, [100, -100, 200, -200]);
@@ -210,7 +210,7 @@ async function main() {
         gl.framebufferRenderbuffer(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, rboSS1);
         gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
 
-        const readBuf = new Int32Array(64 * 64 * 4);
+        var readBuf = new Int32Array(64 * 64 * 4);
         gl.readPixels(0, 0, 64, 64, gl.RGBA_INTEGER, gl.INT, readBuf);
     } catch(e) {}
 

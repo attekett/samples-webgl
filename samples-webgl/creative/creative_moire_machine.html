@@ -8,7 +8,6 @@
         const REQUIRED_EXTENSIONS = [];
 
         async function main() {
-            console.log("Starting Main...");
             const canvas = document.getElementById('webgl-canvas');
             const gl = canvas.getContext('webgl2');
             if (!gl) throw new Error("WebGL2 not supported");
@@ -20,7 +19,6 @@
                 gl.compileShader(shader);
                 if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
                     const log = gl.getShaderInfoLog(shader);
-                    console.error("Shader Compile Error:", log);
                     throw new Error("Shader Compile Error: " + log);
                 }
                 return shader;
@@ -33,7 +31,6 @@
                 gl.linkProgram(program);
                 if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
                     const log = gl.getProgramInfoLog(program);
-                    console.error("Program Link Error:", log);
                     throw new Error("Program Link Error: " + log);
                 }
                 return program;
@@ -79,9 +76,7 @@
     }
     `;
 
-            console.log("Compiling Shaders...");
             const prog = createProgram(gl, vs, fs);
-            console.log("Shaders Compiled.");
 
             // --- Resources ---
 
@@ -143,7 +138,6 @@
             gl.bindTexture(gl.TEXTURE_2D, tex);
 
             const TOTAL_FRAMES = 10;
-            console.log("Starting Loop...");
 
             for (let f = 0; f < TOTAL_FRAMES; f++) {
                 gl.uniform1f(gl.getUniformLocation(prog, "u_time"), f * 0.2);
@@ -156,16 +150,11 @@
 
             const error = gl.getError();
             if (error !== gl.NO_ERROR) {
-                console.error("WebGL Error Code:", error);
                 throw new Error("WebGL Error: " + error);
             }
-            console.log("Success");
         }
 
-        main().catch(e => {
-            console.error("Exception:", e.message);
-            console.error(e.stack);
-        });
+        main().catch(err => { throw err; });
     </script>
 </body>
 

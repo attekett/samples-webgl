@@ -221,8 +221,8 @@ void main() {
         gl.bindBuffer(bufferTarget, null);
         gl.deleteProgram(program);
         gl.bindVertexArray(null);
-        gl.deleteVertexArray(vao);
         gl.bindVertexArray(vao);
+        gl.deleteVertexArray(vao);
     } catch(e) {}
 }
 

@@ -28,28 +28,34 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let intTexArray1, intTexArray2, intTexArray3, intTexArray4, intTex1, intTex2, intTex3, intTex4, fbo;
 
     try {
-        const intTexArray1 = gl.createTexture();
-        const intTexArray2 = gl.createTexture();
-        const intTexArray3 = gl.createTexture();
-        const intTexArray4 = gl.createTexture();
+        intTexArray1 = gl.createTexture();
+        intTexArray2 = gl.createTexture();
+        intTexArray3 = gl.createTexture();
+        intTexArray4 = gl.createTexture();
         gl.bindTexture(texture2DArrayTarget, intTexArray1);
-        gl.texImage3D(texture2DArrayTarget, 0, rgba32iFormat, texSize, texSize, arrayLayers, 0, gl.RGBA_INTEGER, gl.INT, null);
+        gl.texImage3D(texture2DArrayTarget, 0, rgba32iFormat, texSize, texSize, arrayLayers, 0, gl.RGBA_INTEGER, gl.INT, new Int32Array(texSize * texSize * arrayLayers * 4));
         gl.texParameteri(texture2DArrayTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texture2DArrayTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(texture2DArrayTarget, intTexArray2);
-        gl.texImage3D(texture2DArrayTarget, 0, rgba32uiFormat, 128, 128, 8, 0, gl.RGBA_INTEGER, gl.UNSIGNED_INT, null);
+        gl.texImage3D(texture2DArrayTarget, 0, rgba32uiFormat, texSize, texSize, 8, 0, gl.RGBA_INTEGER, gl.UNSIGNED_INT, new Uint32Array(texSize * texSize * 8 * 4));
+        gl.texParameteri(texture2DArrayTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texture2DArrayTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(texture2DArrayTarget, intTexArray3);
-        gl.texImage3D(texture2DArrayTarget, 0, r32iFormat, texSize, texSize, arrayLayers, 0, gl.RED_INTEGER, gl.INT, null);
+        gl.texImage3D(texture2DArrayTarget, 0, r32iFormat, texSize, texSize, arrayLayers, 0, gl.RED_INTEGER, gl.INT, new Int32Array(texSize * texSize * arrayLayers));
+        gl.texParameteri(texture2DArrayTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texture2DArrayTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(texture2DArrayTarget, intTexArray4);
         gl.texImage3D(texture2DArrayTarget, 0, rgba32iFormat, 64, 64, 4, 0, gl.RGBA_INTEGER, gl.INT, null);
     } catch(e) {}
 
     try {
-        const intTex1 = gl.createTexture();
-        const intTex2 = gl.createTexture();
-        const intTex3 = gl.createTexture();
-        const intTex4 = gl.createTexture();
+        intTex1 = gl.createTexture();
+        intTex2 = gl.createTexture();
+        intTex3 = gl.createTexture();
+        intTex4 = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, intTex1);
         gl.texImage2D(gl.TEXTURE_2D, 0, rgba32iFormat, texSize, texSize, 0, gl.RGBA_INTEGER, gl.INT, null);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -57,7 +63,7 @@ async function main() {
         gl.bindTexture(gl.TEXTURE_2D, intTex2);
         gl.texImage2D(gl.TEXTURE_2D, 0, rgba32uiFormat, texSize, texSize, 0, gl.RGBA_INTEGER, gl.UNSIGNED_INT, null);
         gl.bindTexture(gl.TEXTURE_2D, intTex3);
-        gl.texImage2D(gl.TEXTURE_2D, 0, rgba32iFormat, 128, 128, 0, gl.RGBA_INTEGER, gl.INT, null);
+        gl.texImage2D(gl.TEXTURE_2D, 0, rgba32iFormat, texSize, texSize, 0, gl.RGBA_INTEGER, gl.INT, null);
         gl.bindTexture(gl.TEXTURE_2D, intTex4);
         gl.texImage2D(gl.TEXTURE_2D, 0, r32iFormat, texSize, texSize, 0, gl.RED_INTEGER, gl.INT, null);
     } catch(e) {}
@@ -108,6 +114,9 @@ async function main() {
         gl.attachShader(program, fs);
         gl.linkProgram(program);
         gl.useProgram(program);
+        gl.uniform1i(gl.getUniformLocation(program, 'uIntTexArray1'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uIntTexArray2'), 1);
+        gl.uniform1i(gl.getUniformLocation(program, 'uIntTexArray3'), 2);
     } catch(e) {}
 
     try {
@@ -124,7 +133,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo = gl.createFramebuffer();
+        fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, intTex1, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, intTex2, 0);
@@ -160,6 +169,12 @@ async function main() {
     } catch(e) {}
 
     try {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(texture2DArrayTarget, null);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(texture2DArrayTarget, null);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(texture2DArrayTarget, null);
         gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, intTexArray1, 0, 0);
         gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, intTexArray2, 0, 2);
         gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, intTexArray3, 0, 4);
@@ -172,23 +187,31 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.5, 0.5, 0.5, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawBuffers([gl.NONE]);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     } catch(e) {}
 
     try {
         gl.bindTexture(texture2DArrayTarget, intTexArray1);
         gl.deleteTexture(intTexArray1);
+        intTexArray1 = gl.createTexture();
         gl.bindTexture(texture2DArrayTarget, intTexArray1);
         gl.bindTexture(gl.TEXTURE_2D, intTex1);
         gl.deleteTexture(intTex1);
+        intTex1 = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, intTex1);
     } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.deleteFramebuffer(fbo);
+        fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
     } catch(e) {}
 }
 

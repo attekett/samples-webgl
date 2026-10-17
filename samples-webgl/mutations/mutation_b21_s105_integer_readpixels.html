@@ -7,7 +7,7 @@ const REQUIRED_EXTENSIONS = [];
 
 const readCount = 16;
 const pixelStride = 4;
-const pboSize = 65536;
+const pboSize = 1048576;
 const formatVariations = 6;
 const texSize = 256;
 const pixelCount = texSize * texSize;
@@ -35,11 +35,12 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tex1, tex2, tex3, fbo1, fbo2, fbo3, pbo1, pbo2, pbo3;
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
@@ -53,9 +54,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
-        const fbo3 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
+        fbo3 = gl.createFramebuffer();
         gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.framebufferTexture2D(framebufferTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex1, 0);
         gl.bindFramebuffer(framebufferTarget, fbo2);
@@ -111,12 +112,13 @@ async function main() {
         gl.bindFramebuffer(framebufferTarget, fbo2);
         gl.viewport(0, 0, 256, 256);
         gl.clearBufferuiv(gl.COLOR, 0, [555555, 666666, 777777, 888888]);
+        gl.drawBuffers([gl.NONE]);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     } catch(e) {}
 
     try {
-        const pixels1 = new Int32Array(pixelStride * readCount);
-        const pixels2 = new Uint32Array(pixelStride * readCount);
+        const pixels1 = new Int32Array(pixelStride * readCount * 64);
+        const pixels2 = new Uint32Array(pixelStride * readCount * 256);
         gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.readPixels(0, 0, readCount, 1, format_RGBA_INTEGER, type_INT, pixels1);
         gl.readPixels(0, 0, 16, 16, format_RGBA_INTEGER, type_INT, pixels1);
@@ -127,15 +129,15 @@ async function main() {
     } catch(e) {}
 
     try {
-        const pbo1 = gl.createBuffer();
-        const pbo2 = gl.createBuffer();
-        const pbo3 = gl.createBuffer();
+        pbo1 = gl.createBuffer();
+        pbo2 = gl.createBuffer();
+        pbo3 = gl.createBuffer();
         gl.bindBuffer(pixelPackBuffer, pbo1);
         gl.bindBuffer(pixelPackBuffer, pbo2);
         gl.bindBuffer(pixelPackBuffer, pbo1);
         gl.bufferData(pixelPackBuffer, pboSize, gl.STREAM_READ);
         gl.bindBuffer(pixelPackBuffer, pbo2);
-        gl.bufferData(pixelPackBuffer, 262144, gl.STREAM_READ);
+        gl.bufferData(pixelPackBuffer, pboSize, gl.STREAM_READ);
         gl.bindBuffer(pixelPackBuffer, pbo3);
         gl.bufferData(pixelPackBuffer, pboSize, gl.STREAM_READ);
     } catch(e) {}
@@ -152,7 +154,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const pixels3 = new Int32Array(256);
+        const pixels3 = new Int32Array(1024);
         gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.bindBuffer(pixelPackBuffer, null);
         gl.readPixels(0, 0, 64, 1, format_RGBA_INTEGER, type_INT, pixels3);
@@ -176,6 +178,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.6, 0.6, 0.6, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawBuffers([gl.NONE]);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } catch(e) {}
 
@@ -185,13 +188,16 @@ async function main() {
         gl.bindFramebuffer(framebufferTarget, fbo1);
         gl.readPixels(0, 0, 16, 1, format_RGBA_INTEGER, type_INT, pixels4);
         gl.deleteFramebuffer(fbo1);
+        fbo1 = gl.createFramebuffer();
         gl.bindFramebuffer(framebufferTarget, fbo1);
+        gl.framebufferTexture2D(framebufferTarget, gl.COLOR_ATTACHMENT0, textureTarget, tex1, 0);
         gl.readPixels(0, 0, 8, 1, format_RGBA_INTEGER, type_INT, pixels4);
     } catch(e) {}
 
     try {
         gl.bindBuffer(pixelPackBuffer, pbo1);
         gl.deleteBuffer(pbo1);
+        pbo1 = gl.createBuffer();
         gl.bindBuffer(pixelPackBuffer, pbo1);
         gl.bufferData(pixelPackBuffer, pboSize, gl.STREAM_READ);
         gl.readPixels(0, 0, 64, 64, format_RGBA_INTEGER, type_INT, 0);

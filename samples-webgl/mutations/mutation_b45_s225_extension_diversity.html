@@ -29,7 +29,7 @@ async function main() {
     const etc1 = gl.getExtension('WEBGL_compressed_texture_etc1');
 
     const textureTarget = gl.TEXTURE_2D;
-    const tex3DTarget = gl.TEXTURE_3D;
+    const tex3DTarget = gl.TEXTURE_2D_ARRAY;
     const texArrayTarget = gl.TEXTURE_2D_ARRAY;
 
     try {
@@ -80,9 +80,9 @@ async function main() {
             gl.bindTexture(textureTarget, astcTex1);
             gl.compressedTexImage2D(textureTarget, 0, astc.COMPRESSED_RGBA_ASTC_4x4_KHR, 256, 256, 0, new Uint8Array(65536));
             gl.bindTexture(textureTarget, astcTex2);
-            gl.compressedTexImage2D(textureTarget, 0, astc.COMPRESSED_RGBA_ASTC_6x6_KHR, 512, 512, 0, new Uint8Array(73728));
+            gl.compressedTexImage2D(textureTarget, 0, astc.COMPRESSED_RGBA_ASTC_6x6_KHR, 512, 512, 0, new Uint8Array(118336));
             gl.bindTexture(textureTarget, astcTex3);
-            gl.compressedTexImage2D(textureTarget, 0, astc.COMPRESSED_RGBA_ASTC_8x8_KHR, 256, 256, 0, new Uint8Array(32768));
+            gl.compressedTexImage2D(textureTarget, 0, astc.COMPRESSED_RGBA_ASTC_8x8_KHR, 256, 256, 0, new Uint8Array(16384));
         } catch(e) {}
     }
 

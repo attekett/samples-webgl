@@ -3,7 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [];
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
 
 const rboCount = 12;
 const initialSize = 256;
@@ -41,11 +41,12 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let rbo1, rbo2, rbo3, rbo4, rbo5, rbo6, rbo7, rbo8, rbo9, rbo10, rbo11, rbo12, fbo1, fbo2, width, height, format;
 
     try {
-        const rbo1 = gl.createRenderbuffer();
-        const rbo2 = gl.createRenderbuffer();
-        const rbo3 = gl.createRenderbuffer();
+        rbo1 = gl.createRenderbuffer();
+        rbo2 = gl.createRenderbuffer();
+        rbo3 = gl.createRenderbuffer();
         gl.bindRenderbuffer(RENDERBUFFER, rbo1);
         gl.bindRenderbuffer(RENDERBUFFER, rbo2);
         gl.bindRenderbuffer(RENDERBUFFER, rbo3);
@@ -54,9 +55,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo4 = gl.createRenderbuffer();
-        const rbo5 = gl.createRenderbuffer();
-        const rbo6 = gl.createRenderbuffer();
+        rbo4 = gl.createRenderbuffer();
+        rbo5 = gl.createRenderbuffer();
+        rbo6 = gl.createRenderbuffer();
         gl.bindRenderbuffer(RENDERBUFFER, rbo4);
         gl.renderbufferStorage(RENDERBUFFER, RGBA16F, initialSize, initialSize);
         gl.bindRenderbuffer(RENDERBUFFER, rbo5);
@@ -66,9 +67,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo7 = gl.createRenderbuffer();
-        const rbo8 = gl.createRenderbuffer();
-        const rbo9 = gl.createRenderbuffer();
+        rbo7 = gl.createRenderbuffer();
+        rbo8 = gl.createRenderbuffer();
+        rbo9 = gl.createRenderbuffer();
         gl.bindRenderbuffer(RENDERBUFFER, rbo7);
         gl.renderbufferStorage(RENDERBUFFER, R11F_G11F_B10F, initialSize, initialSize);
         gl.bindRenderbuffer(RENDERBUFFER, rbo8);
@@ -78,9 +79,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const rbo10 = gl.createRenderbuffer();
-        const rbo11 = gl.createRenderbuffer();
-        const rbo12 = gl.createRenderbuffer();
+        rbo10 = gl.createRenderbuffer();
+        rbo11 = gl.createRenderbuffer();
+        rbo12 = gl.createRenderbuffer();
         gl.bindRenderbuffer(RENDERBUFFER, rbo10);
         gl.renderbufferStorage(RENDERBUFFER, RGB8, initialSize, initialSize);
         gl.bindRenderbuffer(RENDERBUFFER, rbo11);
@@ -110,8 +111,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const fbo1 = gl.createFramebuffer();
-        const fbo2 = gl.createFramebuffer();
+        fbo1 = gl.createFramebuffer();
+        fbo2 = gl.createFramebuffer();
         gl.bindFramebuffer(FRAMEBUFFER, fbo1);
         gl.bindFramebuffer(FRAMEBUFFER, fbo2);
         gl.bindFramebuffer(FRAMEBUFFER, fbo1);
@@ -131,9 +132,9 @@ async function main() {
 
     try {
         gl.bindRenderbuffer(RENDERBUFFER, rbo4);
-        const width = gl.getRenderbufferParameter(RENDERBUFFER, RENDERBUFFER_WIDTH);
-        const height = gl.getRenderbufferParameter(RENDERBUFFER, RENDERBUFFER_HEIGHT);
-        const format = gl.getRenderbufferParameter(RENDERBUFFER, RENDERBUFFER_INTERNAL_FORMAT);
+        width = gl.getRenderbufferParameter(RENDERBUFFER, RENDERBUFFER_WIDTH);
+        height = gl.getRenderbufferParameter(RENDERBUFFER, RENDERBUFFER_HEIGHT);
+        format = gl.getRenderbufferParameter(RENDERBUFFER, RENDERBUFFER_INTERNAL_FORMAT);
         gl.bindRenderbuffer(RENDERBUFFER, rbo7);
         gl.getRenderbufferParameter(RENDERBUFFER, RENDERBUFFER_WIDTH);
         gl.getRenderbufferParameter(RENDERBUFFER, RENDERBUFFER_HEIGHT);

@@ -153,6 +153,7 @@ async function main() {
      for (let i = 0; i < resources.textures.length; i++) {
        if (!resources.textures[i]) {
          gl.bindTexture(gl.TEXTURE_2D, resources.textures[i]);
+         gl.bindTexture(gl.TEXTURE_2D, resources.textures[1]);
          if (gl.getError() === gl.NO_ERROR) {
            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
          }
@@ -162,6 +163,7 @@ async function main() {
      for (let i = 0; i < resources.buffers.length; i++) {
        if (!resources.buffers[i]) {
          gl.bindBuffer(gl.ARRAY_BUFFER, resources.buffers[i]);
+         gl.bindBuffer(gl.ARRAY_BUFFER, resources.buffers[1]);
          if (gl.getError() === gl.NO_ERROR) {
            gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array([1.0, 2.0, 3.0]));
          }
@@ -339,9 +341,7 @@ async function main() {
  // that may generate warnings/errors intentionally
 }
 
-main().catch(err => {
- console.error(err);
-});
+main().catch(err => { throw err; });
 </script>
 </body>
 </html>

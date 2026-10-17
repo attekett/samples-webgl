@@ -69,6 +69,7 @@ async function main() {
         gl_Position = vec4(0.0);
     }`;
 
+    let program, programTF;
     try {
         const vShader = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vShader, vsSource);
@@ -76,7 +77,7 @@ async function main() {
         const fShader = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fShader, fsSource);
         gl.compileShader(fShader);
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vShader);
         gl.attachShader(program, fShader);
         gl.linkProgram(program);
@@ -87,14 +88,24 @@ async function main() {
         const vShaderTF = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vShaderTF, vsTFSource);
         gl.compileShader(vShaderTF);
-        const programTF = gl.createProgram();
+        const fShaderTF = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShaderTF, `#version 300 es
+    precision highp float;
+    out vec4 fragColorTF;
+    void main() {
+        fragColorTF = vec4(1.0);
+    }`);
+        gl.compileShader(fShaderTF);
+        programTF = gl.createProgram();
         gl.attachShader(programTF, vShaderTF);
+        gl.attachShader(programTF, fShaderTF);
         gl.transformFeedbackVaryings(programTF, ['tfLayerIndex', 'tfPixelValue', 'tfInstanceID'], gl.INTERLEAVED_ATTRIBS);
         gl.linkProgram(programTF);
     } catch(e) {}
 
     try {
         const intTexArray = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(textureTarget, intTexArray);
         gl.bindTexture(textureTarget, null);
         gl.bindTexture(textureTarget, intTexArray);
@@ -108,7 +119,7 @@ async function main() {
         for (let i = 0; i < intData.length; i++) {
             intData[i] = (i % 256) - 128;
         }
-        for (let layer = 0; layer < layerCount; layer += 8) {
+        for (let layer = 0; layer < layerCount; layer++) {
             gl.texSubImage3D(textureTarget, 0, 0, 0, layer, texSize, texSize, 1, gl.RED_INTEGER, gl.INT, intData);
         }
     } catch(e) {}
@@ -141,7 +152,7 @@ async function main() {
             const tfBuffer = gl.createBuffer();
             tfBuffers.push(tfBuffer);
             gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuffer);
-            gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, tfBufferSize, gl.DYNAMIC_COPY);
+            gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, tfBufferSize, gl.DYNAMIC_READ);
         }
     } catch(e) {}
 
@@ -157,7 +168,8 @@ async function main() {
     } catch(e) {}
 
     try {
-        const programTF = gl.getParameter(gl.CURRENT_PROGRAM);
+        gl.getParameter(gl.CURRENT_PROGRAM);
+        gl.useProgram(programTF);
 
         for (let i = 0; i < tfObjects.length; i++) {
             gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObjects[i]);
@@ -169,6 +181,8 @@ async function main() {
             gl.endTransformFeedback();
             gl.disable(gl.RASTERIZER_DISCARD);
         }
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.useProgram(program);
     } catch(e) {}
 
     try {
@@ -188,6 +202,7 @@ async function main() {
                 gl.texSubImage3D(textureTarget, 0, 0, 0, layer, 64, 64, 1, gl.RED_INTEGER, gl.INT, uploadData);
             }
         }
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
     } catch(e) {}
 
     const fbos = [];
@@ -224,9 +239,11 @@ async function main() {
             }
             gl.texSubImage3D(textureTarget, 0, 64, 64, layerIdx, 128, 128, 1, gl.RED_INTEGER, gl.INT, texData);
         }
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
     } catch(e) {}
 
     try {
+        gl.useProgram(programTF);
         for (let i = 0; i < 4; i++) {
             gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObjects[i]);
             gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuffers[i * 2]);
@@ -236,11 +253,13 @@ async function main() {
             gl.drawArrays(gl.POINTS, i * 64, 64);
             gl.endTransformFeedback();
             gl.disable(gl.RASTERIZER_DISCARD);
+            gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
 
             gl.bindBuffer(gl.COPY_READ_BUFFER, tfBuffers[i * 2]);
             gl.bindBuffer(gl.COPY_WRITE_BUFFER, tfBuffers[i * 2 + 1]);
             gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, 4096);
         }
+        gl.useProgram(program);
     } catch(e) {}
 
     try {
@@ -259,6 +278,7 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.1, 0.1, 0.1, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[0]);
         gl.drawArrays(gl.POINTS, 0, 256);
     } catch(e) {}
 }

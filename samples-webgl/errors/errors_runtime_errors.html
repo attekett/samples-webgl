@@ -91,26 +91,59 @@ async function main() {
    }
  }
 
+ function makeProbeProgram() {
+   const vs = gl.createShader(gl.VERTEX_SHADER);
+   gl.shaderSource(vs, `#version 300 es
+ uniform float testUniform;
+ void main() { gl_Position = vec4(float(gl_VertexID) * testUniform, 0.0, 0.0, 1.0); }`);
+   gl.compileShader(vs);
+   const fs = gl.createShader(gl.FRAGMENT_SHADER);
+   gl.shaderSource(fs, `#version 300 es
+ precision mediump float;
+ out vec4 c;
+ void main() { c = vec4(1.0); }`);
+   gl.compileShader(fs);
+   const p = gl.createProgram();
+   gl.attachShader(p, vs);
+   gl.attachShader(p, fs);
+   gl.linkProgram(p);
+   return p;
+ }
+
+ function bindFreshTexture() {
+   const t = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, t);
+   return t;
+ }
+
+ function bindFreshBuffer(target) {
+   const b = gl.createBuffer();
+   gl.bindBuffer(target, b);
+   return b;
+ }
+
  // Define runtime error test cases
  const runtimeErrorTests = [
    // Test 0: INVALID_ENUM - Invalid texture target
    () => {
-     gl.texImage2D(99999, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+     bindFreshTexture();
+     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
    },
    // Test 1: INVALID_VALUE - Negative texture size
    () => {
-     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, -256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+     bindFreshTexture();
+     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
    },
    // Test 2: INVALID_OPERATION - Draw without bound program
    () => {
-     gl.useProgram(null);
+     gl.useProgram(makeProbeProgram());
      gl.drawArrays(gl.TRIANGLES, 0, 3);
    },
    // Test 3: INVALID_OPERATION - Uniform location from wrong program
    () => {
-     const program1 = gl.createProgram();
-     const program2 = gl.createProgram();
-     gl.useProgram(program1);
+     const program1 = makeProbeProgram();
+     const program2 = makeProbeProgram();
+     gl.useProgram(program2);
      const loc = gl.getUniformLocation(program2, "testUniform");
      gl.uniform1f(loc, 1.0);
    },
@@ -118,22 +151,28 @@ async function main() {
    () => {
      const fbo = gl.createFramebuffer();
      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-     // Don't attach anything - framebuffer is incomplete
+     bindFreshTexture();
+     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gl.getParameter(gl.TEXTURE_BINDING_2D), 0);
      gl.clear(gl.COLOR_BUFFER_BIT);
    },
    // Test 5: INVALID_VALUE - Out of bounds vertex attrib pointer
    () => {
-     gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, -1);
+     bindFreshBuffer(gl.ARRAY_BUFFER);
+     gl.bufferData(gl.ARRAY_BUFFER, 64, gl.STATIC_DRAW);
+     gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
    },
    // Test 6: INVALID_OPERATION - Buffer data with wrong target binding
    () => {
      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+     bindFreshBuffer(gl.ELEMENT_ARRAY_BUFFER);
      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Float32Array([1,2,3]), gl.STATIC_DRAW);
    },
    // Test 7: INVALID_ENUM - Invalid buffer usage pattern
    () => {
      const data = new Float32Array(1024);
-     gl.bufferData(gl.ARRAY_BUFFER, data, 99999);
+     bindFreshBuffer(gl.ARRAY_BUFFER);
+     gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
    }
  ];
 

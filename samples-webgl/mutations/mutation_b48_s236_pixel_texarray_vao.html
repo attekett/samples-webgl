@@ -71,8 +71,9 @@ async function main() {
         gl.useProgram(program);
     } catch(e) {}
 
+    let texArray;
     try {
-        const texArray = gl.createTexture();
+        texArray = gl.createTexture();
         gl.bindTexture(textureTarget, texArray);
         gl.bindTexture(textureTarget, null);
         gl.bindTexture(textureTarget, texArray);
@@ -156,12 +157,16 @@ async function main() {
     try {
         const readFbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, readFbo);
+        const dstTex = gl.createTexture();
+        gl.bindTexture(textureTarget, dstTex);
+        gl.texStorage3D(textureTarget, 1, textureFormat, texSize, texSize, layerCount);
 
         for (let i = 0; i < layerCount; i += 4) {
-            gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.getParameter(gl.TEXTURE_BINDING_2D_ARRAY), 0, i);
+            gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, texArray, 0, i);
             gl.copyTexSubImage3D(textureTarget, 0, 0, 0, i, 0, 0, copyRegionSize, copyRegionSize);
             gl.copyTexSubImage3D(textureTarget, 0, copyRegionSize, 0, i, 0, 0, copyRegionSize, copyRegionSize);
         }
+        gl.bindTexture(textureTarget, texArray);
     } catch(e) {}
 
     try {
@@ -185,11 +190,15 @@ async function main() {
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, readFbo);
 
         const pixelData = new Uint8Array(readPixelSize * readPixelSize * 4);
+        const pixelPbo = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pixelPbo);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, pixelData.byteLength * 2, gl.STREAM_READ);
         for (let i = 0; i < layerCount; i += 16) {
             gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.getParameter(gl.TEXTURE_BINDING_2D_ARRAY), 0, i);
-            gl.readPixels(0, 0, readPixelSize, readPixelSize, gl.RGBA, gl.UNSIGNED_BYTE, pixelData);
-            gl.readPixels(readPixelSize, readPixelSize, readPixelSize, readPixelSize, gl.RGBA, gl.UNSIGNED_BYTE, pixelData);
+            gl.readPixels(0, 0, readPixelSize, readPixelSize, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+            gl.readPixels(readPixelSize, readPixelSize, readPixelSize, readPixelSize, gl.RGBA, gl.UNSIGNED_BYTE, 0);
         }
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     } catch(e) {}
 
     try {
@@ -209,18 +218,22 @@ async function main() {
 
     try {
         gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
-        gl.pixelStorei(gl.PACK_ROW_LENGTH, 128);
+        gl.pixelStorei(gl.PACK_ROW_LENGTH, 256);
         gl.pixelStorei(gl.PACK_SKIP_PIXELS, 4);
         gl.pixelStorei(gl.PACK_SKIP_ROWS, 2);
 
         const readFbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, readFbo);
         const pixelData = new Uint8Array(256 * 256 * 4);
+        const pixelPbo = gl.createBuffer();
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pixelPbo);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, pixelData.byteLength, gl.STREAM_READ);
 
         for (let i = 0; i < 16; i++) {
             gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.getParameter(gl.TEXTURE_BINDING_2D_ARRAY), 0, i * 8);
-            gl.readPixels(0, 0, 128, 128, gl.RGBA, gl.UNSIGNED_BYTE, pixelData);
+            gl.readPixels(0, 0, 128, 128, gl.RGBA, gl.UNSIGNED_BYTE, 0);
         }
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
 
         gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
         gl.pixelStorei(gl.PACK_ROW_LENGTH, 0);

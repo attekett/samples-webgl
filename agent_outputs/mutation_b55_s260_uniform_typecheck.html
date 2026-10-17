@@ -70,11 +70,11 @@ async function main() {
         gl.bindTexture(textureTarget, texture1);
         gl.bindTexture(textureTarget, texture2);
         gl.bindTexture(textureTarget, texture1);
-        gl.texImage2D(textureTarget, 0, gl.RGBA, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(textureTarget, 0, gl.RGBA, texSize, texSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(texSize * texSize * 4));
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.bindTexture(textureTarget, texture2);
-        gl.texImage2D(textureTarget, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(textureTarget, 0, gl.RGBA, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(128 * 128 * 4));
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.bindTexture(textureTarget, texture1);
@@ -302,12 +302,12 @@ async function main() {
         gl.isProgram(program);
         gl.isShader(vertexShader);
         gl.isShader(fragmentShader);
+        gl.bindBuffer(bufferTarget, buffer1);
         gl.deleteBuffer(buffer1);
         gl.isBuffer(buffer1);
-        gl.bindBuffer(bufferTarget, buffer1);
+        gl.bindTexture(textureTarget, texture1);
         gl.deleteTexture(texture1);
         gl.isTexture(texture1);
-        gl.bindTexture(textureTarget, texture1);
         gl.deleteBuffer(buffer2);
         gl.deleteTexture(texture2);
         gl.deleteShader(vertexShader);

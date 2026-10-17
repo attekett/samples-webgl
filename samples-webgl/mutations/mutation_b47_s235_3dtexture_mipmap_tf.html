@@ -137,7 +137,7 @@ async function main() {
         for (let i = 0; i < MIPMAP_LEVELS; i++) {
             const buf = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-            gl.bufferData(gl.ARRAY_BUFFER, VERTICES_PER_LEVEL * (3 + 2 + 1) * 4, gl.DYNAMIC_COPY);
+            gl.bufferData(gl.ARRAY_BUFFER, VERTICES_PER_LEVEL * (3 + 2 + 1) * 4, gl.DYNAMIC_READ);
             tfBuffers.push(buf);
         }
     } catch (e) { throw e; }
@@ -182,6 +182,7 @@ async function main() {
     gl.uniform1i(texture3DLoc, 0);
 
     try {
+        gl.enable(gl.RASTERIZER_DISCARD);
         for (let level = 0; level < MIPMAP_LEVELS; level++) {
             const levelSize = BASE_SIZE >> level;
             if (levelSize < 1) break;
@@ -216,13 +217,14 @@ async function main() {
             gl.bindTexture(gl.TEXTURE_3D, texture3D);
             gl.texSubImage3D(gl.TEXTURE_3D, level, 0, 0, 0, levelSize, levelSize, levelSize, gl.RGBA, gl.UNSIGNED_BYTE, texData);
         }
+        gl.disable(gl.RASTERIZER_DISCARD);
     } catch (e) { throw e; }
 
     try {
         gl.bindTexture(gl.TEXTURE_3D, texture3D);
         gl.generateMipmap(gl.TEXTURE_3D);
 
-        const maxLevel = gl.getParameter(gl.MAX_TEXTURE_MAX_LEVEL);
+        const maxLevel = gl.getParameter(gl.MAX_3D_TEXTURE_SIZE);
         gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAX_LEVEL, Math.min(MIPMAP_LEVELS - 1, maxLevel));
     } catch (e) { throw e; }
 

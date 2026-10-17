@@ -6,7 +6,7 @@
 
 async function main() {
  const canvas = document.getElementById('webgl-canvas');
- const gl = canvas.getContext('webgl2');
+ const gl = canvas.getContext('webgl2', {antialias: false});
  if (!gl) throw new Error("WebGL2 required");
 
  // HIGH-BIOMASS FUZZING SEED: Timer Queries + Sync Objects + 3D Textures + MRT + Instanced Rendering
@@ -245,7 +245,9 @@ void main() {
  gl.compileShader(tfVs);
  gl.attachShader(tfProgram, tfVs);
  const tfFs = gl.createShader(gl.FRAGMENT_SHADER);
- gl.shaderSource(tfFs, `void main() {}`);
+ gl.shaderSource(tfFs, `#version 300 es
+precision highp float;
+void main() {}`);
  gl.compileShader(tfFs);
  gl.attachShader(tfProgram, tfFs);
  gl.transformFeedbackVaryings(tfProgram, ['outPosition', 'outVelocity', 'outLife', 'outType'], gl.SEPARATE_ATTRIBS);
@@ -282,8 +284,8 @@ void main() {
 
  // STATE CHURN: Bind/unbind cycle for fragility
  gl.bindBuffer(gl.ARRAY_BUFFER, null);
- gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, null);
- gl.bindBuffer(gl.ATOMIC_COUNTER_BUFFER, null);
+ gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+ gl.bindBuffer(gl.COPY_READ_BUFFER, null);
  gl.bindTexture(gl.TEXTURE_3D, null);
  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
  gl.useProgram(null);
@@ -295,7 +297,7 @@ void main() {
  gl.useProgram(tfProgram);
 
  // START TIMER QUERY FOR SIMULATION PASS
- gl.beginQuery(gl.TIME_ELAPSED, timerQueries[0]);
+ gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, timerQueries[0]);
 
  // SIMPLE SIMULATION: Just run the shader to update particles (no feedback capture for simplicity)
  gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
@@ -309,10 +311,12 @@ void main() {
  gl.enableVertexAttribArray(3);
 
  // Draw to update particles (no transform feedback capture)
+ gl.enable(gl.RASTERIZER_DISCARD);
  gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+ gl.disable(gl.RASTERIZER_DISCARD);
 
  // END TIMER QUERY
- gl.endQuery(gl.TIME_ELAPSED);
+ gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
 
  // CREATE SYNC OBJECT FOR SIMULATION COMPLETION
  syncObjects[0] = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
@@ -340,7 +344,7 @@ void main() {
  gl.vertexAttribDivisor(4, 1);
 
  // START TIMER QUERY FOR RENDER PASS
- gl.beginQuery(gl.TIME_ELAPSED, timerQueries[1]);
+ gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, timerQueries[1]);
 
  // MVP matrix (simple orthographic)
  const mvp = new Float32Array([
@@ -358,7 +362,7 @@ void main() {
   gl.drawArraysInstanced(gl.POINTS, 0, PARTICLE_COUNT, 64);
  }
 
- gl.endQuery(gl.TIME_ELAPSED);
+ gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
 
  // CREATE SYNC OBJECT FOR RENDER COMPLETION
  syncObjects[1] = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);

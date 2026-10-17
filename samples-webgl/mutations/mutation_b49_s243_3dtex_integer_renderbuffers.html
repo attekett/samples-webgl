@@ -247,6 +247,8 @@ async function main() {
         throw e;
     }
 
+    gl.bindTexture(gl.TEXTURE_3D, null);
+
     for (let i = 0; i < 8; i++) {
         try {
             gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[i]);
@@ -281,6 +283,7 @@ async function main() {
     }
 
     try {
+        gl.bindTexture(gl.TEXTURE_3D, tex3D);
         gl.bindFramebuffer(gl.FRAMEBUFFER, outputFbo);
         gl.viewport(0, 0, 256, 256);
         gl.drawBuffers([gl.COLOR_ATTACHMENT0]);

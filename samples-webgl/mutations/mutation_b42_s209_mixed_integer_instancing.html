@@ -79,18 +79,18 @@ async function main() {
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo1);
-        gl.clearBufferiv(gl.COLOR, 0, new Int32Array([127]));
+        gl.clearBufferiv(gl.COLOR, 0, new Int32Array([127, 0, 0, 0]));
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
-        gl.clearBufferiv(gl.COLOR, 0, new Int32Array([32767, -16384]));
+        gl.clearBufferiv(gl.COLOR, 0, new Int32Array([32767, -16384, 0, 0]));
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo3);
         gl.clearBufferiv(gl.COLOR, 0, new Int32Array([clearValue, -clearValue, clearValue, -clearValue]));
     } catch(e) {}
 
     try {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo4);
-        gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array([255]));
+        gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array([255, 0, 0, 0]));
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo5);
-        gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array([65535, 32768]));
+        gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array([65535, 32768, 0, 0]));
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo6);
         gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array([clearValue, clearValue * 2, clearValue * 3, clearValue * 4]));
     } catch(e) {}
@@ -466,7 +466,8 @@ async function main() {
         gl.viewport(0, 0, 256, 256);
         gl.clearColor(0.2, 0.2, 0.2, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.useProgram(prog1);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo6);
+        gl.useProgram(prog6);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 3, 128);
     } catch(e) {}
 

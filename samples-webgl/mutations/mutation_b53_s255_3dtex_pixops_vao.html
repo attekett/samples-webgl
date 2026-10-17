@@ -186,8 +186,8 @@ async function main() {
         }
 
         try {
-            gl.pixelStorei(gl.PACK_ALIGNMENT, (batch % 4) + 1);
-            gl.pixelStorei(gl.UNPACK_ALIGNMENT, ((batch + 1) % 4) + 1);
+            gl.pixelStorei(gl.PACK_ALIGNMENT, 1 << (batch % 4));
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1 << ((batch + 1) % 4));
         } catch (e) {
             throw new Error("Pixel alignment setup failed: " + e.message);
         }

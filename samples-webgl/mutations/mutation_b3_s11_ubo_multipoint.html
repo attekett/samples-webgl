@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let ubo1, ubo2, ubo3, uboData1, uboData2, vs, fs, program, blockIdx1, blockIdx2, blockIdx3, positions, vbo, posLoc;
 
     const uboCount = 3;
     const bindingPoints = 3;
@@ -30,22 +31,22 @@ async function main() {
     const primitiveMode = gl.TRIANGLES;
 
     try {
-        const ubo1 = gl.createBuffer();
-        const ubo2 = gl.createBuffer();
-        const ubo3 = gl.createBuffer();
+        ubo1 = gl.createBuffer();
+        ubo2 = gl.createBuffer();
+        ubo3 = gl.createBuffer();
         gl.bindBuffer(uboTarget, ubo1);
         gl.bindBuffer(uboTarget, ubo2);
         gl.bindBuffer(uboTarget, ubo1);
         gl.bufferData(uboTarget, uboSize, bufferUsage);
         gl.bindBuffer(uboTarget, ubo2);
-        gl.bufferData(uboTarget, 512, gl.STATIC_DRAW);
+        gl.bufferData(uboTarget, 1024, gl.STATIC_DRAW);
         gl.bindBuffer(uboTarget, ubo3);
         gl.bufferData(uboTarget, uboSize, bufferUsage);
     } catch(e) {}
 
     try {
-        const uboData1 = new Float32Array(64);
-        const uboData2 = new Float32Array(128);
+        uboData1 = new Float32Array(64);
+        uboData2 = new Float32Array(128);
         for (let i = 0; i < 64; i++) {
             uboData1[i] = Math.sin(i * 0.1);
         }
@@ -61,7 +62,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             layout(std140) uniform Block1 {
                 vec4 color1;
@@ -86,7 +87,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             in vec4 vColor;
@@ -97,7 +98,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -105,9 +106,9 @@ async function main() {
     } catch(e) {}
 
     try {
-        const blockIdx1 = gl.getUniformBlockIndex(program, 'Block1');
-        const blockIdx2 = gl.getUniformBlockIndex(program, 'Block2');
-        const blockIdx3 = gl.getUniformBlockIndex(program, 'Block3');
+        blockIdx1 = gl.getUniformBlockIndex(program, 'Block1');
+        blockIdx2 = gl.getUniformBlockIndex(program, 'Block2');
+        blockIdx3 = gl.getUniformBlockIndex(program, 'Block3');
         gl.uniformBlockBinding(program, blockIdx1, 0);
         gl.uniformBlockBinding(program, blockIdx2, 1);
         gl.uniformBlockBinding(program, blockIdx3, 2);
@@ -131,7 +132,7 @@ async function main() {
     } catch(e) {}
 
     try {
-        const positions = new Float32Array([
+        positions = new Float32Array([
             -0.8, -0.8,
              0.8, -0.8,
              0.0,  0.8,
@@ -139,10 +140,10 @@ async function main() {
              0.5, -0.5,
              0.0,  0.5
         ]);
-        const vbo = gl.createBuffer();
+        vbo = gl.createBuffer();
         gl.bindBuffer(bufferTarget, vbo);
         gl.bufferData(bufferTarget, positions, gl.STATIC_DRAW);
-        const posLoc = gl.getAttribLocation(program, 'position');
+        posLoc = gl.getAttribLocation(program, 'position');
         gl.enableVertexAttribArray(posLoc);
         gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
     } catch(e) {}
@@ -178,9 +179,9 @@ async function main() {
 
     try {
         gl.bindBuffer(uboTarget, ubo1);
-        gl.deleteBuffer(ubo1);
         gl.bindBuffer(uboTarget, ubo1);
         gl.bindBufferBase(uboTarget, 0, ubo1);
+        gl.deleteBuffer(ubo1);
     } catch(e) {}
 }
 

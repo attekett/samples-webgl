@@ -8,7 +8,6 @@
         const REQUIRED_EXTENSIONS = [];
 
         async function main() {
-            console.log("Starting Main...");
             const canvas = document.getElementById('webgl-canvas');
             const gl = canvas.getContext('webgl2');
             if (!gl) throw new Error("WebGL2 not supported");
@@ -24,8 +23,6 @@
                 gl.compileShader(shader);
                 if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
                     const log = gl.getShaderInfoLog(shader);
-                    console.error("Shader Compile Error:", log);
-                    console.error("Source:", source);
                     throw new Error("Shader Compile Error: " + log);
                 }
                 return shader;
@@ -43,7 +40,6 @@
                 gl.linkProgram(program);
                 if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
                     const log = gl.getProgramInfoLog(program);
-                    console.error("Program Link Error:", log);
                     throw new Error("Program Link Error: " + log);
                 }
                 return program;
@@ -153,12 +149,9 @@
         outColor = vec4(v_color, 1.0);
     }
     `;
-
-            console.log("Compiling Shaders...");
             const forceProg = createProgram(gl, forceVS, forceFS);
             const physicsProg = createProgram(gl, physicsVS, physicsFS, ["v_outPos", "v_outVel"]);
             const renderProg = createProgram(gl, renderVS, renderFS);
-            console.log("Shaders Compiled.");
 
             // --- Resources ---
 
@@ -255,8 +248,6 @@
             let readVAO = vaoA;
             let writeTF = tfB;
             let currentPos = posA; // just for verify if needed
-
-            console.log("Starting Loop...");
             for (let f = 0; f < TOTAL_FRAMES; f++) {
                 // Toggle A/B
                 const isEven = (f % 2 == 0);
@@ -311,16 +302,11 @@
             // Check Error
             const error = gl.getError();
             if (error !== gl.NO_ERROR) {
-                console.error("WebGL Error Code:", error);
                 throw new Error("WebGL Error: " + error);
             }
-            console.log("Success");
         }
 
-        main().catch(e => {
-            console.error("Exception:", e.message);
-            console.error(e.stack);
-        });
+        main().catch(err => { throw err; });
     </script>
 </body>
 

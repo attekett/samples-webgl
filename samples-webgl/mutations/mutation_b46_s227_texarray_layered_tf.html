@@ -19,7 +19,7 @@ async function main() {
     const texSize = 128;
     const instanceCount = 1024;
     const vertexCount = 6;
-    const numQueries = 64;
+    const numQueries = 32;
     const tfBufferSize = instanceCount * 5 * 4;
     const layerBatchSize = 4;
 
@@ -126,7 +126,7 @@ async function main() {
     try {
         tfBuffer = gl.createBuffer();
         gl.bindBuffer(tfTarget, tfBuffer);
-        gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_COPY);
+        gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_READ);
         tf = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
         gl.bindBufferBase(tfTarget, 0, tfBuffer);
@@ -141,6 +141,7 @@ async function main() {
 
     const fbo = gl.createFramebuffer();
     try {
+        gl.bindTexture(texTarget, null);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         for (let batch = 0; batch < 32; batch++) {
             const layer = (batch * layerBatchSize) % numLayers;
@@ -223,6 +224,7 @@ async function main() {
 
     try {
         gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.endTransformFeedback();
         gl.beginTransformFeedback(gl.TRIANGLES);
     } catch(e) {}
 
@@ -232,7 +234,9 @@ async function main() {
 
     try {
         gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, queries[0]);
+        gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
         gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, queries[1]);
+        gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
     } catch(e) {}
 
     try {

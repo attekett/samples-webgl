@@ -178,7 +178,7 @@ async function main() {
     try {
         tfBuffer = gl.createBuffer();
         gl.bindBuffer(tfTarget, tfBuffer);
-        gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_COPY);
+        gl.bufferData(tfTarget, tfBufferSize * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_READ);
         tf = gl.createTransformFeedback();
         gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
         gl.bindBufferBase(tfTarget, 0, tfBuffer);
@@ -231,6 +231,7 @@ async function main() {
 
     try {
         gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.endTransformFeedback();
         gl.beginTransformFeedback(gl.TRIANGLES);
     } catch(e) {}
 

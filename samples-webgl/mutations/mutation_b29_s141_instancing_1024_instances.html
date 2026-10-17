@@ -27,18 +27,18 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const vao1 = gl.createVertexArray();
-        const vao2 = gl.createVertexArray();
-        const vao3 = gl.createVertexArray();
+        var vao1 = gl.createVertexArray();
+        var vao2 = gl.createVertexArray();
+        var vao3 = gl.createVertexArray();
         gl.bindVertexArray(vao1);
         gl.bindVertexArray(vao2);
         gl.bindVertexArray(vao1);
     } catch(e) { console.log(e); }
 
     try {
-        const posBuffer = gl.createBuffer();
-        const instBuffer1 = gl.createBuffer();
-        const instBuffer2 = gl.createBuffer();
+        var posBuffer = gl.createBuffer();
+        var instBuffer1 = gl.createBuffer();
+        var instBuffer2 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, posBuffer);
         gl.bindBuffer(bufferTarget, instBuffer1);
         gl.bindBuffer(bufferTarget, posBuffer);
@@ -53,7 +53,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const instData = new Float32Array(bufferSize);
+        var instData = new Float32Array(bufferSize);
         for (let i = 0; i < instanceCount; i++) {
             const idx = i * 4;
             instData[idx] = (i % 32) / 32.0 - 0.5;
@@ -69,7 +69,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 aPosition;
             in vec4 aInstanceData;
@@ -83,7 +83,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             in vec4 vColor;
@@ -94,7 +94,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -102,8 +102,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const posLoc = gl.getAttribLocation(program, 'aPosition');
-        const instLoc = gl.getAttribLocation(program, 'aInstanceData');
+        var posLoc = gl.getAttribLocation(program, 'aPosition');
+        var instLoc = gl.getAttribLocation(program, 'aInstanceData');
 
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.enableVertexAttribArray(posLoc);
@@ -148,16 +148,16 @@ async function main() {
 
     try {
         gl.bindBuffer(gl.ARRAY_BUFFER, instBuffer1);
-        gl.deleteBuffer(instBuffer1);
         gl.bindBuffer(gl.ARRAY_BUFFER, instBuffer1);
         gl.bufferData(gl.ARRAY_BUFFER, 1024, gl.STATIC_DRAW);
     } catch(e) { console.log(e); }
 
     try {
         gl.bindVertexArray(vao1);
-        gl.deleteVertexArray(vao1);
         gl.bindVertexArray(vao1);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 128);
+        gl.deleteBuffer(instBuffer1);
+        gl.deleteVertexArray(vao1);
     } catch(e) { console.log(e); }
 }
 

@@ -11,7 +11,7 @@ const REQUIRED_EXTENSIONS = [
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
-    const gl = canvas.getContext('webgl2');
+    const gl = canvas.getContext('webgl2', {antialias: false});
     if (!gl) throw new Error("WebGL2 not supported");
 
     const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
@@ -22,6 +22,7 @@ async function main() {
     const extEdbi = gl.getExtension('OES_draw_buffers_indexed');
     gl.getExtension('OES_texture_float_linear');
     gl.getExtension('EXT_color_buffer_float');
+    gl.getExtension('EXT_float_blend');
 
     const texSize = 64;
     const layers = 4;
@@ -89,10 +90,18 @@ void main() {
         gl.bindTexture(gl.TEXTURE_3D, tex3D);
         gl.texStorage3D(gl.TEXTURE_3D, 1, gl.RGBA16F, texSize, texSize, layers);
         gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, texSize, texSize, layers, gl.RGBA, gl.FLOAT, new Float32Array(texSize * texSize * layers * 4));
         var texArr = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, texArr);
         gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA16F, texSize, texSize, layers);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, 0, texSize, texSize, layers, gl.RGBA, gl.FLOAT, new Float32Array(texSize * texSize * layers * 4));
+        var att3D = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, att3D);
+        gl.texStorage3D(gl.TEXTURE_3D, 1, gl.RGBA16F, texSize, texSize, layers);
+        var attArr = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, attArr);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA16F, texSize, texSize, layers);
     } catch(e) {}
 
     try {
@@ -107,8 +116,8 @@ void main() {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fpTex, 0);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, iTex, 0);
-        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, tex3D, 0, 1);
-        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, texArr, 0, 1);
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, att3D, 0, 1);
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT3, attArr, 0, 1);
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, rb);
         gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.NONE, gl.NONE]);
         gl.checkFramebufferStatus(gl.FRAMEBUFFER);
@@ -156,12 +165,12 @@ void main() {
     } catch(e) {}
 
     try {
+        var tfo = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
         var tfBuf = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, tfBuf);
         gl.bufferData(gl.TRANSFORM_FEEDBACK_BUFFER, 256, gl.DYNAMIC_COPY);
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf);
-        var tfo = gl.createTransformFeedback();
-        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
     } catch(e) {}
 
     try {
@@ -251,6 +260,8 @@ void main() {
         gl.deleteTexture(iTex);
         gl.deleteTexture(tex3D);
         gl.deleteTexture(texArr);
+        gl.deleteTexture(att3D);
+        gl.deleteTexture(attArr);
         gl.deleteProgram(program);
         gl.deleteShader(vShader);
         gl.deleteShader(fShader);

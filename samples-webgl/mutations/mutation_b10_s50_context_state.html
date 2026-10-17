@@ -178,6 +178,7 @@ async function main() {
         gl.enableVertexAttribArray(0);
         const buffer = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer);
+        gl.bufferData(bufferTarget, bufferSize, bufferUsage);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     } catch(e) {}
@@ -198,8 +199,8 @@ async function main() {
         gl.disable(gl.STENCIL_TEST);
         const buffer = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer);
-        gl.deleteBuffer(buffer);
         gl.bindBuffer(bufferTarget, buffer);
+        gl.deleteBuffer(buffer);
     } catch(e) {}
 }
 

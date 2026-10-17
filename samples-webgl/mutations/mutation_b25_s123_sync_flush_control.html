@@ -12,7 +12,7 @@ const waitIterations = 48;
 const drawCycles = 16;
 
 const flushBit = 0x00000001;
-const syncCondition = 0x9113;
+const syncCondition = 0x9117;
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -62,7 +62,7 @@ async function main() {
         gl.bufferData(gl.ARRAY_BUFFER, 6144, gl.DYNAMIC_DRAW);
         const vertices = new Float32Array([-0.6, 0.6, 0.0, 0.6, 0.6, 0.0, 0.0, -0.6, 0.0]);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         const posAttr = gl.getAttribLocation(prog, 'aPos');
@@ -71,7 +71,7 @@ async function main() {
         gl.disableVertexAttribArray(posAttr);
         gl.enableVertexAttribArray(posAttr);
         gl.vertexAttribPointer(posAttr, 3, gl.FLOAT, false, 0, 0);
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     const syncObjects = [];
 
@@ -82,57 +82,57 @@ async function main() {
         for (let i = 0; i < syncCount; i++) {
             syncObjects.push(gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0));
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.flush();
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < flushCount; i++) {
             const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-            gl.clientWaitSync(sync, flushBit, 1000);
-            gl.clientWaitSync(sync, gl.SYNC_FLUSH_COMMANDS_BIT, 1000);
+            gl.clientWaitSync(sync, flushBit, 0);
+            gl.clientWaitSync(sync, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
             gl.deleteSync(sync);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < noFlushCount; i++) {
             const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-            gl.clientWaitSync(sync, 0, 1000);
-            gl.clientWaitSync(sync, 0, 1000);
+            gl.clientWaitSync(sync, 0, 0);
+            gl.clientWaitSync(sync, 0, 0);
             gl.deleteSync(sync);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < drawCycles; i++) {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
             const s1 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-            gl.clientWaitSync(s1, gl.SYNC_FLUSH_COMMANDS_BIT, 500);
+            gl.clientWaitSync(s1, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
             const s2 = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-            gl.clientWaitSync(s2, 0, 500);
+            gl.clientWaitSync(s2, 0, 0);
             gl.deleteSync(s1);
             gl.deleteSync(s2);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < waitIterations; i++) {
             const idx = i % syncObjects.length;
             if (syncObjects[idx]) {
                 if (i % 2 === 0) {
-                    gl.clientWaitSync(syncObjects[idx], flushBit, 100);
+                    gl.clientWaitSync(syncObjects[idx], flushBit, 0);
                 } else {
-                    gl.clientWaitSync(syncObjects[idx], 0, 100);
+                    gl.clientWaitSync(syncObjects[idx], 0, 0);
                 }
             }
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < 24; i++) {
@@ -142,7 +142,7 @@ async function main() {
             gl.clientWaitSync(sync, flushBit, 0);
             gl.deleteSync(sync);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < 16; i++) {
@@ -153,23 +153,23 @@ async function main() {
             gl.clientWaitSync(s, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
             syncObjects.push(s);
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         for (let i = 0; i < syncObjects.length; i++) {
             if (syncObjects[i]) {
-                gl.clientWaitSync(syncObjects[i], gl.SYNC_FLUSH_COMMANDS_BIT, 10);
+                gl.clientWaitSync(syncObjects[i], gl.SYNC_FLUSH_COMMANDS_BIT, 0);
                 gl.deleteSync(syncObjects[i]);
             }
         }
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 
     try {
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.flush();
         gl.finish();
-    } catch(e) { console.log(e); }
+    } catch(e) {}
 }
 
 main().catch(err => { throw err; });

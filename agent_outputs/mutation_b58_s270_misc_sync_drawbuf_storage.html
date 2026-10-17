@@ -139,7 +139,7 @@ void main() {
         }
         gl.clientWaitSync(sync1, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
         gl.waitSync(sync1, 0, gl.TIMEOUT_IGNORED);
-        gl.clientWaitSync(sync1, 0, 1000000);
+        gl.clientWaitSync(sync1, 0, 0);
         gl.clientWaitSync(sync1, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
         gl.getError();
     } catch(e) {}
@@ -159,8 +159,8 @@ void main() {
         const compFormat = s3tc ? s3tc.COMPRESSED_RGB_S3TC_DXT1_EXT : 0x83F0;
         gl.bindTexture(texTarget, tex2);
         gl.texImage2D(texTarget, 0, gl.RGBA, 4, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(64));
+        gl.compressedTexImage2D(texTarget, 0, compFormat, 4, 4, 0, new Uint8Array(compressedBlockSize));
         gl.compressedTexSubImage2D(texTarget, 0, 0, 0, 4, 4, compFormat, new Uint8Array(compressedBlockSize));
-        gl.bindTexture(texTarget, tex1);
         gl.compressedTexSubImage2D(texTarget, 0, 0, 0, 4, 4, compFormat, new Uint8Array(compressedBlockSize));
         gl.getError();
     } catch(e) {}
@@ -215,6 +215,7 @@ void main() {
         gl.clearColor(0.1, 0.2, 0.3, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+        gl.bindTexture(texTarget, tex2);
         gl.bindFramebuffer(fbTarget, fbo1);
         gl.viewport(0, 0, texSize, texSize);
         gl.clearColor(0.4, 0.1, 0.2, 1.0);
@@ -241,16 +242,16 @@ void main() {
             gl.deleteSync(sync1);
             gl.isSync(sync1);
         }
+        gl.bindFramebuffer(fbTarget, fbo1);
         gl.deleteFramebuffer(fbo1);
         gl.deleteFramebuffer(fbo2);
-        gl.bindFramebuffer(fbTarget, fbo1);
         gl.deleteRenderbuffer(rbo);
+        gl.bindTexture(texTarget, tex1);
         gl.deleteTexture(tex1);
         gl.deleteTexture(tex2);
-        gl.bindTexture(texTarget, tex1);
+        gl.bindBuffer(bufferTarget, buffer1);
         gl.deleteBuffer(buffer1);
         gl.deleteBuffer(buffer2);
-        gl.bindBuffer(bufferTarget, buffer1);
         gl.deleteBuffer(indexBuffer);
         gl.deleteVertexArray(vao);
         gl.deleteShader(vs);

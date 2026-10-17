@@ -8,6 +8,8 @@ async function main() {
     const canvas = document.getElementById('webgl-canvas');
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error("WebGL2 required");
+    gl.getExtension('EXT_color_buffer_float');
+    gl.getExtension('EXT_float_blend');
 
     // HYPER-COMPLEX BIOMASS SEED: Ultimate WebGL2 State Machine Torture
     // Combines: SSBO + Atomic Ops + Compute Shaders + Transform Feedback + MRT + 3D Textures + Instanced Rendering + Query Objects + UBO + Sampler Objects
@@ -72,23 +74,23 @@ async function main() {
     const computeSSBOs = [];
     for (let i = 0; i < 4; i++) {
         const ssbo = gl.createBuffer();
-        gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, ssbo);
+        gl.bindBuffer(gl.UNIFORM_BUFFER, ssbo);
         const data = new Float32Array(1024 * (i + 1));
         for (let j = 0; j < data.length; j++) data[j] = Math.sin(j * 0.01 * (i + 1)) * Math.cos(j * 0.007 * (i + 1));
-        gl.bufferData(gl.SHADER_STORAGE_BUFFER, data, gl.DYNAMIC_COPY);
+        gl.bufferData(gl.UNIFORM_BUFFER, data, gl.DYNAMIC_COPY);
         computeSSBOs.push(ssbo);
     }
 
     // EXTRA SSBO FOR COMPLEXITY: Additional storage buffer for biomass
     const extraSSBO = gl.createBuffer();
-    gl.bindBuffer(gl.SHADER_STORAGE_BUFFER, extraSSBO);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, extraSSBO);
     const extraData = new Float32Array(512);
     for (let i = 0; i < extraData.length; i++) extraData[i] = Math.sin(i * 0.05) * Math.cos(i * 0.03);
-    gl.bufferData(gl.SHADER_STORAGE_BUFFER, extraData, gl.DYNAMIC_COPY);
+    gl.bufferData(gl.UNIFORM_BUFFER, extraData, gl.DYNAMIC_COPY);
 
     // TRANSFORM FEEDBACK BUFFERS: For vertex processing pipeline
     const tfBuffers = [];
-    const tfBufferSizes = [PARTICLE_COUNT * 4 * 4, PARTICLE_COUNT * 3 * 4, PARTICLE_COUNT * 2 * 4, PARTICLE_COUNT * 4, PARTICLE_COUNT * 4, PARTICLE_COUNT * 4];
+    const tfBufferSizes = [PARTICLE_COUNT * 16 * 4, PARTICLE_COUNT * 3 * 4, PARTICLE_COUNT * 2 * 4, PARTICLE_COUNT * 4, PARTICLE_COUNT * 4, PARTICLE_COUNT * 4];
     for (let i = 0; i < TRANSFORM_FEEDBACK_VARYINGS; i++) {
         const buffer = gl.createBuffer();
         gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, buffer);
@@ -331,11 +333,11 @@ async function main() {
     // =================================================================================
 
     // Bind all resources with complex binding patterns
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 0, computeSSBOs[0]);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, computeSSBOs[1]);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 2, computeSSBOs[2]);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 3, computeSSBOs[3]);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 4, extraSSBO);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, computeSSBOs[0]);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, computeSSBOs[1]);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, computeSSBOs[2]);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 3, computeSSBOs[3]);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 4, extraSSBO);
 
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubos[0]);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, ubos[1]);
@@ -348,8 +350,10 @@ async function main() {
 
     // START QUERY BATCHES
     for (let i = 0; i < QUERY_BATCH_SIZE; i++) {
-        gl.beginQuery(gl.TIME_ELAPSED, timerQueries[i]);
-        gl.beginQuery(gl.ANY_SAMPLES_PASSED, occlusionQueries[i]);
+        if (i === 0) {
+            gl.beginQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, timerQueries[i]);
+            gl.beginQuery(gl.ANY_SAMPLES_PASSED, occlusionQueries[i]);
+        }
     }
 
     // COMPUTE PASS: Simplified for debugging - just bind and draw
@@ -359,7 +363,7 @@ async function main() {
     gl.useProgram(renderProgram);
 
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, gl.createTransformFeedback());
-    for (let i = 0; i < TRANSFORM_FEEDBACK_VARYINGS; i++) {
+    for (let i = 0; i < Math.min(TRANSFORM_FEEDBACK_VARYINGS, 4); i++) {
         gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, i, tfBuffers[i]);
     }
 
@@ -373,10 +377,11 @@ async function main() {
     // Copy data from SSBO to vertex buffer (simplified - in practice would need more complex setup)
     gl.bindBuffer(gl.COPY_READ_BUFFER, computeSSBOs[0]);
     gl.bindBuffer(gl.COPY_WRITE_BUFFER, vertexBuffer);
-    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, PARTICLE_COUNT * 3 * 4);
+    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, 1024 * 4);
 
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribI4ui(3, 1, 0, 0, 1);
 
     gl.uniform1f(gl.getUniformLocation(renderProgram, 'time'), performance.now() * 0.001);
     gl.uniformMatrix4fv(gl.getUniformLocation(renderProgram, 'modelViewProj'), false, new Float32Array([
@@ -385,6 +390,11 @@ async function main() {
         0, 0, 1, 0,
         0, 0, 0, 1
     ]));
+
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+    gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
 
     // SIMPLE RENDERING PASS: Direct to canvas for debugging
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -402,8 +412,10 @@ async function main() {
 
     // END QUERY BATCHES
     for (let i = 0; i < QUERY_BATCH_SIZE; i++) {
-        gl.endQuery(gl.TIME_ELAPSED);
-        gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        if (i === QUERY_BATCH_SIZE - 1) {
+            gl.endQuery(gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN);
+            gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        }
     }
 
     // =================================================================================
@@ -412,9 +424,10 @@ async function main() {
 
     // Partial cleanup with rebinding
     gl.deleteBuffer(computeSSBOs[1]);
-    gl.bindBufferBase(gl.SHADER_STORAGE_BUFFER, 1, computeSSBOs[2]); // Rebind different buffer
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 1, computeSSBOs[2]); // Rebind different buffer
 
     gl.deleteTexture(mrtTextures[1]);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mrtFBO);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, mrtTextures[2], 0); // Rebind different texture
 
     gl.deleteSampler(samplers[2]);

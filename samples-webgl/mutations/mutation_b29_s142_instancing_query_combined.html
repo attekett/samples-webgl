@@ -27,19 +27,19 @@ async function main() {
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
 
     try {
-        const query1 = gl.createQuery();
-        const query2 = gl.createQuery();
-        const query3 = gl.createQuery();
-        const query4 = gl.createQuery();
-        const query5 = gl.createQuery();
-        const query6 = gl.createQuery();
-        const query7 = gl.createQuery();
-        const query8 = gl.createQuery();
+        var query1 = gl.createQuery();
+        var query2 = gl.createQuery();
+        var query3 = gl.createQuery();
+        var query4 = gl.createQuery();
+        var query5 = gl.createQuery();
+        var query6 = gl.createQuery();
+        var query7 = gl.createQuery();
+        var query8 = gl.createQuery();
     } catch(e) { console.log(e); }
 
     try {
-        const posBuffer = gl.createBuffer();
-        const instBuffer = gl.createBuffer();
+        var posBuffer = gl.createBuffer();
+        var instBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.bindBuffer(gl.ARRAY_BUFFER, instBuffer);
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
@@ -54,7 +54,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const instData = new Float32Array(bufferSize);
+        var instData = new Float32Array(bufferSize);
         for (let i = 0; i < instanceCount; i++) {
             const idx = i * 4;
             instData[idx] = (i % 16) / 16.0 - 0.5;
@@ -68,7 +68,7 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const vs = gl.createShader(gl.VERTEX_SHADER);
+        var vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, `#version 300 es
             in vec3 aPosition;
             in vec4 aInstanceData;
@@ -82,7 +82,7 @@ async function main() {
         `);
         gl.compileShader(vs);
 
-        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        var fs = gl.createShader(gl.FRAGMENT_SHADER);
         gl.shaderSource(fs, `#version 300 es
             precision highp float;
             in vec4 vColor;
@@ -93,7 +93,7 @@ async function main() {
         `);
         gl.compileShader(fs);
 
-        const program = gl.createProgram();
+        var program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
         gl.linkProgram(program);
@@ -101,8 +101,8 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const posLoc = gl.getAttribLocation(program, 'aPosition');
-        const instLoc = gl.getAttribLocation(program, 'aInstanceData');
+        var posLoc = gl.getAttribLocation(program, 'aPosition');
+        var instLoc = gl.getAttribLocation(program, 'aInstanceData');
 
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.enableVertexAttribArray(posLoc);
@@ -163,24 +163,24 @@ async function main() {
     } catch(e) { console.log(e); }
 
     try {
-        const available1 = gl.getQueryParameter(query1, queryAvailable);
-        const available2 = gl.getQueryParameter(query2, queryAvailable);
-        const available3 = gl.getQueryParameter(query3, queryAvailable);
-        const available4 = gl.getQueryParameter(query4, queryAvailable);
-        const available5 = gl.getQueryParameter(query5, queryAvailable);
-        const available6 = gl.getQueryParameter(query6, queryAvailable);
+        var available1 = gl.getQueryParameter(query1, queryAvailable);
+        var available2 = gl.getQueryParameter(query2, queryAvailable);
+        var available3 = gl.getQueryParameter(query3, queryAvailable);
+        var available4 = gl.getQueryParameter(query4, queryAvailable);
+        var available5 = gl.getQueryParameter(query5, queryAvailable);
+        var available6 = gl.getQueryParameter(query6, queryAvailable);
     } catch(e) { console.log(e); }
 
     try {
-        const result1 = gl.getQueryParameter(query1, queryResult);
-        const result2 = gl.getQueryParameter(query2, queryResult);
-        const result3 = gl.getQueryParameter(query3, queryResult);
+        var result1 = gl.getQueryParameter(query1, queryResult);
+        var result2 = gl.getQueryParameter(query2, queryResult);
+        var result3 = gl.getQueryParameter(query3, queryResult);
     } catch(e) { console.log(e); }
 
     try {
-        gl.deleteQuery(query1);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, query1);
         gl.endQuery(gl.ANY_SAMPLES_PASSED);
+        gl.deleteQuery(query1);
         gl.deleteQuery(query2);
         gl.deleteQuery(query2);
     } catch(e) { console.log(e); }

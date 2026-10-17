@@ -15,6 +15,7 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    let tex1, tex2, tex3, program, buffer1, buffer2, swizzleLoc;
 
     const texSize = 256;
     const texPixels = texSize * texSize;
@@ -23,16 +24,16 @@ async function main() {
     const bufferSize = vertexCount * 16;
 
     const textureTarget = gl.TEXTURE_2D;
-    const swizzleR = gl.RED;
-    const swizzleG = gl.GREEN;
-    const swizzleB = gl.BLUE;
-    const swizzleA = gl.ALPHA;
+    const swizzleR = gl.CLAMP_TO_EDGE;
+    const swizzleG = gl.REPEAT;
+    const swizzleB = gl.MIRRORED_REPEAT;
+    const swizzleA = gl.LEQUAL;
     const bufferTarget = gl.ARRAY_BUFFER;
 
     try {
-        const tex1 = gl.createTexture();
-        const tex2 = gl.createTexture();
-        const tex3 = gl.createTexture();
+        tex1 = gl.createTexture();
+        tex2 = gl.createTexture();
+        tex3 = gl.createTexture();
         gl.bindTexture(textureTarget, tex1);
         gl.bindTexture(textureTarget, tex2);
         gl.bindTexture(textureTarget, tex1);
@@ -49,31 +50,31 @@ async function main() {
         }
         gl.texSubImage2D(textureTarget, 0, 0, 0, texSize, texSize, gl.RGBA, gl.UNSIGNED_BYTE, texData);
         gl.generateMipmap(textureTarget);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_R, swizzleR);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_G, swizzleG);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_B, swizzleB);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_A, swizzleA);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, swizzleR);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, swizzleG);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, swizzleB);
+        gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, swizzleA);
         gl.bindTexture(textureTarget, tex2);
         gl.texStorage2D(textureTarget, 1, gl.RGBA8, 128, 128);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_R, gl.BLUE);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_G, gl.RED);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_B, gl.GREEN);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_A, gl.ONE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, gl.REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, gl.EQUAL);
         gl.bindTexture(textureTarget, tex1);
     } catch(e) {}
 
     try {
         gl.bindTexture(textureTarget, tex1);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_R, gl.GREEN);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_G, gl.BLUE);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_B, gl.RED);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_A, gl.ALPHA);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, gl.ALWAYS);
         gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.texParameteri(textureTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_R, gl.BLUE);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_G, gl.ALPHA);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_B, gl.GREEN);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_A, gl.RED);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, gl.REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
     } catch(e) {}
 
     const vertexShaderSource = `#version 300 es
@@ -122,7 +123,7 @@ async function main() {
         if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
             throw new Error(gl.getShaderInfoLog(fragmentShader));
         }
-        const program = gl.createProgram();
+        program = gl.createProgram();
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
         gl.linkProgram(program);
@@ -141,10 +142,10 @@ async function main() {
         const renderTex = gl.createTexture();
         gl.bindTexture(textureTarget, renderTex);
         gl.texStorage2D(textureTarget, 1, gl.RGBA8, texSize, texSize);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_R, gl.ALPHA);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_G, gl.BLUE);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_B, gl.GREEN);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_A, gl.RED);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, gl.REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, textureTarget, renderTex, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     } catch(e) {}
@@ -158,8 +159,8 @@ async function main() {
              1.0, -1.0, 1.0, 0.0,
              1.0,  1.0, 1.0, 1.0
         ]);
-        const buffer1 = gl.createBuffer();
-        const buffer2 = gl.createBuffer();
+        buffer1 = gl.createBuffer();
+        buffer2 = gl.createBuffer();
         gl.bindBuffer(bufferTarget, buffer1);
         gl.bindBuffer(bufferTarget, buffer2);
         gl.bindBuffer(bufferTarget, buffer1);
@@ -174,7 +175,7 @@ async function main() {
         const posLoc = gl.getAttribLocation(program, 'position');
         const texLoc = gl.getAttribLocation(program, 'texCoord');
         const textureLoc = gl.getUniformLocation(program, 'uTexture');
-        const swizzleLoc = gl.getUniformLocation(program, 'uSwizzleMode');
+        swizzleLoc = gl.getUniformLocation(program, 'uSwizzleMode');
         gl.enableVertexAttribArray(posLoc);
         gl.disableVertexAttribArray(posLoc);
         gl.enableVertexAttribArray(posLoc);
@@ -197,16 +198,16 @@ async function main() {
             gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
         }
         gl.bindTexture(textureTarget, tex1);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_R, gl.ZERO);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_G, gl.ONE);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_B, gl.RED);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_A, gl.GREEN);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, gl.GEQUAL);
         gl.uniform1i(swizzleLoc, 2);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_R, gl.ALPHA);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_G, gl.ZERO);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_B, gl.ZERO);
-        gl.texParameteri(textureTarget, gl.TEXTURE_SWIZZLE_A, gl.ONE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, gl.MIRRORED_REPEAT);
+        gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, gl.EQUAL);
         gl.uniform1i(swizzleLoc, 4);
         gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
     } catch(e) {}

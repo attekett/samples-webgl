@@ -3,7 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = [];
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -16,7 +16,7 @@ async function main() {
     }
 
     const numRBOs = 8;
-    const numQueries = 12;
+    const numQueries = 8;
     const numLayers = 64;
     const rboSize = 256;
     const texSize = 128;
@@ -209,11 +209,13 @@ async function main() {
 
     try {
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[0]);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
         gl.beginQuery(gl.ANY_SAMPLES_PASSED, queries[0]);
+        gl.endQuery(gl.ANY_SAMPLES_PASSED);
     } catch(e) {}
 
     try {
-        const nullQuery = null;
+        const nullQuery = queries[1];
         gl.getQueryParameter(nullQuery, gl.QUERY_RESULT);
     } catch(e) {}
 
@@ -235,7 +237,10 @@ async function main() {
     } catch(e) {}
 
     try {
-        gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffers[0].obj);
+        gl.isRenderbuffer(renderbuffers[0].obj);
+        const liveRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, liveRbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, 64, 64);
         gl.getRenderbufferParameter(gl.RENDERBUFFER, gl.RENDERBUFFER_WIDTH);
     } catch(e) {}
 }

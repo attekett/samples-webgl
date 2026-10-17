@@ -76,6 +76,7 @@ async function main() {
    }
  }
  gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 64, 64, textureArrayLayers, 0, gl.RGBA, gl.UNSIGNED_BYTE, arrayData);
+gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
@@ -434,7 +435,6 @@ async function main() {
  gl.deleteShader(blitFragmentShader);
  gl.deleteBuffer(quadBuffer);
 
- console.log("WebGL2 Matrix integration test completed successfully");
 }
 
 main().catch(err => {
