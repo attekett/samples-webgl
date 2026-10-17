@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    const texSize = 256;
+    const vertCount = 6;
+    const stripWidth = 86;
+    const variantCount = 3;
+
+    const drawMode = gl.TRIANGLES;
+
+    function makeFS(precision) {
+        return `#version 300 es
+${precision} float;
+${precision} int;
+in vec2 vUv;
+uniform float uPhase;
+layout(location = 0) out vec4 color0;
+void main() {
+    vec2 p = vUv * 4.0 - 2.0;
+    float w1 = sin(p.x * 1.7 + uPhase) * cos(p.y * 1.3);
+    float w2 = sin((p.x + p.y) * 2.3 - uPhase * 0.5);
+    float a1 = smoothstep(-0.6, 0.6, w1);
+    float a2 = smoothstep(-0.4, 0.8, w2);
+    vec3 ca = vec3(0.9, 0.25, 0.1);
+    vec3 cb = vec3(0.15, 0.6, 0.95);
+    vec3 col = mix(ca, cb, a1 * 0.8 + a2 * 0.2);
+    float ring = sin(length(p) * 5.0 - uPhase * 2.0) * 0.5 + 0.5;
+    col *= 0.55 + 0.45 * ring;
+    color0 = vec4(col, 1.0);
+}`;
+    }
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var programs = [];
+        var precisions = ['precision highp', 'precision mediump', 'precision lowp'];
+        for (let vi = 0; vi < variantCount; vi++) {
+            const fs = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fs, makeFS(precisions[vi]));
+            gl.compileShader(fs);
+            const prog = gl.createProgram();
+            gl.attachShader(prog, vShader);
+            gl.attachShader(prog, fs);
+            gl.bindAttribLocation(prog, 0, 'aPos');
+            gl.linkProgram(prog);
+            programs.push(prog);
+        }
+        gl.useProgram(programs[0]);
+    } catch(e) {}
+
+    try {
+        var posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), gl.STATIC_DRAW);
+        var vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const loc = gl.getAttribLocation(programs[0], 'aPos');
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+        var gone = gl.createBuffer();
+        gl.deleteBuffer(gone);
+        gl.deleteBuffer(gone);
+        gl.isBuffer(gone);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.clearColor(0.03, 0.03, 0.06, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        const phases = [0.0, 1.05, 2.1];
+        for (let vi = 0; vi < variantCount; vi++) {
+            const x = vi * stripWidth;
+            const w = (vi === variantCount - 1) ? texSize - x : stripWidth;
+            gl.scissor(x, 0, w, texSize);
+            gl.useProgram(programs[vi]);
+            const locPhase = gl.getUniformLocation(programs[vi], 'uPhase');
+            gl.uniform1f(locPhase, phases[vi]);
+            const locPosVi = gl.getAttribLocation(programs[vi], 'aPos');
+            void locPosVi;
+            gl.drawArrays(drawMode, 0, vertCount);
+        }
+        gl.disable(gl.SCISSOR_TEST);
+    } catch(e) {}
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

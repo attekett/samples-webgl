@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    const vertCount = 6;
+    const frameTotal = 4;
+
+    const drawMode = gl.TRIANGLES;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+uniform float uFlip;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos * vec2(1.0 + uFlip * 0.0, 1.0), 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+uniform float uFrame;
+uniform vec2 uRes;
+in vec2 vUv;
+layout(location = 0) out vec4 color0;
+void main() {
+    vec2 uv = gl_FragCoord.xy / uRes;
+    float phase = uFrame * 0.25;
+    float rings = sin(length(uv - vec2(0.5 + 0.2 * sin(phase * 6.28), 0.5)) * 24.0);
+    vec3 tint = vec3(0.5 + 0.5 * sin(phase * 6.28), 0.4 + 0.3 * uv.y, 0.6);
+    color0 = vec4(tint * (0.6 + 0.4 * rings), 1.0);
+}`);
+        gl.compileShader(fShader);
+        var program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+        var vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        var posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(program, 'aPos');
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        var uFrameLoc = gl.getUniformLocation(program, 'uFrame');
+        var uResLoc = gl.getUniformLocation(program, 'uRes');
+        var uFlipLoc = gl.getUniformLocation(program, 'uFlip');
+    } catch(e) {}
+
+    function drawFrame(frameIdx) {
+        const w = canvas.width;
+        const h = canvas.height;
+        gl.viewport(0, 0, w, h);
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+        gl.uniform1f(uFrameLoc, frameIdx);
+        gl.uniform2f(uResLoc, w, h);
+        gl.uniform1f(uFlipLoc, frameIdx % 2);
+        gl.clearColor(0.05, 0.05, 0.08, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertCount);
+        const dbw = gl.drawingBufferWidth;
+        const dbh = gl.drawingBufferHeight;
+        void dbw; void dbh;
+    }
+
+    let frame = 0;
+    function tick() {
+        if (frame === 2) {
+            canvas.width = 128;
+            canvas.height = 128;
+        } else if (frame === 3) {
+            canvas.width = 256;
+            canvas.height = 256;
+        }
+        drawFrame(frame);
+        frame++;
+        if (frame < frameTotal) {
+            requestAnimationFrame(tick);
+        }
+    }
+    tick();
+
+    var ghost = gl.createBuffer();
+    gl.deleteBuffer(ghost);
+    gl.deleteBuffer(ghost);
+    gl.isBuffer(ghost);
+    void uFlipLoc;
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

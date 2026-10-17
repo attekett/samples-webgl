@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const vertCount = 6;
+    const gridSize = 4;
+    const numFeedbackRuns = 2;
+    const clipBias = 0.2;
+    const scaleFactor = 0.95;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfBufferTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const drawPointsMode = gl.POINTS;
+    const separateAttribs = gl.SEPARATE_ATTRIBS;
+
+    var tfProgram, renderProgram;
+    var vaoTf, vaoRender;
+    var initPosBuf, tfOutputBuf, colBuf;
+    var tfObj;
+
+    try {
+        const vsTf = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vsTf, `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vOutPos;
+void main() {
+    vOutPos = aPos * 0.95;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vsTf);
+
+        const fsTf = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsTf, `#version 300 es
+precision highp float;
+out vec4 outColor;
+void main() {
+    outColor = vec4(1.0);
+}`);
+        gl.compileShader(fsTf);
+
+        tfProgram = gl.createProgram();
+        gl.attachShader(tfProgram, vsTf);
+        gl.attachShader(tfProgram, fsTf);
+        gl.transformFeedbackVaryings(tfProgram, ['vOutPos'], separateAttribs);
+        gl.linkProgram(tfProgram);
+
+        const vsRender = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vsRender, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+in vec2 aPos;
+in vec4 aColor;
+out vec4 vColor;
+void main() {
+    gl_ClipDistance[0] = aPos.x + 0.2;
+    vColor = aColor;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vsRender);
+
+        const fsRender = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsRender, `#version 300 es
+precision highp float;
+in vec4 vColor;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(fsRender);
+
+        renderProgram = gl.createProgram();
+        gl.attachShader(renderProgram, vsRender);
+        gl.attachShader(renderProgram, fsRender);
+        gl.linkProgram(renderProgram);
+    } catch(e) {}
+
+    try {
+        initPosBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, initPosBuf);
+        const initPositions = new Float32Array([
+            -0.9, -0.9,   0.9, -0.9,   0.9,  0.9,
+            -0.9, -0.9,   0.9,  0.9,  -0.9,  0.9
+        ]);
+        gl.bufferData(bufferTarget, initPositions, gl.STATIC_DRAW);
+
+        tfOutputBuf = gl.createBuffer();
+        gl.bindBuffer(tfBufferTarget, tfOutputBuf);
+        gl.bufferData(tfBufferTarget, vertCount * 2 * 4, gl.DYNAMIC_COPY);
+
+        colBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, colBuf);
+        const colors = new Float32Array([
+            0.2, 0.8, 0.4, 1.0,
+            0.9, 0.4, 0.1, 1.0,
+            0.1, 0.6, 0.9, 1.0,
+            0.2, 0.8, 0.4, 1.0,
+            0.1, 0.6, 0.9, 1.0,
+            0.9, 0.2, 0.7, 1.0
+        ]);
+        gl.bufferData(bufferTarget, colors, gl.STATIC_DRAW);
+
+        tfObj = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfBufferTarget, 0, tfOutputBuf);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    } catch(e) {}
+
+    try {
+        vaoTf = gl.createVertexArray();
+        gl.bindVertexArray(vaoTf);
+        const locTfPos = gl.getAttribLocation(tfProgram, 'aPos');
+        gl.enableVertexAttribArray(locTfPos);
+        gl.bindBuffer(bufferTarget, initPosBuf);
+        gl.vertexAttribPointer(locTfPos, 2, gl.FLOAT, false, 0, 0);
+
+        vaoRender = gl.createVertexArray();
+        gl.bindVertexArray(vaoRender);
+        const locRenderPos = gl.getAttribLocation(renderProgram, 'aPos');
+        const locRenderCol = gl.getAttribLocation(renderProgram, 'aColor');
+
+        gl.enableVertexAttribArray(locRenderPos);
+        gl.bindBuffer(bufferTarget, tfOutputBuf);
+        gl.vertexAttribPointer(locRenderPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locRenderCol);
+        gl.bindBuffer(bufferTarget, colBuf);
+        gl.vertexAttribPointer(locRenderCol, 4, gl.FLOAT, false, 0, 0);
+
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProgram);
+        gl.bindVertexArray(vaoTf);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(drawPointsMode);
+        gl.drawArrays(drawPointsMode, 0, vertCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.06, 0.05, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(renderProgram);
+        gl.bindVertexArray(vaoRender);
+        gl.drawArrays(drawMode, 0, vertCount);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(tfBufferTarget, null);
+        void gridSize; void numFeedbackRuns; void clipBias; void scaleFactor;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

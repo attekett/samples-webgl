@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_polygon_offset_clamp'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extPOC = gl.getExtension('EXT_polygon_offset_clamp');
+
+    const texSize = 256;
+    const vertCount = 6;
+    const elemCount = 6;
+    const factorVal = 1.0;
+    const unitsVal = 1.0;
+    const clampVal = 0.05;
+    const syncTimeout = 0;
+
+    const drawMode = gl.TRIANGLES;
+    const syncCondition = gl.SYNC_GPU_COMMANDS_COMPLETE;
+    const bufTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const depthFuncLeq = gl.LEQUAL;
+    const polyOffsetCap = gl.POLYGON_OFFSET_FILL;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in float aDepth;
+in vec3 aColor;
+out vec2 vUv;
+out vec3 vColor;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    vColor = aColor;
+    gl_Position = vec4(aPos, aDepth, 1.0);
+}`);
+        gl.compileShader(vShader);
+
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+in vec3 vColor;
+out vec4 fragColor;
+void main() {
+    float grid = step(0.9, max(fract(vUv.x * 10.0), fract(vUv.y * 10.0)));
+    fragColor = vec4(mix(vColor, vec3(1.0), grid * 0.5), 1.0);
+}`);
+        gl.compileShader(fShader);
+
+        var program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        var posBufA = gl.createBuffer();
+        gl.bindBuffer(bufTarget, posBufA);
+        gl.bufferData(bufTarget, new Float32Array([
+            -0.8, -0.8,  0.8, -0.8,  0.8,  0.8,
+            -0.8, -0.8,  0.8,  0.8, -0.8,  0.8
+        ]), gl.STATIC_DRAW);
+
+        var depthBufA = gl.createBuffer();
+        gl.bindBuffer(bufTarget, depthBufA);
+        gl.bufferData(bufTarget, new Float32Array([
+            0.5, 0.5, 0.5, 0.5, 0.5, 0.5
+        ]), gl.STATIC_DRAW);
+
+        var colorBufA = gl.createBuffer();
+        gl.bindBuffer(bufTarget, colorBufA);
+        gl.bufferData(bufTarget, new Float32Array([
+            0.2, 0.6, 0.9,
+            0.2, 0.6, 0.9,
+            0.2, 0.6, 0.9,
+            0.2, 0.6, 0.9,
+            0.2, 0.6, 0.9,
+            0.2, 0.6, 0.9
+        ]), gl.STATIC_DRAW);
+
+        var posBufB = gl.createBuffer();
+        gl.bindBuffer(bufTarget, posBufB);
+        gl.bufferData(bufTarget, new Float32Array([
+            -0.6, -0.6,  0.6, -0.6,  0.6,  0.6, -0.6,  0.6
+        ]), gl.STATIC_DRAW);
+
+        var depthBufB = gl.createBuffer();
+        gl.bindBuffer(bufTarget, depthBufB);
+        gl.bufferData(bufTarget, new Float32Array([
+            0.5, 0.5, 0.5, 0.5
+        ]), gl.STATIC_DRAW);
+
+        var colorBufB = gl.createBuffer();
+        gl.bindBuffer(bufTarget, colorBufB);
+        gl.bufferData(bufTarget, new Float32Array([
+            0.9, 0.3, 0.2,
+            0.9, 0.3, 0.2,
+            0.9, 0.3, 0.2,
+            0.9, 0.3, 0.2
+        ]), gl.STATIC_DRAW);
+
+        var elemBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, elemBuf);
+        gl.bufferData(elemTarget, new Uint16Array([
+            0, 1, 2,
+            0, 2, 3
+        ]), gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        var vaoA = gl.createVertexArray();
+        gl.bindVertexArray(vaoA);
+        var locPos = gl.getAttribLocation(program, 'aPos');
+        var locDepth = gl.getAttribLocation(program, 'aDepth');
+        var locColor = gl.getAttribLocation(program, 'aColor');
+
+        gl.bindBuffer(bufTarget, posBufA);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(bufTarget, depthBufA);
+        gl.enableVertexAttribArray(locDepth);
+        gl.vertexAttribPointer(locDepth, 1, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(bufTarget, colorBufA);
+        gl.enableVertexAttribArray(locColor);
+        gl.vertexAttribPointer(locColor, 3, gl.FLOAT, false, 0, 0);
+
+        var vaoB = gl.createVertexArray();
+        gl.bindVertexArray(vaoB);
+
+        gl.bindBuffer(bufTarget, posBufB);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(bufTarget, depthBufB);
+        gl.enableVertexAttribArray(locDepth);
+        gl.vertexAttribPointer(locDepth, 1, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(bufTarget, colorBufB);
+        gl.enableVertexAttribArray(locColor);
+        gl.vertexAttribPointer(locColor, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, elemBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(depthFuncLeq);
+        gl.enable(polyOffsetCap);
+
+        extPOC.polygonOffsetClampEXT(0.0, 0.0, 0.0);
+        extPOC.polygonOffsetClampEXT(factorVal, unitsVal, clampVal);
+
+        gl.clearColor(0.05, 0.05, 0.08, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        gl.useProgram(program);
+        gl.bindVertexArray(vaoA);
+        gl.drawArrays(drawMode, 0, vertCount);
+
+        var sync1 = gl.fenceSync(syncCondition, 0);
+        gl.flush();
+        gl.clientWaitSync(sync1, 0, syncTimeout);
+        gl.getSyncParameter(sync1, gl.SYNC_STATUS);
+        gl.isSync(sync1);
+        gl.deleteSync(sync1);
+    } catch(e) {}
+
+    try {
+        extPOC.polygonOffsetClampEXT(-1.5, -1.5, -0.04);
+        gl.bindVertexArray(vaoB);
+        gl.drawElements(drawMode, elemCount, gl.UNSIGNED_SHORT, 0);
+
+        var sync2 = gl.fenceSync(syncCondition, 0);
+        gl.flush();
+        gl.clientWaitSync(sync2, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
+        gl.deleteSync(sync2);
+
+        gl.disable(polyOffsetCap);
+        gl.disable(gl.DEPTH_TEST);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

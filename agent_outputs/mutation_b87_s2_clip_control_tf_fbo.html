@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_clip_control'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extCC = gl.getExtension('EXT_clip_control');
+
+    const texSize = 256;
+    const vertexCount = 36;
+    const ringSegments = 12;
+    const radiusScale = 0.65;
+    const depthOffset = 0.35;
+    const clearAlpha = 1.0;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK;
+    const texTarget = gl.TEXTURE_2D;
+    const fboTarget = gl.FRAMEBUFFER;
+    const rboTarget = gl.RENDERBUFFER;
+    const drawMode = gl.TRIANGLES;
+
+    var tfVShader, tfFShader, tfProgram;
+    var renVShader, renFShader, renProgram;
+    var inVao, renVao;
+    var inPosBuf, tfPosBuf, tfColorBuf;
+    var tfObj;
+    var colorTex, depthRbo, fbo;
+
+    try {
+        tfVShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(tfVShader, `#version 300 es
+precision highp float;
+in vec3 aInPos;
+out vec3 vOutPos;
+out vec4 vOutColor;
+void main() {
+    float angle = 0.785398;
+    float cosA = cos(angle);
+    float sinA = sin(angle);
+    vec3 p = aInPos;
+    vOutPos = vec3(p.x * cosA - p.y * sinA, p.x * sinA + p.y * cosA, p.z);
+    vOutColor = vec4(0.5 + 0.5 * vOutPos.x, 0.5 + 0.5 * vOutPos.y, 0.7 + 0.3 * vOutPos.z, 1.0);
+    gl_Position = vec4(vOutPos, 1.0);
+}`);
+        gl.compileShader(tfVShader);
+
+        tfFShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(tfFShader, `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+    fragColor = vec4(1.0);
+}`);
+        gl.compileShader(tfFShader);
+
+        tfProgram = gl.createProgram();
+        gl.attachShader(tfProgram, tfVShader);
+        gl.attachShader(tfProgram, tfFShader);
+        gl.transformFeedbackVaryings(tfProgram, ['vOutPos', 'vOutColor'], gl.SEPARATE_ATTRIBS);
+        gl.linkProgram(tfProgram);
+
+        renVShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(renVShader, `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec4 aColor;
+out vec4 vColor;
+void main() {
+    vColor = aColor;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(renVShader);
+
+        renFShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(renFShader, `#version 300 es
+precision highp float;
+in vec4 vColor;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(renFShader);
+
+        renProgram = gl.createProgram();
+        gl.attachShader(renProgram, renVShader);
+        gl.attachShader(renProgram, renFShader);
+        gl.linkProgram(renProgram);
+    } catch(e) {}
+
+    try {
+        const inPositions = new Float32Array(vertexCount * 3);
+        let ptr = 0;
+        const tris = vertexCount / 3;
+        for (let i = 0; i < tris; i++) {
+            const th1 = (i / tris) * Math.PI * 2;
+            const th2 = ((i + 1) / tris) * Math.PI * 2;
+            const r1 = radiusScale * 0.4;
+            const r2 = radiusScale * 0.9;
+            const z = ((i % 3) * depthOffset) / 3.0 + 0.1;
+
+            inPositions[ptr++] = 0.0;
+            inPositions[ptr++] = 0.0;
+            inPositions[ptr++] = z;
+
+            inPositions[ptr++] = Math.cos(th1) * r2;
+            inPositions[ptr++] = Math.sin(th1) * r2;
+            inPositions[ptr++] = z;
+
+            inPositions[ptr++] = Math.cos(th2) * r1;
+            inPositions[ptr++] = Math.sin(th2) * r1;
+            inPositions[ptr++] = z;
+        }
+
+        inPosBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, inPosBuf);
+        gl.bufferData(bufferTarget, inPositions, gl.STATIC_DRAW);
+
+        tfPosBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, tfPosBuf);
+        gl.bufferData(bufferTarget, vertexCount * 3 * 4, gl.DYNAMIC_COPY);
+
+        tfColorBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, tfColorBuf);
+        gl.bufferData(bufferTarget, vertexCount * 4 * 4, gl.DYNAMIC_COPY);
+
+        inVao = gl.createVertexArray();
+        gl.bindVertexArray(inVao);
+        const locInPos = gl.getAttribLocation(tfProgram, 'aInPos');
+        gl.enableVertexAttribArray(locInPos);
+        gl.bindBuffer(bufferTarget, inPosBuf);
+        gl.vertexAttribPointer(locInPos, 3, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+
+        renVao = gl.createVertexArray();
+        gl.bindVertexArray(renVao);
+        const locRenPos = gl.getAttribLocation(renProgram, 'aPos');
+        const locRenCol = gl.getAttribLocation(renProgram, 'aColor');
+        gl.enableVertexAttribArray(locRenPos);
+        gl.bindBuffer(bufferTarget, tfPosBuf);
+        gl.vertexAttribPointer(locRenPos, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locRenCol);
+        gl.bindBuffer(bufferTarget, tfColorBuf);
+        gl.vertexAttribPointer(locRenCol, 4, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+
+        tfObj = gl.createTransformFeedback();
+        gl.bindTransformFeedback(tfTarget, tfObj);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfPosBuf);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 1, tfColorBuf);
+        gl.bindTransformFeedback(tfTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProgram);
+        gl.bindVertexArray(inVao);
+        gl.bindTransformFeedback(tfTarget, tfObj);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindTransformFeedback(tfTarget, null);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        colorTex = gl.createTexture();
+        gl.bindTexture(texTarget, colorTex);
+        gl.texStorage2D(texTarget, 1, gl.RGBA8, texSize, texSize);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        depthRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rboTarget, depthRbo);
+        gl.renderbufferStorage(rboTarget, gl.DEPTH24_STENCIL8, texSize, texSize);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, texTarget, colorTex, 0);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, rboTarget, depthRbo);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        extCC.clipControlEXT(extCC.LOWER_LEFT_EXT, extCC.ZERO_TO_ONE_EXT);
+
+        gl.viewport(0, 0, texSize, texSize);
+        gl.bindFramebuffer(fboTarget, fbo);
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.depthMask(true);
+
+        gl.clearColor(0.05, 0.07, 0.11, clearAlpha);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        gl.useProgram(renProgram);
+        gl.bindVertexArray(renVao);
+        gl.drawArrays(drawMode, 0, vertexCount);
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.DEPTH_TEST);
+
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindRenderbuffer(rboTarget, null);
+        gl.bindTexture(texTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

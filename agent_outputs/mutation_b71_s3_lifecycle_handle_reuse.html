@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    const texSize = 256;
+    const vertCount = 6;
+    const reuseRounds = 3;
+
+    const drawMode = gl.TRIANGLES;
+    const texFmt = gl.RGBA8;
+
+    function makeProgram(tint) {
+        const vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        const fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+layout(location = 0) out vec4 color0;
+layout(location = 1) out vec4 color1;
+void main() {
+    float rings = sin(length(vUv - vec2(0.5)) * 26.0);
+    vec3 tintC = vec3(${tint});
+    color0 = vec4(tintC * (0.6 - rings * 0.25), 0.3 + vUv.x * 0.5);
+    color1 = vec4(rings * 0.7, tintC.brg);
+}`);
+        gl.compileShader(fShader);
+        const program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        return { program, vShader, fShader };
+    }
+
+    let round = 0;
+    let active = {};
+
+    function allocateRound() {
+        const tag = 'r' + round;
+        const p = makeProgram(`0.${5 + round}`);
+        const tex0 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex0);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        const tex1 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex1);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        const rbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, texSize, texSize);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        const fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex0, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, tex1, 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, rbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), gl.STATIC_DRAW);
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const loc = gl.getAttribLocation(p.program, 'aPos');
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        active = { p, tex0, tex1, rbo, fbo, buf, vao, tag };
+    }
+
+    function drawRound() {
+        const a = active;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, a.fbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.useProgram(a.p.program);
+        gl.bindVertexArray(a.vao);
+        gl.clearColor(0.03 + round * 0.01, 0.04, 0.07, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, a.fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        const halfW = texSize / 2;
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, halfW, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.blitFramebuffer(0, 0, texSize, texSize, halfW, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
+    function deallocateRound() {
+        const a = active;
+        gl.bindTexture(gl.TEXTURE_2D, a.tex0);
+        gl.deleteTexture(a.tex0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, a.buf);
+        gl.deleteBuffer(a.buf);
+        gl.useProgram(a.p.program);
+        gl.deleteProgram(a.p.program);
+        gl.deleteShader(a.p.vShader);
+        gl.deleteShader(a.p.fShader);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, a.fbo);
+        gl.deleteFramebuffer(a.fbo);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, a.rbo);
+        gl.deleteRenderbuffer(a.rbo);
+        gl.bindVertexArray(a.vao);
+        gl.deleteVertexArray(a.vao);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+        gl.isTexture(a.tex0);
+        gl.isProgram(a.p.program);
+    }
+
+    for (round = 0; round < reuseRounds; round++) {
+        allocateRound();
+        drawRound();
+        deallocateRound();
+    }
+
+    allocateRound();
+    drawRound();
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

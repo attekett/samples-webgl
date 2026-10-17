@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+
+    const texSize = 256;
+    const pointCount = 32;
+    const quadVerts = 6;
+    const drawCount = 4;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const tfMode = gl.POINTS;
+    const drawTriangles = gl.TRIANGLES;
+
+    var tfProg, renderProg;
+    var initBuf, tfBufOut;
+    var tfObj;
+    var quadBuf, idxBuf, vaoQuad, vaoPoints;
+
+    try {
+        const tfVS = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(tfVS, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec2 aVel;
+out vec2 vOutPos;
+out vec2 vOutVel;
+void main() {
+    vec2 p = aPos + aVel * 0.04;
+    vec2 v = aVel;
+    if (abs(p.x) > 0.85) v.x = -v.x;
+    if (abs(p.y) > 0.85) v.y = -v.y;
+    vOutPos = p;
+    vOutVel = v;
+    gl_Position = vec4(p, 0.0, 1.0);
+}`);
+        gl.compileShader(tfVS);
+        const tfFS = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(tfFS, `#version 300 es
+precision highp float;
+out vec4 col;
+void main() { col = vec4(1.0); }`);
+        gl.compileShader(tfFS);
+        tfProg = gl.createProgram();
+        gl.attachShader(tfProg, tfVS);
+        gl.attachShader(tfProg, tfFS);
+        gl.transformFeedbackVaryings(tfProg, ['vOutPos', 'vOutVel'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(tfProg);
+    } catch(e) {}
+
+    try {
+        const renVS = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(renVS, `#version 300 es
+precision highp float;
+precision highp int;
+in vec2 aPos;
+in vec4 aColor;
+uniform int uIsPoints;
+out vec4 vColor;
+void main() {
+    vColor = aColor;
+    if (uIsPoints == 1) {
+        gl_PointSize = 10.0;
+    }
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(renVS);
+        const renFS = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(renFS, `#version 300 es
+precision highp float;
+precision highp int;
+in vec4 vColor;
+out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(renFS);
+        renderProg = gl.createProgram();
+        gl.attachShader(renderProg, renVS);
+        gl.attachShader(renderProg, renFS);
+        gl.linkProgram(renderProg);
+    } catch(e) {}
+
+    try {
+        const pData = new Float32Array(pointCount * 4);
+        for (let i = 0; i < pointCount; i++) {
+            const ang = (i / pointCount) * Math.PI * 2.0;
+            pData[i * 4 + 0] = Math.cos(ang) * 0.5;
+            pData[i * 4 + 1] = Math.sin(ang) * 0.5;
+            pData[i * 4 + 2] = -Math.sin(ang) * 0.5;
+            pData[i * 4 + 3] = Math.cos(ang) * 0.5;
+        }
+
+        initBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, initBuf);
+        gl.bufferData(bufferTarget, pData, gl.STATIC_DRAW);
+
+        tfBufOut = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, tfBufOut);
+        gl.bufferData(bufferTarget, pointCount * 4 * 4, gl.DYNAMIC_DRAW);
+
+        tfObj = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfTarget, 0, tfBufOut);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    } catch(e) {}
+
+    try {
+        quadBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, quadBuf);
+        const qData = new Float32Array(drawCount * quadVerts * 6);
+        const centers = [[-0.5, 0.5], [0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]];
+        const cols = [[0.8, 0.2, 0.3], [0.2, 0.8, 0.4], [0.3, 0.5, 0.9], [0.9, 0.7, 0.2]];
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 6;
+            const c = centers[i];
+            const col = cols[i];
+            const sz = 0.35;
+            const verts = [
+                c[0] - sz, c[1] - sz,  col[0], col[1], col[2], 1.0,
+                c[0] + sz, c[1] - sz,  col[0], col[1], col[2], 1.0,
+                c[0] + sz, c[1] + sz,  col[0], col[1], col[2], 1.0,
+                c[0] - sz, c[1] - sz,  col[0], col[1], col[2], 1.0,
+                c[0] + sz, c[1] + sz,  col[0], col[1], col[2], 1.0,
+                c[0] - sz, c[1] + sz,  col[0], col[1], col[2], 1.0
+            ];
+            qData.set(verts, base);
+        }
+        gl.bufferData(bufferTarget, qData, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const idxData = new Uint16Array(drawCount * quadVerts);
+        for (let i = 0; i < drawCount * quadVerts; i++) idxData[i] = i;
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vaoQuad = gl.createVertexArray();
+        gl.bindVertexArray(vaoQuad);
+        const locPos = gl.getAttribLocation(renderProg, 'aPos');
+        const locCol = gl.getAttribLocation(renderProg, 'aColor');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 24, 0);
+
+        gl.enableVertexAttribArray(locCol);
+        gl.vertexAttribPointer(locCol, 4, gl.FLOAT, false, 24, 8);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+
+        vaoPoints = gl.createVertexArray();
+        gl.bindVertexArray(vaoPoints);
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, tfBufOut);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 16, 0);
+
+        gl.disableVertexAttribArray(locCol);
+        gl.vertexAttrib4f(locCol, 1.0, 1.0, 0.4, 1.0);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProg);
+        gl.bindBuffer(bufferTarget, initBuf);
+        const locTfPos = gl.getAttribLocation(tfProg, 'aPos');
+        const locTfVel = gl.getAttribLocation(tfProg, 'aVel');
+        gl.enableVertexAttribArray(locTfPos);
+        gl.vertexAttribPointer(locTfPos, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(locTfVel);
+        gl.vertexAttribPointer(locTfVel, 2, gl.FLOAT, false, 16, 8);
+
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.beginTransformFeedback(tfMode);
+        gl.drawArrays(tfMode, 0, pointCount);
+        gl.endTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.disable(gl.RASTERIZER_DISCARD);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.04, 0.05, 0.09, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(renderProg);
+        gl.uniform1i(gl.getUniformLocation(renderProg, 'uIsPoints'), 0);
+        gl.bindVertexArray(vaoQuad);
+
+        const firsts = new Int32Array([0, 6, 12, 18]);
+        const counts = new Int32Array([6, 6, 6, 6]);
+        extMD.multiDrawArraysWEBGL(drawTriangles, firsts, 0, counts, 0, drawCount);
+
+        gl.uniform1i(gl.getUniformLocation(renderProg, 'uIsPoints'), 1);
+        gl.bindVertexArray(vaoPoints);
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

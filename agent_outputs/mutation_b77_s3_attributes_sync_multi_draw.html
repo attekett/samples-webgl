@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const drawCount = 4;
+    const syncTimeout = 0;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const syncCondition = gl.SYNC_GPU_COMMANDS_COMPLETE;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, colBuf, idxBuf;
+    var sync1, sync2;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec4 aColor;
+out vec4 vColor;
+void main() {
+    vColor = aColor;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec4 vColor;
+out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const posData = new Float32Array(drawCount * quadVerts * 2);
+        const centers = [[-0.5, 0.5], [0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]];
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 2;
+            const c = centers[i];
+            const sz = 0.35;
+            posData.set([
+                c[0] - sz, c[1] - sz,  c[0] + sz, c[1] - sz,  c[0] + sz, c[1] + sz,
+                c[0] - sz, c[1] - sz,  c[0] + sz, c[1] + sz,  c[0] - sz, c[1] + sz
+            ], base);
+        }
+        gl.bufferData(bufferTarget, posData, gl.STATIC_DRAW);
+
+        colBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, colBuf);
+        const colData = new Float32Array(drawCount * quadVerts * 4);
+        const colors = [
+            [0.2, 0.9, 0.5, 1.0],
+            [0.9, 0.3, 0.7, 1.0],
+            [0.3, 0.6, 0.9, 1.0],
+            [0.9, 0.7, 0.2, 1.0]
+        ];
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 4;
+            const c = colors[i];
+            for (let v = 0; v < quadVerts; v++) {
+                colData[base + v * 4 + 0] = c[0];
+                colData[base + v * 4 + 1] = c[1];
+                colData[base + v * 4 + 2] = c[2];
+                colData[base + v * 4 + 3] = c[3];
+            }
+        }
+        gl.bufferData(bufferTarget, colData, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const idxData = new Uint16Array(drawCount * quadVerts);
+        for (let i = 0; i < drawCount * quadVerts; i++) idxData[i] = i;
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locCol = gl.getAttribLocation(program, 'aColor');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locCol);
+        gl.bindBuffer(bufferTarget, colBuf);
+        gl.vertexAttribPointer(locCol, 4, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.05, 0.05, 0.08, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.bindVertexArray(vao);
+
+        const firsts = new Int32Array([0, 6, 12, 18]);
+        const counts = new Int32Array([6, 6, 6, 6]);
+
+        extMD.multiDrawArraysWEBGL(drawMode, firsts, 0, counts, 0, drawCount);
+
+        sync1 = gl.fenceSync(syncCondition, 0);
+        gl.isSync(sync1);
+        gl.getSyncParameter(sync1, gl.SYNC_STATUS);
+        gl.clientWaitSync(sync1, gl.SYNC_FLUSH_COMMANDS_BIT, syncTimeout);
+
+        const idxCounts = new Uint32Array([6, 6]);
+        const idxOffsets = new Int32Array([0, 12]);
+        extMD.multiDrawElementsWEBGL(drawMode, idxCounts, 0, gl.UNSIGNED_SHORT, idxOffsets, 0, 2);
+
+        sync2 = gl.fenceSync(syncCondition, 0);
+        gl.waitSync(sync2, 0, gl.TIMEOUT_IGNORED);
+    } catch(e) {}
+
+    try {
+        if (sync1) gl.deleteSync(sync1);
+        if (sync2) gl.deleteSync(sync2);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

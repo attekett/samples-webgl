@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_texture_filter_anisotropic',
+    'WEBGL_multi_draw'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extAniso = gl.getExtension('EXT_texture_filter_anisotropic');
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const drawCount = 4;
+    const checkTexSize = 32;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const drawMode = gl.TRIANGLES;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, uvBuf, idxBuf;
+    var anisoTex;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec2 aUv;
+out vec2 vUv;
+void main() {
+    vUv = aUv;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uTex;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = texture(uTex, vUv * 8.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const posData = new Float32Array(drawCount * quadVerts * 3);
+        const centers = [[-0.5, 0.5], [0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]];
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 3;
+            const c = centers[i];
+            const sz = 0.4;
+            posData.set([
+                c[0] - sz, c[1] - sz, 0.0,
+                c[0] + sz, c[1] - sz, 0.0,
+                c[0] + sz, c[1] + sz, 0.0,
+                c[0] - sz, c[1] - sz, 0.0,
+                c[0] + sz, c[1] + sz, 0.0,
+                c[0] - sz, c[1] + sz, 0.0
+            ], base);
+        }
+        gl.bufferData(bufferTarget, posData, gl.DYNAMIC_DRAW);
+
+        uvBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, uvBuf);
+        const uvData = new Float32Array(drawCount * quadVerts * 2);
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 2;
+            uvData.set([
+                0.0, 0.0,  1.0, 0.0,  1.0, 1.0,
+                0.0, 0.0,  1.0, 1.0,  0.0, 1.0
+            ], base);
+        }
+        gl.bufferData(bufferTarget, uvData, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const idxData = new Uint16Array(drawCount * quadVerts);
+        for (let i = 0; i < drawCount * quadVerts; i++) idxData[i] = i;
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locUv = gl.getAttribLocation(program, 'aUv');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locUv);
+        gl.bindBuffer(bufferTarget, uvBuf);
+        gl.vertexAttribPointer(locUv, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        anisoTex = gl.createTexture();
+        gl.bindTexture(texTarget, anisoTex);
+        const pixData = new Uint8Array(checkTexSize * checkTexSize * 4);
+        for (let y = 0; y < checkTexSize; y++) {
+            for (let x = 0; x < checkTexSize; x++) {
+                const idx = (y * checkTexSize + x) * 4;
+                const check = ((x >> 2) + (y >> 2)) % 2 === 0;
+                pixData[idx + 0] = check ? 220 : 30;
+                pixData[idx + 1] = check ? 180 : 80;
+                pixData[idx + 2] = check ? 80 : 200;
+                pixData[idx + 3] = 255;
+            }
+        }
+        gl.texImage2D(texTarget, 0, gl.RGBA8, checkTexSize, checkTexSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixData);
+        gl.generateMipmap(texTarget);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        const maxAniso = gl.getParameter(extAniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+        gl.texParameterf(texTarget, extAniso.TEXTURE_MAX_ANISOTROPY_EXT, maxAniso);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(texTarget, anisoTex);
+        gl.uniform1i(gl.getUniformLocation(program, 'uTex'), 0);
+
+        gl.bindVertexArray(vao);
+
+        const firsts = new Int32Array([0, 6, 12, 18]);
+        const counts = new Int32Array([6, 6, 6, 6]);
+        const idxCounts = new Uint32Array([6, 6, 6, 6]);
+        const idxOffsets = new Int32Array([0, 6, 12, 18]);
+
+        extMD.multiDrawArraysWEBGL(drawMode, firsts, 0, counts, 0, drawCount);
+        extMD.multiDrawElementsWEBGL(drawMode, idxCounts, 0, gl.UNSIGNED_SHORT, idxOffsets, 0, drawCount);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+        gl.bindTexture(texTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

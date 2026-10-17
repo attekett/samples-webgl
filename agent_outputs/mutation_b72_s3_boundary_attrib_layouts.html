@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    const texSize = 256;
+    const vertCount = 6;
+    const stride24 = 24;
+    const intPairCount = 6;
+
+    const drawMode = gl.TRIANGLES;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec4 aColor;
+in ivec2 aFlags;
+out vec2 vUv;
+out vec4 vColor;
+flat out ivec2 vFlags;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    vColor = aColor;
+    vFlags = aFlags;
+    vec2 warp = vec2(aFlags.x % 3, aFlags.y % 3) * 0.04;
+    gl_Position = vec4(aPos + warp, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+in vec4 vColor;
+flat in ivec2 vFlags;
+layout(location = 0) out vec4 color0;
+void main() {
+    float stripes = step(0.5, fract(vUv.x * 5.0 + float(vFlags.x) * 0.2));
+    vec3 base = vColor.rgb * (0.7 + 0.3 * stripes);
+    color0 = vec4(base, vColor.a);
+}`);
+        gl.compileShader(fShader);
+        var program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        var interBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, interBuf);
+        const interData = new Float32Array(vertCount * 6);
+        for (let vi = 0; vi < vertCount; vi++) {
+            interData[vi * 6] = (vi % 2) ? 0.9 : -0.9;
+            interData[vi * 6 + 1] = (vi < 3) ? -0.8 : 0.8;
+            interData[vi * 6 + 2] = 0.15 + vi * 0.14;
+            interData[vi * 6 + 3] = 0.9 - vi * 0.12;
+            interData[vi * 6 + 4] = 0.3 + (vi % 3) * 0.3;
+            interData[vi * 6 + 5] = 0.95;
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, interData, gl.STATIC_DRAW);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 24, new Float32Array([0.7, -0.7]));
+        var intBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, intBuf);
+        const intData = new Int32Array(intPairCount * 2);
+        for (let ii = 0; ii < intPairCount; ii++) {
+            intData[ii * 2] = ii % 4;
+            intData[ii * 2 + 1] = (ii + 1) % 4;
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, intData, gl.STATIC_DRAW);
+        var gone = gl.createBuffer();
+        gl.deleteBuffer(gone);
+        gl.deleteBuffer(gone);
+        gl.isBuffer(gone);
+    } catch(e) {}
+
+    try {
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locColor = gl.getAttribLocation(program, 'aColor');
+        const locFlags = gl.getAttribLocation(program, 'aFlags');
+        var vaoA = gl.createVertexArray();
+        gl.bindVertexArray(vaoA);
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, interBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, stride24, 0);
+        gl.enableVertexAttribArray(locColor);
+        gl.vertexAttribPointer(locColor, 4, gl.FLOAT, false, stride24, 8);
+        gl.enableVertexAttribArray(locFlags);
+        gl.bindBuffer(gl.ARRAY_BUFFER, intBuf);
+        gl.vertexAttribIPointer(locFlags, 2, gl.INT, 0, 0);
+        var vaoB = gl.createVertexArray();
+        gl.bindVertexArray(vaoB);
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, interBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, stride24, 0);
+        gl.enableVertexAttribArray(locColor);
+        gl.vertexAttribPointer(locColor, 4, gl.FLOAT, false, stride24, 8);
+        gl.enableVertexAttribArray(locFlags);
+        gl.bindBuffer(gl.ARRAY_BUFFER, intBuf);
+        gl.vertexAttribIPointer(locFlags, 2, gl.INT, 8, 0);
+        var vaoC = gl.createVertexArray();
+        gl.bindVertexArray(vaoC);
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, interBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, stride24, 16);
+        gl.enableVertexAttribArray(locColor);
+        gl.vertexAttribPointer(locColor, 4, gl.FLOAT, false, stride24, 0);
+        gl.enableVertexAttribArray(locFlags);
+        gl.bindBuffer(gl.ARRAY_BUFFER, intBuf);
+        gl.vertexAttribIPointer(locFlags, 2, gl.INT, 8, 0);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vaoA);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.04, 0.04, 0.07, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertCount);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(vaoB);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.bindVertexArray(vaoC);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.bindVertexArray(vaoA);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

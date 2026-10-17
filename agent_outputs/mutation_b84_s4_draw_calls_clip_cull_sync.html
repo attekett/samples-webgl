@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const ringSteps = 4;
+    const syncFlags = 0;
+    const timeoutVal = 0;
+    const clipVal = 0.5;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const syncCondition = gl.SYNC_GPU_COMMANDS_COMPLETE;
+    const syncStatusParam = gl.SYNC_STATUS;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, colBuf, idxBuf;
+    var syncObj;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+in vec2 aPos;
+in vec4 aColor;
+out vec4 vColor;
+void main() {
+    gl_ClipDistance[0] = aPos.y + 0.5;
+    vColor = aColor;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec4 vColor;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(fShader);
+
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const positions = new Float32Array([
+            -0.85, -0.85,   0.85, -0.85,   0.85,  0.85,
+            -0.85, -0.85,   0.85,  0.85,  -0.85,  0.85,
+            -0.45, -0.45,   0.45, -0.45,   0.45,  0.45,
+            -0.45, -0.45,   0.45,  0.45,  -0.45,  0.45
+        ]);
+        gl.bufferData(bufferTarget, positions, gl.STATIC_DRAW);
+
+        colBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, colBuf);
+        const colors = new Float32Array([
+            0.8, 0.2, 0.4, 1.0,
+            0.2, 0.8, 0.5, 1.0,
+            0.3, 0.5, 0.9, 1.0,
+            0.8, 0.2, 0.4, 1.0,
+            0.3, 0.5, 0.9, 1.0,
+            0.9, 0.8, 0.2, 1.0,
+            0.4, 0.9, 0.9, 1.0,
+            0.9, 0.4, 0.8, 1.0,
+            0.8, 0.9, 0.2, 1.0,
+            0.4, 0.9, 0.9, 1.0,
+            0.8, 0.9, 0.2, 1.0,
+            0.5, 0.3, 0.9, 1.0
+        ]);
+        gl.bufferData(bufferTarget, colors, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const indices = new Uint16Array([
+            0, 1, 2, 3, 4, 5,
+            6, 7, 8, 9, 10, 11
+        ]);
+        gl.bufferData(elemTarget, indices, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locCol = gl.getAttribLocation(program, 'aColor');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locCol);
+        gl.bindBuffer(bufferTarget, colBuf);
+        gl.vertexAttribPointer(locCol, 4, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.04, 0.05, 0.09, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+
+        gl.drawArrays(drawMode, 0, quadVerts);
+
+        syncObj = gl.fenceSync(syncCondition, syncFlags);
+        gl.isSync(syncObj);
+        gl.getSyncParameter(syncObj, syncStatusParam);
+        gl.clientWaitSync(syncObj, syncFlags, timeoutVal);
+
+        gl.drawElements(drawMode, quadVerts, gl.UNSIGNED_SHORT, quadVerts * 2);
+    } catch(e) {}
+
+    try {
+        if (syncObj) {
+            gl.deleteSync(syncObj);
+        }
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+        void ringSteps; void clipVal;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

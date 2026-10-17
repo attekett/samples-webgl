@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_color_buffer_float',
+    'WEBGL_compressed_texture_s3tc'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const halfSize = 128;
+    const tfCount = 6;
+    const quadVerts = 6;
+    const s3tcWidth = 16;
+    const s3tcHeight = 16;
+    const s3tcBlocks = 16;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfBufferTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const fboTarget = gl.FRAMEBUFFER;
+    const drawMode = gl.TRIANGLES;
+    const compFormat = 0x83F0;
+
+    var tfProgram, renderProgram;
+    var tfVao, renderVao;
+    var inPosBuf, tfOutBuf;
+    var tfObj;
+    var compTex, fboTex, fbo;
+
+    try {
+        const tfVS = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(tfVS, `#version 300 es
+in vec2 aPos;
+out vec2 vOutPos;
+out vec2 vOutUv;
+void main() {
+    vOutPos = aPos;
+    vOutUv = aPos * 0.5 + 0.5;
+}`);
+        gl.compileShader(tfVS);
+        const tfFS = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(tfFS, `#version 300 es
+precision highp float;
+out vec4 fragColor;
+void main() {
+    fragColor = vec4(1.0);
+}`);
+        gl.compileShader(tfFS);
+        tfProgram = gl.createProgram();
+        gl.attachShader(tfProgram, tfVS);
+        gl.attachShader(tfProgram, tfFS);
+        gl.transformFeedbackVaryings(tfProgram, ['vOutPos', 'vOutUv'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(tfProgram);
+    } catch(e) {}
+
+    try {
+        const rVS = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(rVS, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec2 aUv;
+out vec2 vUv;
+void main() {
+    vUv = aUv;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(rVS);
+        const rFS = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(rFS, `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uCompTex;
+layout(location = 0) out vec4 outColor;
+void main() {
+    vec4 t = texture(uCompTex, vUv * 3.0);
+    outColor = vec4(t.rgb * vec3(1.2, 0.9, 1.4), 1.0);
+}`);
+        gl.compileShader(rFS);
+        renderProgram = gl.createProgram();
+        gl.attachShader(renderProgram, rVS);
+        gl.attachShader(renderProgram, rFS);
+        gl.linkProgram(renderProgram);
+    } catch(e) {}
+
+    try {
+        inPosBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, inPosBuf);
+        const posData = new Float32Array([
+            -1.0, -1.0,  1.0, -1.0,  1.0,  1.0,
+            -1.0, -1.0,  1.0,  1.0, -1.0,  1.0
+        ]);
+        gl.bufferData(bufferTarget, posData, gl.STATIC_DRAW);
+
+        tfOutBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, tfOutBuf);
+        gl.bufferData(bufferTarget, tfCount * 4 * 4, gl.DYNAMIC_COPY);
+
+        tfVao = gl.createVertexArray();
+        gl.bindVertexArray(tfVao);
+        const tfLoc = gl.getAttribLocation(tfProgram, 'aPos');
+        gl.enableVertexAttribArray(tfLoc);
+        gl.bindBuffer(bufferTarget, inPosBuf);
+        gl.vertexAttribPointer(tfLoc, 2, gl.FLOAT, false, 0, 0);
+
+        renderVao = gl.createVertexArray();
+        gl.bindVertexArray(renderVao);
+        const rPosLoc = gl.getAttribLocation(renderProgram, 'aPos');
+        const rUvLoc = gl.getAttribLocation(renderProgram, 'aUv');
+        gl.bindBuffer(bufferTarget, tfOutBuf);
+        gl.enableVertexAttribArray(rPosLoc);
+        gl.vertexAttribPointer(rPosLoc, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(rUvLoc);
+        gl.vertexAttribPointer(rUvLoc, 2, gl.FLOAT, false, 16, 8);
+        gl.bindVertexArray(null);
+
+        tfObj = gl.createTransformFeedback();
+    } catch(e) {}
+
+    try {
+        compTex = gl.createTexture();
+        gl.bindTexture(texTarget, compTex);
+        const dxtData = new Uint8Array(s3tcBlocks * 8);
+        for (let b = 0; b < s3tcBlocks; b++) {
+            const off = b * 8;
+            dxtData[off + 0] = 0x00;
+            dxtData[off + 1] = 0xF8;
+            dxtData[off + 2] = 0x1F;
+            dxtData[off + 3] = 0x00;
+            dxtData[off + 4] = (b * 31) & 0xFF;
+            dxtData[off + 5] = ((b + 1) * 51) & 0xFF;
+            dxtData[off + 6] = ((b + 2) * 79) & 0xFF;
+            dxtData[off + 7] = 0x33;
+        }
+        gl.compressedTexImage2D(texTarget, 0, compFormat, s3tcWidth, s3tcHeight, 0, dxtData);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(texTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    } catch(e) {}
+
+    try {
+        fboTex = gl.createTexture();
+        gl.bindTexture(texTarget, fboTex);
+        gl.texStorage2D(texTarget, 1, gl.RGBA32F, texSize, texSize);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, texTarget, fboTex, 0);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProgram);
+        gl.bindVertexArray(tfVao);
+        gl.bindBuffer(bufferTarget, inPosBuf);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfBufferTarget, 0, tfOutBuf);
+
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.TRIANGLES);
+        gl.drawArrays(gl.TRIANGLES, 0, tfCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+
+        gl.bindBufferBase(tfBufferTarget, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.clearColor(0.15, 0.1, 0.25, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(renderProgram);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(texTarget, compTex);
+        gl.uniform1i(gl.getUniformLocation(renderProgram, 'uCompTex'), 0);
+
+        gl.bindVertexArray(renderVao);
+        gl.drawArrays(drawMode, 0, quadVerts);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindTexture(texTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+        if (tfObj) gl.deleteTransformFeedback(tfObj);
+        void halfSize;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

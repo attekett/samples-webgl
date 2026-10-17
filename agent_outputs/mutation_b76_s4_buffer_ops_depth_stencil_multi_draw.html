@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const drawCount = 4;
+    const drawElementsCount = 3;
+    const bufferBytes = 1024;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const copyReadTarget = gl.COPY_READ_BUFFER;
+    const copyWriteTarget = gl.COPY_WRITE_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const idxType = gl.UNSIGNED_SHORT;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, colBuf, idxBuf, stagingBuf;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec4 aColor;
+out vec4 vColor;
+void main() {
+    vColor = aColor;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec4 vColor;
+out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const posData = new Float32Array(drawCount * quadVerts * 3);
+        const centers = [
+            [-0.5,  0.5, 0.2],
+            [ 0.5,  0.5, 0.5],
+            [-0.5, -0.5, 0.7],
+            [ 0.5, -0.5, 0.3]
+        ];
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 3;
+            const c = centers[i];
+            const sz = 0.35;
+            posData.set([
+                c[0] - sz, c[1] - sz, c[2],
+                c[0] + sz, c[1] - sz, c[2],
+                c[0] + sz, c[1] + sz, c[2],
+                c[0] - sz, c[1] - sz, c[2],
+                c[0] + sz, c[1] + sz, c[2],
+                c[0] - sz, c[1] + sz, c[2]
+            ], base);
+        }
+        gl.bufferData(bufferTarget, posData, gl.DYNAMIC_DRAW);
+
+        colBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, colBuf);
+        const colData = new Float32Array(drawCount * quadVerts * 4);
+        const cols = [
+            [0.9, 0.2, 0.3, 1.0],
+            [0.2, 0.8, 0.4, 1.0],
+            [0.3, 0.5, 0.9, 1.0],
+            [0.9, 0.8, 0.2, 1.0]
+        ];
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 4;
+            const c = cols[i];
+            for (let v = 0; v < quadVerts; v++) {
+                const off = base + v * 4;
+                colData[off + 0] = c[0];
+                colData[off + 1] = c[1];
+                colData[off + 2] = c[2];
+                colData[off + 3] = c[3];
+            }
+        }
+        gl.bufferData(bufferTarget, colData, gl.STATIC_DRAW);
+
+        stagingBuf = gl.createBuffer();
+        gl.bindBuffer(copyReadTarget, stagingBuf);
+        gl.bufferData(copyReadTarget, bufferBytes, gl.STREAM_DRAW);
+        const subCol = new Float32Array([1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0]);
+        gl.bufferSubData(copyReadTarget, 0, subCol);
+
+        gl.bindBuffer(copyWriteTarget, colBuf);
+        gl.copyBufferSubData(copyReadTarget, copyWriteTarget, 0, 0, 32);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const idxData = new Uint16Array(drawCount * quadVerts);
+        for (let i = 0; i < drawCount * quadVerts; i++) {
+            idxData[i] = i;
+        }
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+
+        var ghostBuf = gl.createBuffer();
+        gl.deleteBuffer(ghostBuf);
+        gl.deleteBuffer(ghostBuf);
+        gl.isBuffer(ghostBuf);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locCol = gl.getAttribLocation(program, 'aColor');
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locCol);
+        gl.bindBuffer(bufferTarget, colBuf);
+        gl.vertexAttribPointer(locCol, 4, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.depthMask(true);
+
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilMask(0xFF);
+        gl.stencilFunc(gl.ALWAYS, 1, 0xFF);
+        gl.stencilOp(gl.KEEP, gl.REPLACE, gl.REPLACE);
+
+        gl.clearColor(0.06, 0.06, 0.1, 1.0);
+        gl.clearDepth(1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+        gl.bindVertexArray(vao);
+
+        const firsts = new Int32Array([0, 6, 12, 18]);
+        const counts = new Int32Array([6, 6, 6, 6]);
+        const idxCounts = new Uint32Array([6, 6, 6]);
+        const idxOffsets = new Int32Array([0, 6, 12]);
+        const instCounts = new Uint32Array([1, 1, 1, 1]);
+
+        extMD.multiDrawArraysWEBGL(drawMode, firsts, 0, counts, 0, drawCount);
+
+        gl.stencilFunc(gl.EQUAL, 1, 0xFF);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+        extMD.multiDrawElementsWEBGL(drawMode, idxCounts, 0, idxType, idxOffsets, 0, drawElementsCount);
+
+        extMD.multiDrawArraysInstancedWEBGL(drawMode, firsts, 0, counts, 0, instCounts, 0, drawCount);
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.STENCIL_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+        gl.bindBuffer(copyReadTarget, null);
+        gl.bindBuffer(copyWriteTarget, null);
+
+        void bufferBytes;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

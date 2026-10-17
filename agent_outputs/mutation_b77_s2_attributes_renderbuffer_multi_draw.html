@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const drawCount = 4;
+    const samples = 4;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const rboTarget = gl.RENDERBUFFER;
+    const fboTarget = gl.FRAMEBUFFER;
+    const drawMode = gl.TRIANGLES;
+
+    var vShader, fShader, program;
+    var vao;
+    var vBuf, idxBuf;
+    var colorRbo, depthRbo, msFbo, resolveTex, resolveFbo;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec3 aNorm;
+out vec3 vNorm;
+void main() {
+    vNorm = aNorm;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec3 vNorm;
+out vec4 outColor;
+void main() {
+    vec3 light = normalize(vec3(0.5, 0.8, 1.0));
+    float diff = max(dot(vNorm, light), 0.2);
+    outColor = vec4(diff * vec3(0.9, 0.4, 0.6), 1.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        vBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vBuf);
+        const vData = new Float32Array(drawCount * quadVerts * 5);
+        const centers = [[-0.5, 0.5], [0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]];
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 5;
+            const c = centers[i];
+            const sz = 0.38;
+            vData.set([
+                c[0] - sz, c[1] - sz,  0.0, 0.0, 1.0,
+                c[0] + sz, c[1] - sz,  0.0, 0.0, 1.0,
+                c[0] + sz, c[1] + sz,  0.0, 0.0, 1.0,
+                c[0] - sz, c[1] - sz,  0.0, 0.0, 1.0,
+                c[0] + sz, c[1] + sz,  0.0, 0.0, 1.0,
+                c[0] - sz, c[1] + sz,  0.0, 0.0, 1.0
+            ], base);
+        }
+        gl.bufferData(bufferTarget, vData, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const idxData = new Uint16Array(drawCount * quadVerts);
+        for (let i = 0; i < drawCount * quadVerts; i++) idxData[i] = i;
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locNorm = gl.getAttribLocation(program, 'aNorm');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, vBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 20, 0);
+
+        gl.enableVertexAttribArray(locNorm);
+        gl.vertexAttribPointer(locNorm, 3, gl.FLOAT, false, 20, 8);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        colorRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rboTarget, colorRbo);
+        gl.renderbufferStorageMultisample(rboTarget, samples, gl.RGBA8, texSize, texSize);
+        gl.getRenderbufferParameter(rboTarget, gl.RENDERBUFFER_SAMPLES);
+        gl.isRenderbuffer(colorRbo);
+
+        depthRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rboTarget, depthRbo);
+        gl.renderbufferStorageMultisample(rboTarget, samples, gl.DEPTH_COMPONENT16, texSize, texSize);
+
+        msFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, msFbo);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rboTarget, colorRbo);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_ATTACHMENT, rboTarget, depthRbo);
+
+        resolveTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, resolveTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, texSize, texSize);
+
+        resolveFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, resolveFbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, resolveTex, 0);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.bindFramebuffer(fboTarget, msFbo);
+        gl.clearColor(0.12, 0.08, 0.16, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        gl.bindVertexArray(vao);
+        const firsts = new Int32Array([0, 6, 12, 18]);
+        const counts = new Int32Array([6, 6, 6, 6]);
+        const idxCounts = new Uint32Array([6, 6, 6, 6]);
+        const idxOffsets = new Int32Array([0, 6, 12, 18]);
+
+        extMD.multiDrawArraysWEBGL(drawMode, firsts, 0, counts, 0, drawCount);
+        extMD.multiDrawElementsWEBGL(drawMode, idxCounts, 0, gl.UNSIGNED_SHORT, idxOffsets, 0, drawCount);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msFbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resolveFbo);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, resolveFbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindRenderbuffer(rboTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

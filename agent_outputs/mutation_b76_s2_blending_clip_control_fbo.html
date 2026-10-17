@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_clip_control'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extCC = gl.getExtension('EXT_clip_control');
+
+    const texSize = 256;
+    const halfSize = 128;
+    const quadVerts = 6;
+    const circleVerts = 24;
+    const clipOrigin = extCC.LOWER_LEFT_EXT;
+    const clipDepth = extCC.ZERO_TO_ONE_EXT;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const fboTarget = gl.FRAMEBUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const blendAdd = gl.FUNC_ADD;
+    const blendSub = gl.FUNC_SUBTRACT;
+    const drawMode = gl.TRIANGLES;
+
+    var vShader, fShader, program;
+    var quadBuf, circleBuf, vaoQuad, vaoCircle;
+    var tex0, tex1, fbo, rbo;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec4 aColor;
+out vec4 vColor;
+out vec2 vPos;
+void main() {
+    vColor = aColor;
+    vPos = aPos.xy;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec4 vColor;
+in vec2 vPos;
+layout(location = 0) out vec4 color0;
+layout(location = 1) out vec4 color1;
+void main() {
+    float r = length(vPos);
+    color0 = vec4(vColor.rgb * (1.0 - r * 0.5), vColor.a);
+    color1 = vec4(vColor.bgr * 0.8, 1.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        quadBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, quadBuf);
+        const qData = new Float32Array([
+            -0.8, -0.8, 0.1,  1.0, 0.2, 0.2, 0.8,
+             0.8, -0.8, 0.1,  0.2, 1.0, 0.2, 0.8,
+             0.8,  0.8, 0.1,  0.2, 0.2, 1.0, 0.8,
+            -0.8, -0.8, 0.1,  1.0, 0.2, 0.2, 0.8,
+             0.8,  0.8, 0.1,  0.2, 0.2, 1.0, 0.8,
+            -0.8,  0.8, 0.1,  1.0, 1.0, 0.2, 0.8
+        ]);
+        gl.bufferData(bufferTarget, qData, gl.STATIC_DRAW);
+
+        circleBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, circleBuf);
+        const cData = new Float32Array(circleVerts * 7);
+        for (let i = 0; i < circleVerts; i++) {
+            const ang = (i / circleVerts) * Math.PI * 2.0;
+            const r = (i % 2 === 0) ? 0.6 : 0.25;
+            const idx = i * 7;
+            cData[idx + 0] = Math.cos(ang) * r;
+            cData[idx + 1] = Math.sin(ang) * r;
+            cData[idx + 2] = 0.5;
+            cData[idx + 3] = 0.9;
+            cData[idx + 4] = 0.4;
+            cData[idx + 5] = 0.8;
+            cData[idx + 6] = 0.7;
+        }
+        gl.bufferData(bufferTarget, cData, gl.DYNAMIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vaoQuad = gl.createVertexArray();
+        gl.bindVertexArray(vaoQuad);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locColor = gl.getAttribLocation(program, 'aColor');
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 28, 0);
+        gl.enableVertexAttribArray(locColor);
+        gl.vertexAttribPointer(locColor, 4, gl.FLOAT, false, 28, 12);
+
+        vaoCircle = gl.createVertexArray();
+        gl.bindVertexArray(vaoCircle);
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, circleBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 28, 0);
+        gl.enableVertexAttribArray(locColor);
+        gl.vertexAttribPointer(locColor, 4, gl.FLOAT, false, 28, 12);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        tex0 = gl.createTexture();
+        gl.bindTexture(texTarget, tex0);
+        gl.texStorage2D(texTarget, 1, gl.RGBA8, texSize, texSize);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        tex1 = gl.createTexture();
+        gl.bindTexture(texTarget, tex1);
+        gl.texStorage2D(texTarget, 1, gl.RGBA8, texSize, texSize);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        rbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, texSize, texSize);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, texTarget, tex0, 0);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT1, texTarget, tex1, 0);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        extCC.clipControlEXT(clipOrigin, clipDepth);
+        extCC.clipControlEXT(extCC.UPPER_LEFT_EXT, extCC.NEGATIVE_ONE_TO_ONE_EXT);
+        extCC.clipControlEXT(clipOrigin, clipDepth);
+
+        gl.viewport(0, 0, texSize, texSize);
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.clearColor(0.08, 0.08, 0.14, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(blendAdd);
+        gl.bindVertexArray(vaoQuad);
+        gl.drawArrays(drawMode, 0, quadVerts);
+
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ONE, gl.ZERO);
+        gl.blendEquationSeparate(blendAdd, blendSub);
+        gl.blendColor(0.3, 0.6, 0.9, 0.7);
+        gl.bindVertexArray(vaoCircle);
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, circleVerts);
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.BLEND);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, halfSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.blitFramebuffer(0, 0, texSize, texSize, halfSize, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

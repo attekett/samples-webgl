@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_compressed_texture_s3tc'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const particleCount = 64;
+    const quadVerts = 6;
+    const s3tcWidth = 16;
+    const s3tcHeight = 16;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const tfMode = gl.POINTS;
+    const drawMode = gl.TRIANGLES;
+    const compFormat = 0x83F0;
+
+    var tfProg, renderProg;
+    var initBuf, tfBufA, tfBufB;
+    var tfObj;
+    var compTex;
+    var vaoBg, vaoParticle;
+
+    try {
+        const tfVS = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(tfVS, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec2 aVel;
+out vec2 vNextPos;
+out vec2 vNextVel;
+void main() {
+    vec2 p = aPos + aVel * 0.05;
+    vec2 v = aVel;
+    if (abs(p.x) > 0.9) v.x = -v.x;
+    if (abs(p.y) > 0.9) v.y = -v.y;
+    vNextPos = p;
+    vNextVel = v;
+    gl_Position = vec4(p, 0.0, 1.0);
+}`);
+        gl.compileShader(tfVS);
+        const tfFS = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(tfFS, `#version 300 es
+precision highp float;
+out vec4 color;
+void main() {
+    color = vec4(1.0);
+}`);
+        gl.compileShader(tfFS);
+        tfProg = gl.createProgram();
+        gl.attachShader(tfProg, tfVS);
+        gl.attachShader(tfProg, tfFS);
+        gl.transformFeedbackVaryings(tfProg, ['vNextPos', 'vNextVel'], gl.SEPARATE_ATTRIBS);
+        gl.linkProgram(tfProg);
+        gl.getTransformFeedbackVarying(tfProg, 0);
+    } catch(e) {}
+
+    try {
+        const renVS = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(renVS, `#version 300 es
+precision highp float;
+precision highp int;
+in vec2 aPos;
+uniform int uIsParticle;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    if (uIsParticle == 1) {
+        gl_PointSize = 12.0;
+        gl_Position = vec4(aPos, 0.0, 1.0);
+    } else {
+        gl_Position = vec4(aPos, 0.0, 1.0);
+    }
+}`);
+        gl.compileShader(renVS);
+        const renFS = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(renFS, `#version 300 es
+precision highp float;
+precision highp int;
+in vec2 vUv;
+uniform int uIsParticle;
+uniform sampler2D uCompTex;
+out vec4 outColor;
+void main() {
+    if (uIsParticle == 1) {
+        vec2 coord = gl_PointCoord - vec2(0.5);
+        float d = length(coord);
+        float a = smoothstep(0.5, 0.1, d);
+        outColor = vec4(0.2, 0.8, 0.9, a * 0.7);
+    } else {
+        outColor = texture(uCompTex, vUv * 3.0);
+    }
+}`);
+        gl.compileShader(renFS);
+        renderProg = gl.createProgram();
+        gl.attachShader(renderProg, renVS);
+        gl.attachShader(renderProg, renFS);
+        gl.linkProgram(renderProg);
+    } catch(e) {}
+
+    try {
+        const pData = new Float32Array(particleCount * 4);
+        for (let i = 0; i < particleCount; i++) {
+            const ang = (i / particleCount) * Math.PI * 2.0;
+            pData[i * 4 + 0] = Math.cos(ang) * 0.4;
+            pData[i * 4 + 1] = Math.sin(ang) * 0.4;
+            pData[i * 4 + 2] = -Math.sin(ang) * 0.8;
+            pData[i * 4 + 3] = Math.cos(ang) * 0.8;
+        }
+
+        initBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, initBuf);
+        gl.bufferData(bufferTarget, pData, gl.STATIC_DRAW);
+
+        tfBufA = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, tfBufA);
+        gl.bufferData(bufferTarget, particleCount * 2 * 4, gl.DYNAMIC_DRAW);
+
+        tfBufB = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, tfBufB);
+        gl.bufferData(bufferTarget, particleCount * 2 * 4, gl.DYNAMIC_DRAW);
+
+        tfObj = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfTarget, 0, tfBufA);
+        gl.bindBufferBase(tfTarget, 1, tfBufB);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    } catch(e) {}
+
+    try {
+        compTex = gl.createTexture();
+        gl.bindTexture(texTarget, compTex);
+        const totalBlocks = 16;
+        const dxtData = new Uint8Array(totalBlocks * 8);
+        for (let b = 0; b < totalBlocks; b++) {
+            const off = b * 8;
+            dxtData[off + 0] = 0x1F;
+            dxtData[off + 1] = 0x00;
+            dxtData[off + 2] = 0xE0;
+            dxtData[off + 3] = 0x07;
+            dxtData[off + 4] = (b * 23) & 0xFF;
+            dxtData[off + 5] = ((b + 3) * 47) & 0xFF;
+            dxtData[off + 6] = ((b + 5) * 61) & 0xFF;
+            dxtData[off + 7] = 0xAA;
+        }
+        gl.compressedTexImage2D(texTarget, 0, compFormat, s3tcWidth, s3tcHeight, 0, dxtData);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(texTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    } catch(e) {}
+
+    try {
+        vaoBg = gl.createVertexArray();
+        gl.bindVertexArray(vaoBg);
+        const bgBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, bgBuf);
+        gl.bufferData(bufferTarget, new Float32Array([
+            -1.0, -1.0,  1.0, -1.0,  1.0,  1.0,
+            -1.0, -1.0,  1.0,  1.0, -1.0,  1.0
+        ]), gl.STATIC_DRAW);
+        const locPosRen = gl.getAttribLocation(renderProg, 'aPos');
+        gl.enableVertexAttribArray(locPosRen);
+        gl.vertexAttribPointer(locPosRen, 2, gl.FLOAT, false, 0, 0);
+
+        vaoParticle = gl.createVertexArray();
+        gl.bindVertexArray(vaoParticle);
+        gl.bindBuffer(bufferTarget, tfBufA);
+        gl.enableVertexAttribArray(locPosRen);
+        gl.vertexAttribPointer(locPosRen, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProg);
+        gl.bindBuffer(bufferTarget, initBuf);
+        const locTfPos = gl.getAttribLocation(tfProg, 'aPos');
+        const locTfVel = gl.getAttribLocation(tfProg, 'aVel');
+        gl.enableVertexAttribArray(locTfPos);
+        gl.vertexAttribPointer(locTfPos, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(locTfVel);
+        gl.vertexAttribPointer(locTfVel, 2, gl.FLOAT, false, 16, 8);
+
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.beginTransformFeedback(tfMode);
+        gl.pauseTransformFeedback();
+        gl.resumeTransformFeedback();
+        gl.drawArrays(tfMode, 0, particleCount);
+        gl.endTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.disable(gl.RASTERIZER_DISCARD);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(renderProg);
+        gl.uniform1i(gl.getUniformLocation(renderProg, 'uIsParticle'), 0);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(texTarget, compTex);
+        gl.uniform1i(gl.getUniformLocation(renderProg, 'uCompTex'), 0);
+
+        gl.bindVertexArray(vaoBg);
+        gl.drawArrays(drawMode, 0, quadVerts);
+
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        gl.blendEquation(gl.FUNC_ADD);
+
+        gl.uniform1i(gl.getUniformLocation(renderProg, 'uIsParticle'), 1);
+        gl.bindVertexArray(vaoParticle);
+        gl.drawArrays(gl.POINTS, 0, particleCount);
+
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ZERO);
+        gl.drawArrays(gl.POINTS, 0, particleCount);
+        gl.disable(gl.BLEND);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_compressed_texture_s3tc'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const instanceCount = 16;
+    const s3tcWidth = 16;
+    const s3tcHeight = 16;
+    const s3tcBlocks = 16;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const copyReadTarget = gl.COPY_READ_BUFFER;
+    const copyWriteTarget = gl.COPY_WRITE_BUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const drawMode = gl.TRIANGLES;
+    const compFormat = 0x83F0;
+
+    var vShader, fShader, program;
+    var vao;
+    var quadBuf, instBuf, copyBuf, idxBuf;
+    var compTex;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec3 aInstData;
+out vec2 vUv;
+out vec3 vColor;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    vec2 pos = aPos * aInstData.z + aInstData.xy;
+    vColor = vec3(0.5 + aInstData.x * 0.5, 0.5 + aInstData.y * 0.5, 0.8);
+    gl_Position = vec4(pos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+in vec3 vColor;
+uniform sampler2D uCompTex;
+layout(location = 0) out vec4 outColor;
+void main() {
+    vec4 tex = texture(uCompTex, vUv);
+    outColor = vec4(tex.rgb * vColor, 1.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        quadBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.bufferData(bufferTarget, new Float32Array([
+            -0.8, -0.8,  0.8, -0.8,  0.8,  0.8,
+            -0.8, -0.8,  0.8,  0.8, -0.8,  0.8
+        ]), gl.STATIC_DRAW);
+
+        instBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, instBuf);
+        const instData = new Float32Array(instanceCount * 3);
+        for (let i = 0; i < instanceCount; i++) {
+            const gx = (i % 4) - 1.5;
+            const gy = Math.floor(i / 4) - 1.5;
+            instData[i * 3 + 0] = gx * 0.45;
+            instData[i * 3 + 1] = gy * 0.45;
+            instData[i * 3 + 2] = 0.22;
+        }
+        gl.bufferData(bufferTarget, instData, gl.DYNAMIC_DRAW);
+
+        copyBuf = gl.createBuffer();
+        gl.bindBuffer(copyReadTarget, copyBuf);
+        gl.bufferData(copyReadTarget, 128, gl.STREAM_DRAW);
+        const updateInst = new Float32Array([0.0, 0.0, 0.35]);
+        gl.bufferSubData(copyReadTarget, 0, updateInst);
+
+        gl.bindBuffer(copyWriteTarget, instBuf);
+        gl.copyBufferSubData(copyReadTarget, copyWriteTarget, 0, 0, 12);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bufferData(elemTarget, new Uint16Array([0, 1, 2, 3, 4, 5]), gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locInst = gl.getAttribLocation(program, 'aInstData');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locInst);
+        gl.bindBuffer(bufferTarget, instBuf);
+        gl.vertexAttribPointer(locInst, 3, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locInst, 1);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        compTex = gl.createTexture();
+        gl.bindTexture(texTarget, compTex);
+        const dxtData = new Uint8Array(s3tcBlocks * 8);
+        for (let b = 0; b < s3tcBlocks; b++) {
+            const off = b * 8;
+            dxtData[off + 0] = 0xFF;
+            dxtData[off + 1] = 0xE0;
+            dxtData[off + 2] = 0x00;
+            dxtData[off + 3] = 0xF8;
+            dxtData[off + 4] = (b * 11) & 0xFF;
+            dxtData[off + 5] = ((b + 2) * 23) & 0xFF;
+            dxtData[off + 6] = ((b + 3) * 37) & 0xFF;
+            dxtData[off + 7] = 0xAA;
+        }
+        gl.compressedTexImage2D(texTarget, 0, compFormat, s3tcWidth, s3tcHeight, 0, dxtData);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(texTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.06, 0.08, 0.12, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(texTarget, compTex);
+        gl.uniform1i(gl.getUniformLocation(program, 'uCompTex'), 0);
+
+        gl.bindVertexArray(vao);
+        gl.drawElementsInstanced(drawMode, quadVerts, gl.UNSIGNED_SHORT, 0, instanceCount);
+        gl.drawArraysInstanced(drawMode, 0, quadVerts, instanceCount / 2);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+        gl.bindBuffer(copyReadTarget, null);
+        gl.bindBuffer(copyWriteTarget, null);
+        gl.bindTexture(texTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

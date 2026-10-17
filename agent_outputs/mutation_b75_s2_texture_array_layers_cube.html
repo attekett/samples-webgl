@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    const texSize = 256;
+    const vertCount = 6;
+    const arrLayers = 4;
+    const arrDim = 8;
+    const cubeDim = 4;
+    const pickLayer = 2;
+
+    const drawMode = gl.TRIANGLES;
+    const texFmt = gl.RGBA8;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+uniform highp sampler2DArray uArr;
+uniform highp samplerCube uCube;
+in vec2 vUv;
+layout(location = 0) out vec4 color0;
+layout(location = 1) out vec4 color1;
+void main() {
+    vec4 layer0 = texture(uArr, vec3(vUv, 0.0));
+    vec4 layer2 = texture(uArr, vec3(vUv, PICKLAYER + 0.25));
+    vec4 cube = texture(uCube, vec3(vUv * 2.0 - 1.0, 1.0));
+    float split = step(0.5, vUv.x);
+    color0 = mix(layer0, layer2, split);
+    color1 = mix(cube, layer0.brga, split * 0.7);
+}`.replace('PICKLAYER', pickLayer.toFixed(1)));
+        gl.compileShader(fShader);
+        var program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+        gl.uniform1i(gl.getUniformLocation(program, 'uArr'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uCube'), 1);
+    } catch(e) {}
+
+    try {
+        var posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), gl.STATIC_DRAW);
+        var vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+        var gone = gl.createBuffer();
+        gl.deleteBuffer(gone);
+        gl.deleteBuffer(gone);
+        gl.isBuffer(gone);
+    } catch(e) {}
+
+    try {
+        var arrTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, arrTex);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, texFmt, arrDim, arrDim, arrLayers);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        for (let layer = 0; layer < arrLayers; layer++) {
+            const layerData = new Uint8Array(arrDim * arrDim * 4);
+            for (let i = 0; i < layerData.length; i += 4) {
+                layerData[i] = 40 + layer * 50;
+                layerData[i + 1] = 200 - layer * 40;
+                layerData[i + 2] = 90 + layer * 30;
+                layerData[i + 3] = 255;
+            }
+            gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, arrDim, arrDim, 1, gl.RGBA, gl.UNSIGNED_BYTE, layerData);
+        }
+    } catch(e) {}
+
+    try {
+        var cubeTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeTex);
+        gl.texStorage2D(gl.TEXTURE_CUBE_MAP, 1, texFmt, cubeDim, cubeDim);
+        gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        const faceTints = [
+            [220, 60, 60], [60, 220, 60], [60, 60, 220],
+            [220, 220, 60], [220, 60, 220], [60, 220, 220]
+        ];
+        for (let face = 0; face < 6; face++) {
+            const faceData = new Uint8Array(cubeDim * cubeDim * 4);
+            for (let i = 0; i < faceData.length; i += 4) {
+                faceData[i] = faceTints[face][0];
+                faceData[i + 1] = faceTints[face][1];
+                faceData[i + 2] = faceTints[face][2];
+                faceData[i + 3] = 255;
+            }
+            gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, 0, 0, cubeDim, cubeDim, gl.RGBA, gl.UNSIGNED_BYTE, faceData);
+        }
+    } catch(e) {}
+
+    try {
+        var rtTex0 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, rtTex0);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        var rtTex1 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, rtTex1);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, arrTex);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeTex);
+        var fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtTex0, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, rtTex1, 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        var fboLayer = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboLayer);
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, arrTex, 0, pickLayer);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.clearColor(0.03, 0.03, 0.06, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.disable(gl.BLEND);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        const halfW = texSize / 2;
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, halfW, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.blitFramebuffer(0, 0, texSize, texSize, halfW, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        void arrLayers;
+    } catch(e) {}
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

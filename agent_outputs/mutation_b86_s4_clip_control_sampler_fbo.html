@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_clip_control'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extCC = gl.getExtension('EXT_clip_control');
+
+    const texSize = 256;
+    const srcTexSize = 32;
+    const quadVerts = 6;
+    const layerCount = 3;
+    const samplerWrapMode = gl.MIRRORED_REPEAT;
+    const clearAlpha = 1.0;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const fboTarget = gl.FRAMEBUFFER;
+    const rboTarget = gl.RENDERBUFFER;
+    const drawMode = gl.TRIANGLES;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, uvBuf, idxBuf;
+    var srcTex, colorTex, depthRbo, fbo;
+    var samplerObj;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec2 aUv;
+out vec2 vUv;
+void main() {
+    vUv = aUv;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uSamplerTex;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = texture(uSamplerTex, vUv);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const posData = new Float32Array(layerCount * quadVerts * 3);
+        const scales = [0.85, 0.6, 0.35];
+        const depths = [0.2, 0.5, 0.8];
+        for (let l = 0; l < layerCount; l++) {
+            const base = l * quadVerts * 3;
+            const s = scales[l];
+            const d = depths[l];
+            posData.set([
+                -s, -s, d,   s, -s, d,   s,  s, d,
+                -s, -s, d,   s,  s, d,  -s,  s, d
+            ], base);
+        }
+        gl.bufferData(bufferTarget, posData, gl.STATIC_DRAW);
+
+        uvBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, uvBuf);
+        const uvData = new Float32Array(layerCount * quadVerts * 2);
+        const uvScales = [2.0, 1.5, 3.0];
+        for (let l = 0; l < layerCount; l++) {
+            const base = l * quadVerts * 2;
+            const us = uvScales[l];
+            uvData.set([
+                0.0, 0.0,  us, 0.0,  us, us,
+                0.0, 0.0,  us, us,  0.0, us
+            ], base);
+        }
+        gl.bufferData(bufferTarget, uvData, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const idxData = new Uint16Array(layerCount * quadVerts);
+        for (let i = 0; i < layerCount * quadVerts; i++) idxData[i] = i;
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locUv = gl.getAttribLocation(program, 'aUv');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locUv);
+        gl.bindBuffer(bufferTarget, uvBuf);
+        gl.vertexAttribPointer(locUv, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        srcTex = gl.createTexture();
+        gl.bindTexture(texTarget, srcTex);
+        const imgData = new Uint8Array(srcTexSize * srcTexSize * 4);
+        for (let y = 0; y < srcTexSize; y++) {
+            for (let x = 0; x < srcTexSize; x++) {
+                const idx = (y * srcTexSize + x) * 4;
+                imgData[idx + 0] = Math.floor((x / srcTexSize) * 255);
+                imgData[idx + 1] = Math.floor((y / srcTexSize) * 255);
+                imgData[idx + 2] = Math.floor(((x + y) / (2 * srcTexSize)) * 255);
+                imgData[idx + 3] = 255;
+            }
+        }
+        gl.texImage2D(texTarget, 0, gl.RGBA8, srcTexSize, srcTexSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, imgData);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        samplerObj = gl.createSampler();
+        gl.samplerParameteri(samplerObj, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.samplerParameteri(samplerObj, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.samplerParameteri(samplerObj, gl.TEXTURE_WRAP_S, samplerWrapMode);
+        gl.samplerParameteri(samplerObj, gl.TEXTURE_WRAP_T, samplerWrapMode);
+        gl.samplerParameteri(samplerObj, gl.TEXTURE_MIN_LOD, -1000);
+        gl.samplerParameteri(samplerObj, gl.TEXTURE_MAX_LOD, 1000);
+        gl.isSampler(samplerObj);
+        gl.getSamplerParameter(samplerObj, gl.TEXTURE_WRAP_S);
+
+        colorTex = gl.createTexture();
+        gl.bindTexture(texTarget, colorTex);
+        gl.texStorage2D(texTarget, 1, gl.RGBA8, texSize, texSize);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        depthRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rboTarget, depthRbo);
+        gl.renderbufferStorage(rboTarget, gl.DEPTH24_STENCIL8, texSize, texSize);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, texTarget, colorTex, 0);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, rboTarget, depthRbo);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        extCC.clipControlEXT(extCC.LOWER_LEFT_EXT, extCC.ZERO_TO_ONE_EXT);
+
+        gl.viewport(0, 0, texSize, texSize);
+        gl.bindFramebuffer(fboTarget, fbo);
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.depthMask(true);
+
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilMask(0xFF);
+        gl.stencilFunc(gl.ALWAYS, 1, 0xFF);
+        gl.stencilOp(gl.KEEP, gl.REPLACE, gl.REPLACE);
+
+        gl.clearColor(0.05, 0.05, 0.08, clearAlpha);
+        gl.clearDepth(1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(texTarget, srcTex);
+        gl.bindSampler(0, samplerObj);
+        gl.uniform1i(gl.getUniformLocation(program, 'uSamplerTex'), 0);
+
+        gl.bindVertexArray(vao);
+        gl.drawElements(drawMode, quadVerts, gl.UNSIGNED_SHORT, 0);
+
+        gl.stencilFunc(gl.EQUAL, 1, 0xFF);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+        gl.drawElements(drawMode, quadVerts * (layerCount - 1), gl.UNSIGNED_SHORT, quadVerts * 2);
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.STENCIL_TEST);
+        gl.disable(gl.DEPTH_TEST);
+
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindSampler(0, null);
+        if (samplerObj) gl.deleteSampler(samplerObj);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+        gl.bindRenderbuffer(rboTarget, null);
+        gl.bindTexture(texTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

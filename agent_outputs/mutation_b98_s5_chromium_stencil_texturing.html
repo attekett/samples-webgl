@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_stencil_texturing'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extST = gl.getExtension('WEBGL_stencil_texturing');
+
+    const texSize = 256;
+    const vertCount = 6;
+
+    const drawMode = gl.TRIANGLES;
+    const texFmt = gl.RGBA8;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var fShaderFill = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShaderFill, `#version 300 es
+precision highp float;
+in vec2 vUv;
+layout(location = 0) out vec4 color0;
+void main() {
+    color0 = vec4(0.2, 0.4, 0.8, 1.0);
+}`);
+        gl.compileShader(fShaderFill);
+        var fShaderRead = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShaderRead, `#version 300 es
+precision highp float;
+uniform highp usampler2D uStencil;
+in vec2 vUv;
+layout(location = 0) out vec4 color0;
+layout(location = 1) out vec4 color1;
+void main() {
+    uint s = texture(uStencil, vUv).r;
+    float sv = float(s & 0xffu) / 255.0;
+    float rings = sin(length(vUv - vec2(0.5)) * 30.0);
+    color0 = vec4(sv, 0.15, 0.3 + 0.4 * sv, 1.0);
+    color1 = vec4(sv * abs(rings), 0.6 * sv, 0.1, 1.0);
+}`);
+        gl.compileShader(fShaderRead);
+        var progFill = gl.createProgram();
+        gl.attachShader(progFill, vShader);
+        gl.attachShader(progFill, fShaderFill);
+        gl.linkProgram(progFill);
+        var progRead = gl.createProgram();
+        gl.attachShader(progRead, vShader);
+        gl.attachShader(progRead, fShaderRead);
+        gl.linkProgram(progRead);
+        gl.useProgram(progFill);
+    } catch(e) {}
+
+    try {
+        var posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), gl.STATIC_DRAW);
+        var ghost = gl.createBuffer();
+        gl.deleteBuffer(ghost);
+        gl.deleteBuffer(ghost);
+        gl.isBuffer(ghost);
+    } catch(e) {}
+
+    try {
+        var vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locFill = gl.getAttribLocation(progFill, 'aPos');
+        gl.enableVertexAttribArray(locFill);
+        gl.vertexAttribPointer(locFill, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        var vaoRead = gl.createVertexArray();
+        gl.bindVertexArray(vaoRead);
+        const locRead = gl.getAttribLocation(progRead, 'aPos');
+        gl.enableVertexAttribArray(locRead);
+        gl.vertexAttribPointer(locRead, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        var dsTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, dsTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH24_STENCIL8, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        var fboFill = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboFill);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, dsTex, 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+        var colorTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, colorTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTex, 0);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboFill);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilFunc(gl.ALWAYS, 0xA7, 0xff);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+        gl.stencilMask(0xff);
+        gl.clearStencil(0x11);
+        gl.clear(gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.stencilFunc(gl.EQUAL, 0xA7, 0xff);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.disable(gl.STENCIL_TEST);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, null, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, dsTex);
+        gl.texParameteri(gl.TEXTURE_2D, extST.DEPTH_STENCIL_TEXTURE_MODE_WEBGL, extST.STENCIL_INDEX_WEBGL);
+        gl.texParameteri(gl.TEXTURE_2D, extST.DEPTH_STENCIL_TEXTURE_MODE_WEBGL, gl.DEPTH_COMPONENT);
+        gl.texParameteri(gl.TEXTURE_2D, extST.DEPTH_STENCIL_TEXTURE_MODE_WEBGL, extST.STENCIL_INDEX_WEBGL);
+        gl.useProgram(progRead);
+        gl.uniform1i(gl.getUniformLocation(progRead, 'uStencil'), 0);
+        gl.bindVertexArray(vaoRead);
+        var rtTex1 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, rtTex1);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindTexture(gl.TEXTURE_2D, dsTex);
+        var fboOut = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboOut);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTex, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, rtTex1, 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertCount);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fboOut);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        const halfW = texSize / 2;
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, halfW, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.blitFramebuffer(0, 0, texSize, texSize, halfW, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_clip_control',
+    'EXT_texture_filter_anisotropic'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extCC = gl.getExtension('EXT_clip_control');
+    const extAniso = gl.getExtension('EXT_texture_filter_anisotropic');
+
+    const texSize = 256;
+    const srcTexSize = 64;
+    const quadVerts = 6;
+    const anisoTarget = 16;
+    const mipLevels = 6;
+    const patternTiles = 4;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const fboTarget = gl.FRAMEBUFFER;
+    const rboTarget = gl.RENDERBUFFER;
+    const drawMode = gl.TRIANGLES;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, uvBuf, idxBuf;
+    var anisoTex, colorTex, depthRbo, fbo;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec2 aUv;
+out vec2 vUv;
+out vec3 vPos;
+void main() {
+    vUv = aUv;
+    vPos = aPos;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+in vec3 vPos;
+uniform sampler2D uTex;
+uniform vec4 uTint;
+layout(location = 0) out vec4 outColor;
+void main() {
+    vec2 steepUv = vec2(vUv.x * 12.0, vUv.y * 1.5);
+    vec4 t = texture(uTex, steepUv);
+    outColor = vec4(t.rgb * uTint.rgb + vec3(vPos.z * 0.15), 1.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.bufferData(bufferTarget, new Float32Array([
+            -0.85, -0.85, 0.25,   0.85, -0.85, 0.25,   0.85,  0.85, 0.25,
+            -0.85, -0.85, 0.25,   0.85,  0.85, 0.25,  -0.85,  0.85, 0.25,
+            -0.6,  -0.6,  0.65,   0.6,  -0.6,  0.65,   0.6,   0.6,  0.65,
+            -0.6,  -0.6,  0.65,   0.6,   0.6,  0.65,  -0.6,   0.6,  0.65
+        ]), gl.STATIC_DRAW);
+
+        uvBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, uvBuf);
+        gl.bufferData(bufferTarget, new Float32Array([
+            0.0, 0.0,  1.0, 0.0,  1.0, 1.0,
+            0.0, 0.0,  1.0, 1.0,  0.0, 1.0,
+            0.0, 0.0,  2.0, 0.0,  2.0, 2.0,
+            0.0, 0.0,  2.0, 2.0,  0.0, 2.0
+        ]), gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bufferData(elemTarget, new Uint16Array([
+            0, 1, 2, 3, 4, 5,
+            6, 7, 8, 9, 10, 11
+        ]), gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locUv = gl.getAttribLocation(program, 'aUv');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locUv);
+        gl.bindBuffer(bufferTarget, uvBuf);
+        gl.vertexAttribPointer(locUv, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        anisoTex = gl.createTexture();
+        gl.bindTexture(texTarget, anisoTex);
+        const imgData = new Uint8Array(srcTexSize * srcTexSize * 4);
+        for (let y = 0; y < srcTexSize; y++) {
+            for (let x = 0; x < srcTexSize; x++) {
+                const idx = (y * srcTexSize + x) * 4;
+                const check = ((x >> 2) + (y >> 2)) % 2 === 0;
+                imgData[idx + 0] = check ? 240 : 30;
+                imgData[idx + 1] = check ? 180 : 80;
+                imgData[idx + 2] = ((x + y) * 4) & 0xFF;
+                imgData[idx + 3] = 255;
+            }
+        }
+        gl.texImage2D(texTarget, 0, gl.RGBA8, srcTexSize, srcTexSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, imgData);
+        gl.generateMipmap(texTarget);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(texTarget, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(texTarget, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+        const maxAniso = gl.getParameter(extAniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+        const useAniso = Math.min(anisoTarget, maxAniso);
+        gl.texParameterf(texTarget, extAniso.TEXTURE_MAX_ANISOTROPY_EXT, useAniso);
+
+        colorTex = gl.createTexture();
+        gl.bindTexture(texTarget, colorTex);
+        gl.texStorage2D(texTarget, 1, gl.RGBA8, texSize, texSize);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        depthRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rboTarget, depthRbo);
+        gl.renderbufferStorage(rboTarget, gl.DEPTH24_STENCIL8, texSize, texSize);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, texTarget, colorTex, 0);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, rboTarget, depthRbo);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        extCC.clipControlEXT(extCC.LOWER_LEFT_EXT, extCC.ZERO_TO_ONE_EXT);
+
+        gl.viewport(0, 0, texSize, texSize);
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.depthMask(true);
+
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilMask(0xFF);
+        gl.stencilFunc(gl.ALWAYS, 1, 0xFF);
+        gl.stencilOp(gl.KEEP, gl.REPLACE, gl.REPLACE);
+
+        gl.clearColor(0.08, 0.05, 0.1, 1.0);
+        gl.clearDepth(1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(texTarget, anisoTex);
+        gl.uniform1i(gl.getUniformLocation(program, 'uTex'), 0);
+
+        const locTint = gl.getUniformLocation(program, 'uTint');
+        gl.uniform4f(locTint, 0.9, 0.7, 0.3, 1.0);
+
+        gl.bindVertexArray(vao);
+        gl.drawElements(drawMode, quadVerts, gl.UNSIGNED_SHORT, 0);
+
+        extCC.clipControlEXT(extCC.UPPER_LEFT_EXT, extCC.NEGATIVE_ONE_TO_ONE_EXT);
+        gl.stencilFunc(gl.EQUAL, 1, 0xFF);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+        gl.uniform4f(locTint, 0.2, 0.8, 0.9, 1.0);
+        gl.drawElements(drawMode, quadVerts, gl.UNSIGNED_SHORT, quadVerts * 2);
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.STENCIL_TEST);
+        gl.disable(gl.DEPTH_TEST);
+
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+        gl.bindRenderbuffer(rboTarget, null);
+        gl.bindTexture(texTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

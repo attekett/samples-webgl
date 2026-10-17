@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const meshGrid = 4;
+    const totalVerts = meshGrid * meshGrid * quadVerts;
+    const instanceCount = 3;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const drawTriangles = gl.TRIANGLES;
+    const drawPoints = gl.POINTS;
+    const idxType = gl.UNSIGNED_SHORT;
+
+    var vShader, fShader, program;
+    var vao, vaoInstanced;
+    var vertexBuf, instBuf, idxBuf;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+in vec3 aPos;
+in vec4 aColor;
+in vec2 aOffset;
+uniform float uClipPlane;
+out vec4 vColor;
+void main() {
+    vec3 p = aPos + vec3(aOffset, 0.0);
+    gl_ClipDistance[0] = p.y - uClipPlane;
+    vColor = aColor;
+    gl_Position = vec4(p, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec4 vColor;
+out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        vertexBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vertexBuf);
+        const vData = new Float32Array(totalVerts * 7);
+        let ptr = 0;
+        for (let gx = 0; gx < meshGrid; gx++) {
+            for (let gy = 0; gy < meshGrid; gy++) {
+                const x0 = -0.8 + (gx / meshGrid) * 1.6;
+                const y0 = -0.8 + (gy / meshGrid) * 1.6;
+                const sz = 0.35 / meshGrid;
+                const r = 0.2 + (gx / meshGrid) * 0.7;
+                const g = 0.2 + (gy / meshGrid) * 0.7;
+                const b = 0.6;
+                const verts = [
+                    x0 - sz, y0 - sz, 0.0,  r, g, b, 1.0,
+                    x0 + sz, y0 - sz, 0.0,  r, g, b, 1.0,
+                    x0 + sz, y0 + sz, 0.0,  r, g, b, 1.0,
+                    x0 - sz, y0 - sz, 0.0,  r, g, b, 1.0,
+                    x0 + sz, y0 + sz, 0.0,  r, g, b, 1.0,
+                    x0 - sz, y0 + sz, 0.0,  r, g, b, 1.0
+                ];
+                for (let k = 0; k < verts.length; k++) {
+                    vData[ptr++] = verts[k];
+                }
+            }
+        }
+        gl.bufferData(bufferTarget, vData, gl.DYNAMIC_DRAW);
+
+        instBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, instBuf);
+        const instData = new Float32Array([
+            -0.1, -0.1,
+             0.0,  0.0,
+             0.1,  0.1
+        ]);
+        gl.bufferData(bufferTarget, instData, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const idxData = new Uint16Array(totalVerts);
+        for (let i = 0; i < totalVerts; i++) {
+            idxData[i] = i;
+        }
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+
+        const subData = new Float32Array([0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0]);
+        gl.bindBuffer(bufferTarget, vertexBuf);
+        gl.bufferSubData(bufferTarget, 0, subData);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locCol = gl.getAttribLocation(program, 'aColor');
+        const locOff = gl.getAttribLocation(program, 'aOffset');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, vertexBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 28, 0);
+
+        gl.enableVertexAttribArray(locCol);
+        gl.vertexAttribPointer(locCol, 4, gl.FLOAT, false, 28, 12);
+
+        gl.disableVertexAttribArray(locOff);
+        gl.vertexAttrib2f(locOff, 0.0, 0.0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+
+        vaoInstanced = gl.createVertexArray();
+        gl.bindVertexArray(vaoInstanced);
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, vertexBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 28, 0);
+
+        gl.enableVertexAttribArray(locCol);
+        gl.vertexAttribPointer(locCol, 4, gl.FLOAT, false, 28, 12);
+
+        gl.enableVertexAttribArray(locOff);
+        gl.bindBuffer(bufferTarget, instBuf);
+        gl.vertexAttribPointer(locOff, 2, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locOff, 1);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.04, 0.06, 0.12, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        const locClip = gl.getUniformLocation(program, 'uClipPlane');
+        gl.uniform1f(locClip, -0.4);
+
+        gl.bindVertexArray(vao);
+        gl.drawArrays(drawTriangles, 0, totalVerts / 2);
+        gl.drawElements(drawTriangles, totalVerts / 2, idxType, 0);
+        gl.drawRangeElements(drawTriangles, 0, totalVerts - 1, totalVerts / 2, idxType, (totalVerts / 2) * 2);
+
+        gl.uniform1f(locClip, -0.1);
+        gl.bindVertexArray(vaoInstanced);
+        gl.drawArraysInstanced(drawTriangles, 0, totalVerts / 2, instanceCount);
+        gl.drawElementsInstanced(drawTriangles, totalVerts / 2, idxType, 0, instanceCount);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+
+        void drawPoints;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

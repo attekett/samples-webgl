@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'NV_shader_noperspective_interpolation'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const streamReps = 3;
+    const copyBytes = 96;
+    const subOffsetBytes = 24;
+    const gridCols = 3;
+    const totalVerts = quadVerts * gridCols;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const copyReadTarget = gl.COPY_READ_BUFFER;
+    const copyWriteTarget = gl.COPY_WRITE_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const usageStream = gl.STREAM_DRAW;
+    const usageDynamic = gl.DYNAMIC_DRAW;
+
+    var vShader, fShader, program;
+    var posBuf, nopUvBuf, streamBuf, copyDstBuf, vao;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+#extension GL_NV_shader_noperspective_interpolation : require
+precision highp float;
+in vec3 aPos;
+in vec2 aNopUv;
+noperspective out vec2 vNopUv;
+out vec2 vPerspUv;
+out vec3 vPos;
+void main() {
+    vNopUv = aNopUv;
+    vPerspUv = aNopUv;
+    vPos = aPos;
+    gl_Position = vec4(aPos.xy, aPos.z, 1.0 + aPos.z * 1.5);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+#extension GL_NV_shader_noperspective_interpolation : require
+precision highp float;
+noperspective in vec2 vNopUv;
+in vec2 vPerspUv;
+in vec3 vPos;
+out vec4 fragColor;
+void main() {
+    vec2 p = vNopUv * 2.0 - 1.0;
+    vec2 pp = vPerspUv * 2.0 - 1.0;
+    vec3 nrm = normalize(vec3(p, 0.8));
+    vec3 inc = normalize(vec3(0.3, -0.7, -0.65));
+    mat3 rot = mat3(cos(p.x), -sin(p.x), 0.0, sin(p.x), cos(p.x), 0.0, 0.0, 0.0, 1.0);
+    float detR = determinant(rot);
+    mat3 invR = inverse(rot);
+    mat4 compR = matrixCompMult(mat4(detR), mat4(invR));
+    vec3 refl = reflect(inc, nrm);
+    vec3 refr = refract(inc, nrm, 0.8);
+    vec3 ffwd = faceforward(nrm, inc, nrm);
+    vec2 dF = vec2(dFdx(p.x), dFdy(p.y));
+    float fw = fwidth(p.y);
+    vec3 sm = smoothstep(vec3(-0.9), vec3(0.9), refl * 1.3) + smoothstep(-0.5, 0.5, refr.y);
+    float fr = fract(p.x * 6.0) * fract(p.y * 6.0);
+    uint pk = packSnorm2x16(vec2(sm.x, fw));
+    vec2 upk = unpackSnorm2x16(pk);
+    float diff = length(vNopUv - vPerspUv) * 2.5;
+    vec3 lit = sm * 0.35 + vec3(upk * 0.25, fr * 0.3) + compR[0].xyz * 0.02 + ffwd * 0.05 + vec3(diff, 1.0 - diff, fract(diff * 3.0)) * 0.4;
+    fragColor = vec4(clamp(lit, 0.0, 1.0), 1.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const vData = new Float32Array(totalVerts * 3);
+        let pIdx = 0;
+        for (let c = 0; c < gridCols; c++) {
+            const xLeft = -0.9 + c * 0.62;
+            const xRight = xLeft + 0.56;
+            const zTilt = (c - 1) * 0.35;
+            const verts = [
+                xLeft, -0.85, zTilt,
+                xRight, -0.85, -zTilt,
+                xRight,  0.85, -zTilt,
+                xLeft, -0.85, zTilt,
+                xRight,  0.85, -zTilt,
+                xLeft,  0.85, zTilt
+            ];
+            for (let k = 0; k < verts.length; k++) {
+                vData[pIdx++] = verts[k];
+            }
+        }
+        gl.bufferData(bufferTarget, vData, usageDynamic);
+        gl.bufferSubData(bufferTarget, subOffsetBytes, new Float32Array([0.05, -0.05, 0.1]));
+
+        nopUvBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, nopUvBuf);
+        const uvData = new Float32Array(totalVerts * 2);
+        let uIdx = 0;
+        for (let c = 0; c < gridCols; c++) {
+            const uvs = [
+                0.0, 0.0,
+                1.0, 0.0,
+                1.0, 1.0,
+                0.0, 0.0,
+                1.0, 1.0,
+                0.0, 1.0
+            ];
+            for (let k = 0; k < uvs.length; k++) {
+                uvData[uIdx++] = uvs[k];
+            }
+        }
+        gl.bufferData(bufferTarget, uvData, usageDynamic);
+
+        streamBuf = gl.createBuffer();
+        gl.bindBuffer(copyReadTarget, streamBuf);
+        gl.bufferData(copyReadTarget, new Float32Array(copyBytes / 4).fill(0.42), usageStream);
+
+        copyDstBuf = gl.createBuffer();
+        gl.bindBuffer(copyWriteTarget, copyDstBuf);
+        gl.bufferData(copyWriteTarget, copyBytes, gl.STREAM_READ);
+        gl.copyBufferSubData(copyReadTarget, copyWriteTarget, 0, 0, copyBytes);
+
+        var copyFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        gl.clientWaitSync(copyFence, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
+        gl.deleteSync(copyFence);
+
+        const readBack = new Float32Array(copyBytes / 4);
+        gl.getBufferSubData(copyWriteTarget, 0, readBack);
+
+        var staleBuf = gl.createBuffer();
+        gl.deleteBuffer(staleBuf);
+        gl.deleteBuffer(staleBuf);
+        gl.isBuffer(staleBuf);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locNopUv = gl.getAttribLocation(program, 'aNopUv');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locNopUv);
+        gl.bindBuffer(bufferTarget, nopUvBuf);
+        gl.vertexAttribPointer(locNopUv, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.07, 0.05, 0.11, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        for (let s = 0; s < streamReps; s++) {
+            gl.bindBuffer(bufferTarget, streamBuf);
+            gl.bufferSubData(bufferTarget, 0, new Float32Array([0.1 * s, 0.2 * s]));
+            gl.drawArrays(drawMode, 0, totalVerts);
+        }
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(copyReadTarget, null);
+        gl.bindBuffer(copyWriteTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<canvas id="second-canvas" width="128" height="128"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_lose_context'
+];
+
+async function main() {
+    const canvasA = document.getElementById('webgl-canvas');
+    const canvasB = document.getElementById('second-canvas');
+    const glA = canvasA.getContext('webgl2', { antialias: false });
+    if (!glA) throw new Error("WebGL2 not supported");
+    const glB = canvasB.getContext('webgl2', { antialias: false });
+    if (!glB) throw new Error("WebGL2 not supported on second canvas");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !glB.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extLC = glB.getExtension('WEBGL_lose_context');
+
+    const sizeA = 256;
+    const sizeB = 128;
+    const vertCount = 6;
+
+    const drawMode = WebGL2RenderingContext.TRIANGLES;
+
+    function makeSetup(gl, size, tintR, tintG, tintB) {
+        const vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        const fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform float uTime;
+layout(location = 0) out vec4 color0;
+void main() {
+    float rings = sin(length(vUv - vec2(0.5)) * 24.0 + uTime * 3.0);
+    color0 = vec4(TINTR * (0.6 + 0.4 * rings), TINTG * vUv.y + 0.2, TINTB, 1.0);
+}`.replace('TINTR', tintR).replace('TINTG', tintG).replace('TINTB', tintB));
+        gl.compileShader(fShader);
+        const program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), gl.STATIC_DRAW);
+        const loc = gl.getAttribLocation(program, 'aPos');
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        return {
+            gl, size, program, vao, posBuf, vShader, fShader,
+            timeLoc: gl.getUniformLocation(program, 'uTime')
+        };
+    }
+
+    function drawSetup(s, t) {
+        s.gl.viewport(0, 0, s.size, s.size);
+        s.gl.useProgram(s.program);
+        s.gl.bindVertexArray(s.vao);
+        s.gl.uniform1f(s.timeLoc, t);
+        s.gl.clearColor(0.04, 0.04, 0.06, 1.0);
+        s.gl.clear(s.gl.COLOR_BUFFER_BIT);
+        s.gl.drawArrays(drawMode, 0, vertCount);
+    }
+
+    const setupA = makeSetup(glA, sizeA, '0.85', '0.35', '0.2');
+    const setupB = makeSetup(glB, sizeB, '0.2', '0.6', '0.9');
+
+    drawSetup(setupA, 0.0);
+    drawSetup(setupB, 0.5);
+    drawSetup(setupA, 1.0);
+
+    const fenceA = glA.fenceSync(glA.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glA.flush();
+    glA.finish();
+    glA.isSync(fenceA);
+    glA.deleteSync(fenceA);
+
+    extLC.loseContext();
+    drawSetup(setupB, 1.5);
+    glB.isBuffer(setupB.posBuf);
+    const lostErr = glB.getError();
+    void lostErr;
+
+    canvasB.addEventListener('webglcontextlost', function(e) {
+        e.preventDefault();
+        setTimeout(function() { extLC.restoreContext(); }, 0);
+    });
+
+    canvasB.addEventListener('webglcontextrestored', function() {
+        setupB.program = glB.createProgram();
+        const vS = glB.createShader(glB.VERTEX_SHADER);
+        glB.shaderSource(vS, `#version 300 es
+precision highp float;
+in vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`);
+        glB.compileShader(vS);
+        const fS = glB.createShader(glB.FRAGMENT_SHADER);
+        glB.shaderSource(fS, `#version 300 es
+precision highp float;
+layout(location = 0) out vec4 color0;
+void main() { color0 = vec4(0.15, 0.8, 0.4, 1.0); }`);
+        glB.compileShader(fS);
+        glB.attachShader(setupB.program, vS);
+        glB.attachShader(setupB.program, fS);
+        glB.linkProgram(setupB.program);
+        const vao = glB.createVertexArray();
+        glB.bindVertexArray(vao);
+        const buf = glB.createBuffer();
+        glB.bindBuffer(glB.ARRAY_BUFFER, buf);
+        glB.bufferData(glB.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), glB.STATIC_DRAW);
+        const loc = glB.getAttribLocation(setupB.program, 'aPos');
+        glB.enableVertexAttribArray(loc);
+        glB.vertexAttribPointer(loc, 2, glB.FLOAT, false, 0, 0);
+        glB.viewport(0, 0, sizeB, sizeB);
+        glB.useProgram(setupB.program);
+        glB.drawArrays(drawMode, 0, vertCount);
+        glB.bindVertexArray(null);
+    });
+
+    drawSetup(setupA, 2.0);
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

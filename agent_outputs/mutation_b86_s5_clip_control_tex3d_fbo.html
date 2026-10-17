@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_clip_control'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extCC = gl.getExtension('EXT_clip_control');
+
+    const texSize = 256;
+    const tex3dSize = 16;
+    const quadVerts = 6;
+    const layerCount = 3;
+    const depthLayers = 4;
+    const clearAlpha = 1.0;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const tex3dTarget = gl.TEXTURE_3D;
+    const fboTarget = gl.FRAMEBUFFER;
+    const rboTarget = gl.RENDERBUFFER;
+    const drawMode = gl.TRIANGLES;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, uvwBuf, idxBuf;
+    var tex3D, colorTex, depthRbo, fbo;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec3 aUvw;
+out vec3 vUvw;
+void main() {
+    vUvw = aUvw;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+precision highp sampler3D;
+in vec3 vUvw;
+uniform sampler3D uTex3D;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = texture(uTex3D, vUvw);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const posData = new Float32Array(layerCount * quadVerts * 3);
+        const scales = [0.85, 0.6, 0.35];
+        const depths = [0.2, 0.5, 0.8];
+        for (let l = 0; l < layerCount; l++) {
+            const base = l * quadVerts * 3;
+            const s = scales[l];
+            const d = depths[l];
+            posData.set([
+                -s, -s, d,   s, -s, d,   s,  s, d,
+                -s, -s, d,   s,  s, d,  -s,  s, d
+            ], base);
+        }
+        gl.bufferData(bufferTarget, posData, gl.STATIC_DRAW);
+
+        uvwBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, uvwBuf);
+        const uvwData = new Float32Array(layerCount * quadVerts * 3);
+        const layerW = [0.2, 0.5, 0.85];
+        for (let l = 0; l < layerCount; l++) {
+            const base = l * quadVerts * 3;
+            const w = layerW[l];
+            uvwData.set([
+                0.0, 0.0, w,   1.0, 0.0, w,   1.0, 1.0, w,
+                0.0, 0.0, w,   1.0, 1.0, w,   0.0, 1.0, w
+            ], base);
+        }
+        gl.bufferData(bufferTarget, uvwData, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const idxData = new Uint16Array(layerCount * quadVerts);
+        for (let i = 0; i < layerCount * quadVerts; i++) idxData[i] = i;
+        gl.bufferData(elemTarget, idxData, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locUvw = gl.getAttribLocation(program, 'aUvw');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locUvw);
+        gl.bindBuffer(bufferTarget, uvwBuf);
+        gl.vertexAttribPointer(locUvw, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        tex3D = gl.createTexture();
+        gl.bindTexture(tex3dTarget, tex3D);
+        gl.texStorage3D(tex3dTarget, 1, gl.RGBA8, tex3dSize, tex3dSize, tex3dSize);
+        const data3d = new Uint8Array(tex3dSize * tex3dSize * tex3dSize * 4);
+        for (let z = 0; z < tex3dSize; z++) {
+            for (let y = 0; y < tex3dSize; y++) {
+                for (let x = 0; x < tex3dSize; x++) {
+                    const idx = (z * tex3dSize * tex3dSize + y * tex3dSize + x) * 4;
+                    data3d[idx + 0] = Math.floor((x / tex3dSize) * 255);
+                    data3d[idx + 1] = Math.floor((y / tex3dSize) * 255);
+                    data3d[idx + 2] = Math.floor((z / tex3dSize) * 255);
+                    data3d[idx + 3] = 255;
+                }
+            }
+        }
+        gl.texSubImage3D(tex3dTarget, 0, 0, 0, 0, tex3dSize, tex3dSize, tex3dSize, gl.RGBA, gl.UNSIGNED_BYTE, data3d);
+        gl.texParameteri(tex3dTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(tex3dTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(tex3dTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(tex3dTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(tex3dTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        colorTex = gl.createTexture();
+        gl.bindTexture(texTarget, colorTex);
+        gl.texStorage2D(texTarget, 1, gl.RGBA8, texSize, texSize);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        depthRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rboTarget, depthRbo);
+        gl.renderbufferStorage(rboTarget, gl.DEPTH24_STENCIL8, texSize, texSize);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, texTarget, colorTex, 0);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, rboTarget, depthRbo);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        extCC.clipControlEXT(extCC.LOWER_LEFT_EXT, extCC.ZERO_TO_ONE_EXT);
+
+        gl.viewport(0, 0, texSize, texSize);
+        gl.bindFramebuffer(fboTarget, fbo);
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.depthMask(true);
+
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilMask(0xFF);
+        gl.stencilFunc(gl.ALWAYS, 1, 0xFF);
+        gl.stencilOp(gl.KEEP, gl.REPLACE, gl.REPLACE);
+
+        gl.clearColor(0.04, 0.05, 0.09, clearAlpha);
+        gl.clearDepth(1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(tex3dTarget, tex3D);
+        gl.uniform1i(gl.getUniformLocation(program, 'uTex3D'), 0);
+
+        gl.bindVertexArray(vao);
+        gl.drawElements(drawMode, quadVerts, gl.UNSIGNED_SHORT, 0);
+
+        gl.stencilFunc(gl.EQUAL, 1, 0xFF);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+        gl.drawElements(drawMode, quadVerts * (layerCount - 1), gl.UNSIGNED_SHORT, quadVerts * 2);
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.STENCIL_TEST);
+        gl.disable(gl.DEPTH_TEST);
+
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+        gl.bindRenderbuffer(rboTarget, null);
+        gl.bindTexture(texTarget, null);
+        gl.bindTexture(tex3dTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

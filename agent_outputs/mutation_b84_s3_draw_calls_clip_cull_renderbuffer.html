@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const gridSubdivs = 4;
+    const numBatches = 2;
+    const clipBias = 0.2;
+    const depthVal = 0.5;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const elemTarget = gl.ELEMENT_ARRAY_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const rbTarget = gl.RENDERBUFFER;
+    const fboTarget = gl.FRAMEBUFFER;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, colBuf, idxBuf;
+    var colorRb, depthStencilRb, fbo;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+in vec3 aPos;
+in vec4 aColor;
+out vec4 vColor;
+void main() {
+    gl_ClipDistance[0] = aPos.x * aPos.y + 0.2;
+    vColor = aColor;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec4 vColor;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = vColor;
+}`);
+        gl.compileShader(fShader);
+
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const positions = new Float32Array([
+            -0.85, -0.85,  0.2,   0.85, -0.85,  0.2,   0.85,  0.85,  0.2,
+            -0.85, -0.85,  0.2,   0.85,  0.85,  0.2,  -0.85,  0.85,  0.2,
+            -0.6,  -0.6,   0.6,   0.6,  -0.6,   0.6,   0.6,   0.6,   0.6,
+            -0.6,  -0.6,   0.6,   0.6,   0.6,   0.6,  -0.6,   0.6,   0.6
+        ]);
+        gl.bufferData(bufferTarget, positions, gl.STATIC_DRAW);
+
+        colBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, colBuf);
+        const colors = new Float32Array([
+            0.1, 0.8, 0.9, 1.0,
+            0.3, 0.9, 0.4, 1.0,
+            0.9, 0.6, 0.2, 1.0,
+            0.1, 0.8, 0.9, 1.0,
+            0.9, 0.6, 0.2, 1.0,
+            0.9, 0.2, 0.6, 1.0,
+            0.9, 0.9, 0.1, 1.0,
+            0.2, 0.9, 0.7, 1.0,
+            0.6, 0.3, 0.9, 1.0,
+            0.9, 0.9, 0.1, 1.0,
+            0.6, 0.3, 0.9, 1.0,
+            0.9, 0.3, 0.3, 1.0
+        ]);
+        gl.bufferData(bufferTarget, colors, gl.STATIC_DRAW);
+
+        idxBuf = gl.createBuffer();
+        gl.bindBuffer(elemTarget, idxBuf);
+        const indices = new Uint16Array([
+            0, 1, 2, 3, 4, 5,
+            6, 7, 8, 9, 10, 11
+        ]);
+        gl.bufferData(elemTarget, indices, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locCol = gl.getAttribLocation(program, 'aColor');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locCol);
+        gl.bindBuffer(bufferTarget, colBuf);
+        gl.vertexAttribPointer(locCol, 4, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(elemTarget, idxBuf);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        colorRb = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, colorRb);
+        gl.renderbufferStorage(rbTarget, gl.RGBA8, texSize, texSize);
+
+        depthStencilRb = gl.createRenderbuffer();
+        gl.bindRenderbuffer(rbTarget, depthStencilRb);
+        gl.renderbufferStorage(rbTarget, gl.DEPTH24_STENCIL8, texSize, texSize);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, rbTarget, colorRb);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, rbTarget, depthStencilRb);
+        gl.checkFramebufferStatus(fboTarget);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clearDepth(1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+        gl.useProgram(program);
+        gl.bindVertexArray(vao);
+        gl.drawArrays(drawMode, 0, quadVerts);
+        gl.drawElements(drawMode, quadVerts, gl.UNSIGNED_SHORT, quadVerts * 2);
+
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(
+            0, 0, texSize, texSize,
+            0, 0, texSize, texSize,
+            gl.COLOR_BUFFER_BIT,
+            gl.NEAREST
+        );
+    } catch(e) {}
+
+    try {
+        gl.disable(gl.DEPTH_TEST);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(elemTarget, null);
+        gl.bindRenderbuffer(rbTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+        void gridSubdivs; void numBatches; void clipBias; void depthVal;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'OES_shader_multisample_interpolation'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const streamReps = 3;
+    const copyBytes = 80;
+    const subOffsetBytes = 20;
+    const gridCols = 3;
+    const totalVerts = quadVerts * gridCols;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const copyReadTarget = gl.COPY_READ_BUFFER;
+    const copyWriteTarget = gl.COPY_WRITE_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const usageStream = gl.STREAM_DRAW;
+    const usageDynamic = gl.DYNAMIC_DRAW;
+
+    var vShader, fShader, program;
+    var posBuf, streamBuf, copyDstBuf, vao;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+#extension GL_OES_shader_multisample_interpolation : require
+precision highp float;
+in vec3 aPos;
+sample out vec2 vSamplePos;
+out vec2 vCentroidPos;
+void main() {
+    vSamplePos = aPos.xy;
+    vCentroidPos = aPos.xy;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+#extension GL_OES_shader_multisample_interpolation : require
+precision highp float;
+sample in vec2 vSamplePos;
+centroid in vec2 vCentroidPos;
+out vec4 fragColor;
+void main() {
+    vec2 p = vSamplePos;
+    vec2 pAtCentroid = interpolateAtCentroid(vSamplePos);
+    vec2 pAtSample = interpolateAtSample(vSamplePos, 0);
+    vec2 pAtOffset = interpolateAtOffset(vSamplePos, vec2(0.125, -0.125));
+    vec3 nrm = normalize(vec3(p, 0.85));
+    vec3 inc = normalize(vec3(0.55, -0.5, -0.62));
+    mat3 m = mat3(0.707, -0.707, 0.0, 0.707, 0.707, 0.0, 0.0, 0.0, 1.0);
+    float detM = determinant(m);
+    mat3 invM = inverse(m);
+    mat4 compM = matrixCompMult(mat4(detM), mat4(invM));
+    vec3 refl = reflect(inc, nrm);
+    vec3 refr = refract(inc, nrm, 0.82);
+    vec3 ffwd = faceforward(nrm, inc, nrm);
+    vec2 dF = vec2(dFdx(p.x), dFdy(p.y));
+    float fw = fwidth(p.y);
+    vec3 sm = smoothstep(vec3(-0.8), vec3(0.8), refl * 1.25) + smoothstep(-0.4, 0.4, refr.y);
+    float fr = fract(pAtCentroid.x * 4.0) * fract(pAtOffset.y * 4.0);
+    uint pk = packHalf2x16(vec2(sm.x, fw));
+    vec2 upk = unpackHalf2x16(pk);
+    vec2 diffSample = abs(pAtSample - pAtOffset);
+    vec3 lit = sm * 0.35 + vec3(upk, fr * 0.25) + compM[0].xyz * 0.02 + ffwd * 0.05 + vec3(diffSample, 0.5);
+    fragColor = vec4(clamp(lit, 0.0, 1.0), 1.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const vData = new Float32Array(totalVerts * 3);
+        let ptr = 0;
+        for (let c = 0; c < gridCols; c++) {
+            const x0 = -0.9 + c * 0.65;
+            const x1 = x0 + 0.55;
+            const y0 = -0.85;
+            const y1 = 0.85;
+            const verts = [
+                x0, y0, 0.0,
+                x1, y0, 0.0,
+                x1, y1, 0.0,
+                x0, y0, 0.0,
+                x1, y1, 0.0,
+                x0, y1, 0.0
+            ];
+            for (let k = 0; k < verts.length; k++) {
+                vData[ptr++] = verts[k];
+            }
+        }
+        gl.bufferData(bufferTarget, vData, usageDynamic);
+        gl.bufferSubData(bufferTarget, subOffsetBytes, new Float32Array([0.02, -0.02, 0.0]));
+
+        streamBuf = gl.createBuffer();
+        gl.bindBuffer(copyReadTarget, streamBuf);
+        gl.bufferData(copyReadTarget, new Float32Array(copyBytes / 4).fill(0.33), usageStream);
+
+        copyDstBuf = gl.createBuffer();
+        gl.bindBuffer(copyWriteTarget, copyDstBuf);
+        gl.bufferData(copyWriteTarget, copyBytes, gl.STREAM_READ);
+        gl.copyBufferSubData(copyReadTarget, copyWriteTarget, 0, 0, copyBytes);
+
+        var copyFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        gl.clientWaitSync(copyFence, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
+        gl.deleteSync(copyFence);
+
+        const readBack = new Float32Array(copyBytes / 4);
+        gl.getBufferSubData(copyWriteTarget, 0, readBack);
+
+        var deadBuf = gl.createBuffer();
+        gl.deleteBuffer(deadBuf);
+        gl.deleteBuffer(deadBuf);
+        gl.isBuffer(deadBuf);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.06, 0.07, 0.12, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        for (let s = 0; s < streamReps; s++) {
+            gl.bindBuffer(bufferTarget, streamBuf);
+            gl.bufferSubData(bufferTarget, 0, new Float32Array([0.04 * s, 0.08 * s]));
+            gl.drawArrays(drawMode, 0, totalVerts);
+        }
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(copyReadTarget, null);
+        gl.bindBuffer(copyWriteTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

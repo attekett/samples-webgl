@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const meshGrid = 4;
+    const totalVerts = meshGrid * meshGrid * quadVerts;
+    const copyBytes = 128;
+    const subOffsetBytes = 32;
+    const clipOffset = 0.3;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const copyReadTarget = gl.COPY_READ_BUFFER;
+    const copyWriteTarget = gl.COPY_WRITE_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const usageStatic = gl.STATIC_DRAW;
+    const usageDynamic = gl.DYNAMIC_DRAW;
+
+    var vShader, fShader, program;
+    var posBuf, colBuf, copySrcBuf, copyDstBuf, vao;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+in vec3 aPos;
+in vec4 aColor;
+uniform float uClipPlane;
+out vec4 vColor;
+out vec3 vLocalPos;
+void main() {
+    vColor = aColor;
+    vLocalPos = aPos;
+    gl_ClipDistance[0] = aPos.x + ` + clipOffset.toFixed(1) + `;
+    gl_ClipDistance[1] = aPos.y - uClipPlane;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec4 vColor;
+in vec3 vLocalPos;
+out vec4 fragColor;
+void main() {
+    vec2 p = vLocalPos.xy;
+    vec3 nrm = normalize(vec3(p, 0.75));
+    vec3 inc = normalize(vec3(0.5, -0.6, -0.62));
+    mat3 m = mat3(0.6, 0.0, 0.8, 0.0, 1.0, 0.0, -0.8, 0.0, 0.6);
+    float detM = determinant(m);
+    mat3 invM = inverse(m);
+    mat4 compM = matrixCompMult(mat4(detM), mat4(invM));
+    vec3 refl = reflect(inc, nrm);
+    vec3 refr = refract(inc, nrm, 0.75);
+    vec3 ffwd = faceforward(nrm, inc, nrm);
+    vec2 dF = vec2(dFdx(p.x), dFdy(p.y));
+    float fw = fwidth(p.y);
+    vec3 sm = smoothstep(vec3(-0.8), vec3(0.8), refl * 1.2) + smoothstep(-0.4, 0.4, refr.y);
+    float fr = fract(p.x * 5.0) * fract(p.y * 5.0);
+    uint pk = packHalf2x16(vec2(sm.x, fw));
+    vec2 upk = unpackHalf2x16(pk);
+    int rawB = floatBitsToInt(sm.y + fr);
+    float bounded = uintBitsToFloat(uint(rawB) & 0x3f800000u);
+    vec3 lit = sm * 0.4 + vColor.rgb * 0.6 + vec3(upk, bounded * 0.1) + compM[0].xyz * 0.01 + ffwd * 0.05;
+    fragColor = vec4(clamp(lit, 0.0, 1.0), 1.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const vData = new Float32Array(totalVerts * 3);
+        let ptr = 0;
+        for (let gx = 0; gx < meshGrid; gx++) {
+            for (let gy = 0; gy < meshGrid; gy++) {
+                const x0 = -0.85 + (gx / meshGrid) * 1.7;
+                const y0 = -0.85 + (gy / meshGrid) * 1.7;
+                const sz = 0.75 / meshGrid;
+                const verts = [
+                    x0 - sz, y0 - sz, 0.0,
+                    x0 + sz, y0 - sz, 0.0,
+                    x0 + sz, y0 + sz, 0.0,
+                    x0 - sz, y0 - sz, 0.0,
+                    x0 + sz, y0 + sz, 0.0,
+                    x0 - sz, y0 + sz, 0.0
+                ];
+                for (let k = 0; k < verts.length; k++) {
+                    vData[ptr++] = verts[k];
+                }
+            }
+        }
+        gl.bufferData(bufferTarget, vData, usageDynamic);
+        gl.bufferSubData(bufferTarget, subOffsetBytes, new Float32Array([0.1, -0.1, 0.0, 0.2, -0.1, 0.0]));
+
+        colBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, colBuf);
+        const cData = new Float32Array(totalVerts * 4);
+        for (let i = 0; i < totalVerts; i++) {
+            cData[i * 4 + 0] = ((i * 17) % 255) / 255.0;
+            cData[i * 4 + 1] = ((i * 37) % 255) / 255.0;
+            cData[i * 4 + 2] = ((i * 73) % 255) / 255.0;
+            cData[i * 4 + 3] = 1.0;
+        }
+        gl.bufferData(bufferTarget, cData, usageStatic);
+
+        copySrcBuf = gl.createBuffer();
+        gl.bindBuffer(copyReadTarget, copySrcBuf);
+        gl.bufferData(copyReadTarget, new Float32Array(copyBytes / 4).fill(0.35), usageStatic);
+
+        copyDstBuf = gl.createBuffer();
+        gl.bindBuffer(copyWriteTarget, copyDstBuf);
+        gl.bufferData(copyWriteTarget, copyBytes, gl.STREAM_READ);
+        gl.copyBufferSubData(copyReadTarget, copyWriteTarget, 0, 0, copyBytes);
+
+        var copyFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        gl.clientWaitSync(copyFence, gl.SYNC_FLUSH_COMMANDS_BIT, 0);
+        gl.deleteSync(copyFence);
+
+        const readBack = new Float32Array(copyBytes / 4);
+        gl.getBufferSubData(copyWriteTarget, 0, readBack);
+
+        var deadBuf = gl.createBuffer();
+        gl.deleteBuffer(deadBuf);
+        gl.deleteBuffer(deadBuf);
+        gl.isBuffer(deadBuf);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locCol = gl.getAttribLocation(program, 'aColor');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locCol);
+        gl.bindBuffer(bufferTarget, colBuf);
+        gl.vertexAttribPointer(locCol, 4, gl.FLOAT, false, 0, 0);
+
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.06, 0.08, 0.12, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        const locClip = gl.getUniformLocation(program, 'uClipPlane');
+        gl.uniform1f(locClip, -0.35);
+
+        gl.drawArrays(drawMode, 0, totalVerts);
+
+        gl.uniform1f(locClip, 0.2);
+        gl.drawArrays(drawMode, 0, totalVerts / 2);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(copyReadTarget, null);
+        gl.bindBuffer(copyWriteTarget, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

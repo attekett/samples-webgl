@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_color_buffer_float',
+    'WEBGL_multi_draw'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    const extMD = gl.getExtension('WEBGL_multi_draw');
+    gl.getExtension('EXT_color_buffer_float');
+
+    const texSize = 256;
+    const quadVerts = 6;
+    const drawCount = 4;
+    const halfSize = 128;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const fboTarget = gl.FRAMEBUFFER;
+    const texTarget = gl.TEXTURE_2D;
+    const drawMode = gl.TRIANGLES;
+    const floatFormat = gl.RGBA32F;
+
+    var vShader, fShader, program;
+    var vao;
+    var posBuf, intBuf, floatTex, fbo;
+
+    try {
+        vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in ivec2 aId;
+out vec2 vPos;
+flat out ivec2 vId;
+void main() {
+    vPos = aPos;
+    vId = aId;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vPos;
+flat in ivec2 vId;
+layout(location = 0) out vec4 outFloat;
+void main() {
+    float pattern = sin(vPos.x * 10.0) * cos(vPos.y * 10.0);
+    outFloat = vec4(float(vId.x) * 0.3 + pattern * 0.2, float(vId.y) * 0.3, pattern, 1.0);
+}`);
+        gl.compileShader(fShader);
+        program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        const posData = new Float32Array(drawCount * quadVerts * 2);
+        const centers = [[-0.5, 0.5], [0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]];
+        for (let i = 0; i < drawCount; i++) {
+            const base = i * quadVerts * 2;
+            const c = centers[i];
+            const sz = 0.4;
+            posData.set([
+                c[0] - sz, c[1] - sz,  c[0] + sz, c[1] - sz,  c[0] + sz, c[1] + sz,
+                c[0] - sz, c[1] - sz,  c[0] + sz, c[1] + sz,  c[0] - sz, c[1] + sz
+            ], base);
+        }
+        gl.bufferData(bufferTarget, posData, gl.STATIC_DRAW);
+
+        intBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, intBuf);
+        const intData = new Int32Array(drawCount * quadVerts * 2);
+        for (let i = 0; i < drawCount * quadVerts; i++) {
+            const quad = Math.floor(i / quadVerts);
+            intData[i * 2 + 0] = quad + 1;
+            intData[i * 2 + 1] = (quad % 2) + 1;
+        }
+        gl.bufferData(bufferTarget, intData, gl.STATIC_DRAW);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locId = gl.getAttribLocation(program, 'aId');
+
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.enableVertexAttribArray(locId);
+        gl.bindBuffer(bufferTarget, intBuf);
+        gl.vertexAttribIPointer(locId, 2, gl.INT, 0, 0);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        floatTex = gl.createTexture();
+        gl.bindTexture(texTarget, floatTex);
+        gl.texStorage2D(texTarget, 1, floatFormat, texSize, texSize);
+        gl.texParameteri(texTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(texTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, texTarget, floatTex, 0);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.clearColor(0.02, 0.04, 0.08, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.bindVertexArray(vao);
+
+        const firsts = new Int32Array([0, 6, 12, 18]);
+        const counts = new Int32Array([6, 6, 6, 6]);
+
+        extMD.multiDrawArraysWEBGL(drawMode, firsts, 0, counts, 0, drawCount);
+        extMD.multiDrawArraysWEBGL(drawMode, [0, 12], 0, [6, 6], 0, 2);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+
+        gl.bindVertexArray(null);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindTexture(texTarget, null);
+        gl.bindFramebuffer(fboTarget, null);
+
+        void halfSize;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    const texSize = 256;
+    const vertCount = 6;
+    const pointCount = 8;
+    const tfFloats = pointCount * 4;
+
+    const drawMode = gl.TRIANGLES;
+    const tfMode = gl.POINTS;
+    const texFmt = gl.RGBA8;
+    const occlTarget = gl.ANY_SAMPLES_PASSED;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec4 aState;
+out vec3 vCap;
+out vec2 vUv;
+void main() {
+    vCap = aState.xyz;
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec3 vCap;
+in vec2 vUv;
+layout(location = 0) out vec4 color0;
+layout(location = 1) out vec4 color1;
+void main() {
+    float grid = step(0.5, fract(vUv.x * 6.0)) * step(0.5, fract(vUv.y * 6.0));
+    color0 = vec4(vCap * 0.5 + 0.4, 0.9 - grid * 0.3);
+    color1 = vec4(grid * 0.8, vCap.z, 0.3 + vCap.x * 0.3, 1.0);
+}`);
+        gl.compileShader(fShader);
+        var program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.transformFeedbackVaryings(program, ['vCap'], gl.SEPARATE_ATTRIBS);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        var tfBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, tfFloats * 16, gl.DYNAMIC_COPY);
+        var posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), gl.STATIC_DRAW);
+        var stateBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, stateBuf);
+        const stateData = new Float32Array(pointCount * 4);
+        for (let si = 0; si < pointCount; si++) {
+            stateData[si * 4] = si * 0.125;
+            stateData[si * 4 + 1] = 1.0 - si * 0.125;
+            stateData[si * 4 + 2] = (si % 3) * 0.33;
+            stateData[si * 4 + 3] = si;
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, stateData, gl.STATIC_DRAW);
+        var gone = gl.createBuffer();
+        gl.deleteBuffer(gone);
+        gl.deleteBuffer(gone);
+        gl.isBuffer(gone);
+    } catch(e) {}
+
+    try {
+        var vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locState = gl.getAttribLocation(program, 'aState');
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locState);
+        gl.bindBuffer(gl.ARRAY_BUFFER, stateBuf);
+        gl.vertexAttribPointer(locState, 4, gl.FLOAT, false, 0, 0);
+        var tfPosBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfPosBuf);
+        const ptGrid = new Float32Array(pointCount * 2);
+        for (let pi = 0; pi < pointCount; pi++) {
+            ptGrid[pi * 2] = ((pi % 4) / 1.5) - 1.0;
+            ptGrid[pi * 2 + 1] = (Math.floor(pi / 4) / 2.5) - 1.0;
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, ptGrid, gl.STATIC_DRAW);
+        var vaoTf = gl.createVertexArray();
+        gl.bindVertexArray(vaoTf);
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfPosBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locState);
+        gl.bindBuffer(gl.ARRAY_BUFFER, stateBuf);
+        gl.vertexAttribPointer(locState, 4, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        var tfo = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        var q0 = gl.createQuery();
+        var q1 = gl.createQuery();
+    } catch(e) {}
+
+    try {
+        var rtTex0 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, rtTex0);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        var rtTex1 = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, rtTex1);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        var rbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, texSize, texSize);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        var fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtTex0, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, rtTex1, 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.clearColor(0.04, 0.03, 0.07, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertCount);
+
+        gl.bindVertexArray(vaoTf);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
+        gl.beginQuery(occlTarget, q0);
+        gl.beginTransformFeedback(tfMode);
+        gl.drawArrays(tfMode, 0, pointCount);
+        gl.deleteBuffer(tfBuf);
+        gl.isBuffer(tfBuf);
+        gl.drawArrays(tfMode, 0, pointCount);
+        gl.endQuery(occlTarget);
+        gl.deleteQuery(q0);
+        gl.isQuery(q0);
+        gl.endTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.deleteTransformFeedback(tfo);
+        gl.isTransformFeedback(tfo);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        var tfBuf2 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, tfBuf2);
+        gl.bufferData(gl.ARRAY_BUFFER, tfFloats * 16, gl.DYNAMIC_COPY);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        var tfo2 = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo2);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, tfBuf2);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        var q2 = gl.createQuery();
+        gl.bindVertexArray(vaoTf);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo2);
+        gl.beginQuery(occlTarget, q2);
+        gl.beginTransformFeedback(tfMode);
+        gl.drawArrays(tfMode, 0, pointCount);
+        gl.endTransformFeedback();
+        gl.endQuery(occlTarget);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.bindVertexArray(vao);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.useProgram(program);
+        gl.deleteProgram(program);
+        gl.isProgram(program);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.deleteQuery(q1);
+        gl.deleteQuery(q2);
+        gl.isQuery(q2);
+    } catch(e) {}
+
+    try {
+        gl.deleteTexture(rtTex0);
+        const status0 = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        void status0;
+        var rtTex0b = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, rtTex0b);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, texFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtTex0b, 0);
+        const status1 = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        void status1;
+        gl.deleteRenderbuffer(rbo);
+        var rbo2 = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, rbo2);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, texSize, texSize);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo2);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArrays(drawMode, 0, vertCount);
+        gl.disable(gl.DEPTH_TEST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        const halfW = texSize / 2;
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, halfW, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.blitFramebuffer(0, 0, texSize, texSize, halfW, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        void q1;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

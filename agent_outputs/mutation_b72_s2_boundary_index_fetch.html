@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+
+    const texSize = 256;
+    const vertCount = 6;
+    const hexVerts = 6;
+    const maxIndex16 = 0xFFFF;
+
+    const triMode = gl.TRIANGLES;
+    const lineMode = gl.LINES;
+    const fanMode = gl.TRIANGLE_FAN;
+    const idxType = gl.UNSIGNED_SHORT;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec2 aPos;
+in vec3 aHue;
+out vec2 vUv;
+out vec3 vHue;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    vHue = aHue;
+    gl_Position = vec4(aPos * 0.85, 0.0, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+precision highp float;
+in vec2 vUv;
+in vec3 vHue;
+layout(location = 0) out vec4 color0;
+void main() {
+    float edge = smoothstep(0.0, 0.3, min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y)));
+    color0 = vec4(vHue * (0.5 + 0.5 * edge), 1.0);
+}`);
+        gl.compileShader(fShader);
+        var program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        var posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        const hexPos = new Float32Array(hexVerts * 2);
+        for (let hi = 0; hi < hexVerts; hi++) {
+            const ang = (hi / hexVerts) * Math.PI * 2 + 0.5;
+            hexPos[hi * 2] = Math.cos(ang) * 0.8;
+            hexPos[hi * 2 + 1] = Math.sin(ang) * 0.8;
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, hexPos, gl.STATIC_DRAW);
+        var hueBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, hueBuf);
+        const hueData = new Float32Array(hexVerts * 3);
+        for (let hi = 0; hi < hexVerts; hi++) {
+            hueData[hi * 3] = 0.2 + hi * 0.13;
+            hueData[hi * 3 + 1] = 0.9 - hi * 0.14;
+            hueData[hi * 3 + 2] = 0.3 + (hi % 3) * 0.25;
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, hueData, gl.STATIC_DRAW);
+        var idxTri = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxTri);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([
+            0, 1, 2,
+            3, 4, 5
+        ]), gl.STATIC_DRAW);
+        var idxLine = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxLine);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([
+            0, 1,
+            2, 3
+        ]), gl.STATIC_DRAW);
+        var idxFar = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxFar);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([
+            maxIndex16, 0, 1
+        ]), gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+        var gone = gl.createBuffer();
+        gl.deleteBuffer(gone);
+        gl.deleteBuffer(gone);
+        gl.isBuffer(gone);
+    } catch(e) {}
+
+    try {
+        var vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locHue = gl.getAttribLocation(program, 'aHue');
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locHue);
+        gl.bindBuffer(gl.ARRAY_BUFFER, hueBuf);
+        gl.vertexAttribPointer(locHue, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxTri);
+        gl.bindVertexArray(null);
+        var vaoLine = gl.createVertexArray();
+        gl.bindVertexArray(vaoLine);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locHue);
+        gl.vertexAttribPointer(locHue, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxLine);
+        gl.bindVertexArray(null);
+        var vaoFar = gl.createVertexArray();
+        gl.bindVertexArray(vaoFar);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locHue);
+        gl.vertexAttribPointer(locHue, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxFar);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.03, 0.05, 0.08, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawElements(triMode, 6, idxType, 0);
+        gl.drawElements(triMode, 3, idxType, 0);
+        gl.drawElements(triMode, 3, idxType, 6);
+        gl.drawRangeElements(triMode, 0, 5, 6, idxType, 0);
+        gl.drawRangeElements(triMode, 3, 5, 3, idxType, 6);
+        gl.drawArrays(fanMode, 0, vertCount);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(vaoLine);
+        gl.drawElements(lineMode, 4, idxType, 0);
+        gl.drawElements(lineMode, 2, idxType, 4);
+        gl.bindVertexArray(vaoFar);
+        gl.isBuffer(idxFar);
+        gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE);
+        gl.bindVertexArray(vao);
+        gl.drawElements(triMode, 4, idxType, 0);
+    } catch(e) {}
+}
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
