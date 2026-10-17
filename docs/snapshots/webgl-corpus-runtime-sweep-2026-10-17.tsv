@@ -1,0 +1,563 @@
+seed	clean_lane	failure_class	first_message
+agent_outputs/mutation_b55_s260_uniform_typecheck.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBuffer: attempt to use a deleted object
+agent_outputs/mutation_b56_s261_vertex_attribs.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBuffer: attempt to use a deleted object
+agent_outputs/mutation_b56_s262_uint_uniforms.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindFramebuffer: attempt to use a deleted object
+agent_outputs/mutation_b56_s263_int_uniforms_matrices.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBuffer: attempt to use a deleted object
+agent_outputs/mutation_b57_s264_typechecks_queries.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindFramebuffer: attempt to use a deleted object
+agent_outputs/mutation_b57_s265_getters_introspection.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBuffer: attempt to use a deleted object
+agent_outputs/mutation_b58_s266_getparam_limits.html	none	webgl_api_error	WebGL: INVALID_ENUM: getParameter: invalid parameter name
+agent_outputs/mutation_b58_s267_uniform_types_shaderparams.html	none	webgl_api_error	[.WebGL-0x34c400134600] GL_INVALID_OPERATION: glDrawArrays: Two textures of different types use the same sampler location.
+agent_outputs/mutation_b58_s268_texunits_drawbufs_cubemap.html	none	webgl_api_error	WebGL: INVALID_ENUM: framebufferTexture2D: invalid attachment
+agent_outputs/mutation_b58_s269_formats_pixeltypes_internalformats.html	none	webgl_api_error	WebGL: INVALID_VALUE: texImage2D: invalid internalformat
+agent_outputs/mutation_b58_s270_misc_sync_drawbuf_storage.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+agent_outputs/mutation_b59_s271_float_tex_fbo_sampler_mrt.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b59_s272_float_tex3d_sync_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b59_s273_float_texarray_glsl.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b59_s274_float_int_inst_ubo_aniso.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b59_s275_compressed_3d_arr_aniso_int_float.html	none	uncaught_error	UNSUPPORTED_EXTENSIONS: WEBGL_compressed_texture_etc
+agent_outputs/mutation_b59_s276_timer_tf_instancing.html	firefox		
+agent_outputs/mutation_b60_s277_edbi_blend_mrt_fbo_rb.html	firefox		
+agent_outputs/mutation_b60_s278_edbi_depth_stencil_mrt_fbo_rb.html	firefox		
+agent_outputs/mutation_b60_s279_edbi_float_blend_depth_pixel.html	chrome-angle-vulkan		
+agent_outputs/mutation_b60_s280_edbi_int_tex3d_texarray_float_mrt.html	firefox		
+agent_outputs/mutation_b61_s281_instancing_int_tex.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b61_s282_sync_query.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: attempt to use a deleted object
+agent_outputs/mutation_b61_s283_tf_tex3d.html	none	webgl_api_error	WebGL: INVALID_VALUE: getTransformFeedbackVarying: invalid index
+agent_outputs/mutation_b61_s284_texarray.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b62_s285_glsl_refract_gather.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b62_s286_ubo_binding.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBufferBase: attempt to use a deleted object
+agent_outputs/mutation_b62_s287_ubo_introspect.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBufferBase: attempt to use a deleted object
+agent_outputs/mutation_b62_s288_float_tex_pixelops_diverse.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b62_s289_float_tex_sampler_diverse.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b63_s1_texture_ops_deep.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b63_s2_fbo_deep.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindFramebuffer: attempt to use a deleted object
+agent_outputs/mutation_b64_s1_depth_stencil_deep.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindRenderbuffer: attempt to use a deleted object
+agent_outputs/mutation_b64_s2_texture_3d_deep.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+agent_outputs/mutation_b65_s1_introspection_getters.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindVertexArray: attempt to use a deleted object
+agent_outputs/mutation_b65_s2_static_attribs_int_uniforms.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindVertexArray: attempt to use a deleted object
+agent_outputs/mutation_b66_s1_error_constants.html	firefox		
+agent_outputs/mutation_b66_s2_glsl_builtin_vars.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+agent_outputs/mutation_b67_s1_edbi_blend_rasterizer.html	none	webgl_api_error	[.WebGL-0x2fa400154200] GL_INVALID_OPERATION: glBlitFramebuffer: Invalid operation on multisampled framebuffer.
+agent_outputs/mutation_b67_s2_edbi_depth_rasterizer.html	none	webgl_api_error	[.WebGL-0x2fa400138800] GL_INVALID_OPERATION: glDrawArrays: Stencil reference and mask values must be the same for front facing and back facing triangles.
+agent_outputs/mutation_b68_s1_float_cbf_extended_introspection.html	none	webgl_api_error	[.WebGL-0x2fa400138200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+agent_outputs/mutation_b68_s2_float_aniso_extended_texops.html	none	webgl_api_error	[.WebGL-0x2fa400138800] GL_INVALID_OPERATION: glGenerateMipmap: Texture format does not support mipmap generation.
+agent_outputs/mutation_b68_s3_float_int_clearbuffer.html	firefox		
+agent_outputs/mutation_b68_s4_float_cbf_sampler_minimal.html	firefox		
+agent_outputs/mutation_b69_s1_edbi_megamix_4way.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+agent_outputs/mutation_b69_s2_compressed_megamix_4way.html	none	uncaught_error	UNSUPPORTED_EXTENSIONS: WEBGL_compressed_texture_etc
+agent_outputs/mutation_b69_s3_timer_megamix_4way.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+agent_outputs/mutation_b69_s4_edbi_compressed_aniso_float.html	none	uncaught_error	UNSUPPORTED_EXTENSIONS: WEBGL_compressed_texture_etc
+agent_outputs/mutation_b70_s1_float_cbf_alt_paths.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+agent_outputs/mutation_b70_s2_edbi_separate_alt_paths.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+agent_outputs/mutation_b70_s3_aniso_integer_alt_paths.html	none	webgl_api_error	[.WebGL-0x2fa400138800] GL_INVALID_OPERATION: glBlitFramebuffer: Invalid operation on multisampled framebuffer.
+agent_outputs/mutation_b71_s1_lifecycle_rebuild.html	firefox		
+agent_outputs/mutation_b71_s2_lifecycle_delete_active.html	firefox		
+agent_outputs/mutation_b71_s3_lifecycle_handle_reuse.html	firefox		
+agent_outputs/mutation_b71_s4_lifecycle_resize_present.html	firefox		
+agent_outputs/mutation_b71_s5_boundary_subdata_offsets.html	firefox		
+agent_outputs/mutation_b72_s1_boundary_texsub_edges.html	firefox		
+agent_outputs/mutation_b72_s2_boundary_index_fetch.html	firefox		
+agent_outputs/mutation_b72_s3_boundary_attrib_layouts.html	firefox		
+agent_outputs/mutation_b72_s4_boundary_uniform_arrays.html	firefox		
+agent_outputs/mutation_b73_s1_shader_numeric_dense.html	firefox		
+agent_outputs/mutation_b73_s2_shader_precision_variants.html	firefox		
+agent_outputs/mutation_b74_s1_sync_fence_poll_matrix.html	firefox		
+agent_outputs/mutation_b74_s2_async_pbo_small.html	firefox		
+agent_outputs/mutation_b75_s1_multicontext_pair.html	firefox		
+agent_outputs/mutation_b75_s2_texture_array_layers_cube.html	firefox		
+agent_outputs/mutation_b76_s1_attributes_color_float_compressed.html	firefox		
+agent_outputs/mutation_b76_s2_blending_clip_control_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b76_s3_blending_compressed_tf.html	firefox		
+agent_outputs/mutation_b76_s4_buffer_ops_depth_stencil_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b76_s5_buffer_ops_clip_cull_draw_calls.html	chrome-angle-gl		
+agent_outputs/mutation_b77_s1_attributes_color_float_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b77_s2_attributes_renderbuffer_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b77_s3_attributes_sync_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b77_s4_buffer_ops_conservative_depth.html	chrome-angle-vulkan		
+agent_outputs/mutation_b77_s5_buffer_ops_color_float_compressed.html	firefox		
+agent_outputs/mutation_b78_s1_attributes_tf_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b78_s2_buffer_ops_compressed_draw_buffers_indexed.html	firefox		
+agent_outputs/mutation_b78_s3_buffer_ops_compressed_instancing.html	firefox		
+agent_outputs/mutation_b78_s4_buffer_ops_compressed_mrt.html	firefox		
+agent_outputs/mutation_b78_s5_buffer_ops_compressed_query.html	firefox		
+agent_outputs/mutation_b79_s1_buffer_ops_compressed_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b79_s2_conservative_depth_glsl_builtins.html	chrome-angle-vulkan		
+agent_outputs/mutation_b79_s3_blending_color_float_compressed.html	firefox		
+agent_outputs/mutation_b79_s4_attributes_compressed_sync.html	firefox		
+agent_outputs/mutation_b79_s5_buffer_ops_color_float_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b80_s1_buffer_ops_draw_buffers_indexed_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b80_s2_buffer_ops_float_textures_query.html	firefox		
+agent_outputs/mutation_b80_s3_buffer_ops_aniso_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b80_s4_buffer_ops_mirror_clamp_sampler.html	chrome-angle-vulkan		
+agent_outputs/mutation_b80_s5_buffer_ops_integer_textures_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b81_s1_depth_stencil_clip_control_color_float.html	chrome-angle-vulkan		
+agent_outputs/mutation_b81_s2_depth_stencil_clip_control_tf.html	chrome-angle-vulkan		
+agent_outputs/mutation_b81_s3_depth_stencil_color_float_compressed.html	firefox		
+agent_outputs/mutation_b81_s4_depth_stencil_color_float_polygon_offset_clamp.html	chrome-angle-vulkan		
+agent_outputs/mutation_b81_s5_depth_stencil_color_float_stencil_texturing.html	chrome-angle-vulkan		
+agent_outputs/mutation_b82_s1_buffer_ops_float_tex_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b82_s2_buffer_ops_pixel_ops_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b82_s3_buffer_ops_query_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b82_s4_buffer_ops_sampler_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b82_s5_buffer_ops_tex3d_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b83_s1_buffer_ops_texarray_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b83_s2_depth_stencil_clip_control_sync.html	chrome-angle-vulkan		
+agent_outputs/mutation_b83_s3_depth_stencil_color_float_conservative_depth.html	chrome-angle-vulkan		
+agent_outputs/mutation_b83_s4_depth_stencil_compressed_tf.html	firefox		
+agent_outputs/mutation_b83_s5_depth_stencil_conservative_depth_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b84_s1_draw_calls_color_float_clip_cull.html	chrome-angle-gl		
+agent_outputs/mutation_b84_s2_draw_calls_clip_cull_fbo.html	chrome-angle-gl		
+agent_outputs/mutation_b84_s3_draw_calls_clip_cull_renderbuffer.html	chrome-angle-gl		
+agent_outputs/mutation_b84_s4_draw_calls_clip_cull_sync.html	chrome-angle-gl		
+agent_outputs/mutation_b84_s5_draw_calls_clip_cull_tf.html	chrome-angle-gl		
+agent_outputs/mutation_b85_s1_clip_control_compressed_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b85_s2_clip_control_draw_buffers_indexed_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b85_s3_clip_control_float_textures_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b85_s4_clip_control_aniso_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b85_s5_clip_control_instancing_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b86_s1_clip_control_integer_textures_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b86_s2_clip_control_pixel_ops_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b86_s3_clip_control_query_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b86_s4_clip_control_sampler_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b86_s5_clip_control_tex3d_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b87_s1_clip_control_texarrays_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b87_s2_clip_control_tf_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b87_s3_clip_control_ubo_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b87_s4_clip_control_uniforms_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b87_s5_clip_control_glsl_builtins_fbo.html	chrome-angle-vulkan		
+agent_outputs/mutation_b88_s1_color_float_compressed_draw_buffers_indexed.html	firefox		
+agent_outputs/mutation_b88_s2_color_float_compressed_float_textures.html	firefox		
+agent_outputs/mutation_b88_s3_color_float_compressed_aniso.html	firefox		
+agent_outputs/mutation_b88_s4_color_float_compressed_glsl_builtins.html	firefox		
+agent_outputs/mutation_b88_s5_color_float_compressed_instancing.html	firefox		
+agent_outputs/mutation_b89_s1_color_float_compressed_int_tex.html	firefox		
+agent_outputs/mutation_b89_s2_color_float_compressed_mrt.html	firefox		
+agent_outputs/mutation_b89_s3_color_float_compressed_pixel_ops.html	firefox		
+agent_outputs/mutation_b89_s4_color_float_compressed_query.html	firefox		
+agent_outputs/mutation_b89_s5_color_float_compressed_sampler.html	firefox		
+agent_outputs/mutation_b90_s1_color_float_compressed_sync.html	firefox		
+agent_outputs/mutation_b90_s2_color_float_compressed_tex3d.html	firefox		
+agent_outputs/mutation_b90_s3_color_float_compressed_texarrays.html	firefox		
+agent_outputs/mutation_b90_s4_color_float_compressed_tf.html	firefox		
+agent_outputs/mutation_b90_s5_color_float_compressed_ubo.html	firefox		
+agent_outputs/mutation_b91_s1_buffer_ops_sampler_stencil_texturing.html	chrome-angle-vulkan		
+agent_outputs/mutation_b91_s2_depth_stencil_rbo_stencil_texturing.html	chrome-angle-vulkan		
+agent_outputs/mutation_b91_s3_depth_stencil_sync_stencil_texturing.html	chrome-angle-vulkan		
+agent_outputs/mutation_b91_s4_depth_stencil_tf_stencil_texturing.html	chrome-angle-vulkan		
+agent_outputs/mutation_b91_s5_draw_calls_polygon_offset_clamp_sync.html	chrome-angle-vulkan		
+agent_outputs/mutation_b92_s1_draw_calls_polygon_offset_clamp_tf.html	chrome-angle-vulkan		
+agent_outputs/mutation_b92_s2_depth_stencil_polygon_offset_clamp_sync.html	chrome-angle-vulkan		
+agent_outputs/mutation_b92_s3_depth_stencil_polygon_offset_clamp_tf.html	chrome-angle-vulkan		
+agent_outputs/mutation_b92_s4_depth_stencil_conservative_depth_sync.html	chrome-angle-vulkan		
+agent_outputs/mutation_b92_s5_depth_stencil_conservative_depth_tf.html	chrome-angle-vulkan		
+agent_outputs/mutation_b93_s1_buffer_ops_glsl_builtins_clip_cull.html	chrome-angle-gl		
+agent_outputs/mutation_b93_s2_buffer_ops_glsl_builtins_noperspective.html	chrome-angle-vulkan		
+agent_outputs/mutation_b93_s3_buffer_ops_glsl_builtins_sample_variables.html	chrome-angle-vulkan		
+agent_outputs/mutation_b93_s4_buffer_ops_glsl_builtins_shader_multisample.html	chrome-angle-vulkan		
+agent_outputs/mutation_b93_s5_color_float_conservative_depth_glsl_builtins.html	chrome-angle-vulkan		
+agent_outputs/mutation_b94_s1_attributes_edbi_sync.html	firefox		
+agent_outputs/mutation_b94_s2_attributes_edbi_tf.html	firefox		
+agent_outputs/mutation_b94_s3_blending_edbi_sync.html	firefox		
+agent_outputs/mutation_b94_s4_blending_edbi_tf.html	firefox		
+agent_outputs/mutation_b94_s5_buffer_ops_edbi_aniso.html	firefox		
+agent_outputs/mutation_b95_s1_buffer_ops_edbi_glsl.html	firefox		
+agent_outputs/mutation_b95_s2_buffer_ops_edbi_instancing.html	firefox		
+agent_outputs/mutation_b95_s3_buffer_ops_edbi_query.html	firefox		
+agent_outputs/mutation_b95_s4_buffer_ops_edbi_sampler.html	firefox		
+agent_outputs/mutation_b95_s5_buffer_ops_edbi_sync.html	firefox		
+agent_outputs/mutation_b96_s1_buffer_ops_edbi_tf.html	firefox		
+agent_outputs/mutation_b96_s2_buffer_ops_edbi_ubo.html	firefox		
+agent_outputs/mutation_b96_s3_depth_stencil_edbi_sync.html	firefox		
+agent_outputs/mutation_b96_s4_depth_stencil_edbi_tf.html	firefox		
+agent_outputs/mutation_b96_s5_draw_calls_edbi_sync.html	firefox		
+agent_outputs/mutation_b97_s1_draw_calls_edbi_tf.html	firefox		
+agent_outputs/mutation_b97_s2_edbi_aniso_fbo.html	firefox		
+agent_outputs/mutation_b97_s3_edbi_aniso_renderbuffer.html	firefox		
+agent_outputs/mutation_b97_s4_edbi_aniso_sync.html	firefox		
+agent_outputs/mutation_b97_s5_edbi_aniso_tf.html	firefox		
+agent_outputs/mutation_b98_s10_chromium_conservative_depth.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s1_chromium_multi_draw.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s2_chromium_clip_control.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s3_chromium_polygon_offset_clamp.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s4_chromium_mirror_clamp_to_edge.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s5_chromium_stencil_texturing.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s6_chromium_sample_variables.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s7_chromium_shader_multisample_interpolation.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s8_chromium_noperspective_interpolation.html	chrome-angle-vulkan		
+agent_outputs/mutation_b98_s9_chromium_clip_cull_distance.html	chrome-angle-gl		
+agent_outputs/mutation_vertex_buffer_state_multidraw.html	chrome-angle-vulkan		
+agent_outputs/resource_typed_view_buffer_capture.html	firefox		
+agent_outputs/shaders_structural_coupled_passes.html	firefox		
+agent_outputs/texture_paired_update_offscreen_composite.html	firefox		
+agent_outputs/valid_buffer_texture_paired_multipass.html	firefox		
+agent_outputs/webgl2_buffer_rebind_value_grid.html	firefox		
+agent_outputs/webgl2_multidraw_indexed_instanced_rows.html	chrome-angle-vulkan		
+agent_outputs/webgl2_occlusion_query_visibility_panels.html	firefox		
+agent_outputs/webgl2_sampler_objects_split_filter.html	firefox		
+agent_outputs/webgl2_transform_feedback_wave_particles.html	firefox		
+agent_outputs/webgl2_uniform_buffer_palette_tiles.html	firefox		
+samples-webgl/compute/compute_gpu_data_processing_pipeline.html	firefox		
+samples-webgl/compute/compute_particle_systems_tf.html	firefox		
+samples-webgl/compute/compute_procedural_geometry.html	firefox		
+samples-webgl/creative/creative_cubic_crystal_chamber.html	chrome-angle-vulkan		
+samples-webgl/creative/creative_data_ouroboros.html	chrome-angle-vulkan		
+samples-webgl/creative/creative_feedback_low_level_turing.html	firefox		
+samples-webgl/creative/creative_fractal_double_emulation.html	firefox		
+samples-webgl/creative/creative_fractal_nebula_forge.html	firefox		
+samples-webgl/creative/creative_integer_cellular_automaton.html	none	console_output	Starting Main...
+samples-webgl/creative/creative_mipmap_cascade_feedback.html	firefox		
+samples-webgl/creative/creative_moire_machine.html	none	console_output	Starting Main...
+samples-webgl/creative/creative_multisample_blit_krieg.html	firefox		
+samples-webgl/creative/creative_quantum_entangler_sync.html	firefox		
+samples-webgl/creative/creative_quantum_foam_simulator.html	firefox		
+samples-webgl/creative/creative_schrodingers_cube.html	none	console_output	Starting Main...
+samples-webgl/creative/creative_scissor_mosaic.html	none	console_output	Success
+samples-webgl/creative/creative_shader_poltergeist_churn.html	firefox		
+samples-webgl/creative/creative_stencil_spray_paint.html	firefox		
+samples-webgl/creative/creative_tf_particle_collider.html	none	console_output	Starting Main...
+samples-webgl/creative/creative_time_warp_slitscan.html	firefox		
+samples-webgl/creative/creative_voxellated_world.html	firefox		
+samples-webgl/edge_cases/edge_cases_async_operations.html	none	uncaught_error	WebGL Error: 1282
+samples-webgl/edge_cases/edge_cases_memory_management.html	none	webgl_api_error	WebGL: INVALID_OPERATION: texParameter: no texture bound to target
+samples-webgl/edge_cases/edge_cases_numerical_limits.html	firefox		
+samples-webgl/errors/errors_framebuffer_completeness.html	none	webgl_api_error	WebGL: INVALID_OPERATION: framebufferRenderbuffer: attempt to use a deleted object
+samples-webgl/errors/errors_program_linking.html	chrome-angle-vulkan		
+samples-webgl/errors/errors_runtime_errors.html	none	webgl_api_error	WebGL: INVALID_ENUM: texImage2D: invalid texture target
+samples-webgl/errors/errors_shader_compilation.html	chrome-angle-vulkan		
+samples-webgl/errors/errors_texture_validation.html	firefox		
+samples-webgl/extensions/extensions_color_buffer_float_rendering.html	none	js_exception	Identifier 'isWebGL2' has already been declared
+samples-webgl/extensions/extensions_compressed_textures_multi.html	firefox		
+samples-webgl/extensions/extensions_depth_textures_shadow_mapping.html	none	console_output	Using WebGL2 context
+samples-webgl/extensions/extensions_element_index_uint.html	firefox		
+samples-webgl/extensions/extensions_element_index_uint_large_geometries.html	firefox		
+samples-webgl/extensions/extensions_float_textures_rendering.html	chrome-angle-vulkan		
+samples-webgl/extensions/extensions_fragment_depth.html	firefox		
+samples-webgl/extensions/extensions_instanced_rendering_webgl1.html	firefox		
+samples-webgl/extensions/extensions_multiple_rendertargets_webgl1.html	none	uncaught_error	Error: UNSUPPORTED_EXTENSIONS: WEBGL_draw_buffers at main (ad11d964-7859-43f5-aafc
+samples-webgl/extensions/extensions_shader_derivatives.html	firefox		
+samples-webgl/extensions/extensions_shader_texture_lod.html	none	uncaught_error	UNSUPPORTED_EXTENSIONS: EXT_shader_texture_lod
+samples-webgl/extensions/extensions_shader_texture_lod_control.html	none	console_output	WebGL2 context acquired successfully
+samples-webgl/extensions/extensions_texture_lod_webgl2.html	firefox		
+samples-webgl/extensions/extensions_vertex_arrays_webgl1_management.html	firefox		
+samples-webgl/integrated/integrated_extension_combination.html	none	uncaught_error	Error: PLAYWRIGHT_FIREFOX_LIMITATION: Extensions OES_texture_float not available in Playwright Firefox. Test requires native Firefox browser. at main (file:///t
+samples-webgl/integrated/integrated_monolith_extreme.html	firefox		
+samples-webgl/integrated/integrated_ping_pong_extreme.html	firefox		
+samples-webgl/integrated/integrated_resource_zombie_farm.html	firefox		
+samples-webgl/integrated/integrated_state_churn.html	firefox		
+samples-webgl/integrated/integrated_webgl2_matrix_supreme.html	none	console_output	WebGL2 Matrix integration test completed successfully
+samples-webgl/integrated/integrated_zombie_resources_uaf.html	firefox		
+samples-webgl/limits/limits_renderbuffer_limits.html	firefox		
+samples-webgl/limits/limits_shader_program_limits_webgl2.html	firefox		
+samples-webgl/limits/limits_texture_size_limits.html	firefox		
+samples-webgl/limits/limits_vertex_uniform_limits.html	none	js_exception	Identifier 'vertexShaderSource' has already been declared
+samples-webgl/multipass/multipass_deferred_rendering_gbuffer.html	firefox		
+samples-webgl/multipass/multipass_multi_resolution_rendering.html	chrome-angle-vulkan		
+samples-webgl/multipass/multipass_post_processing_chain.html	firefox		
+samples-webgl/multipass/multipass_screen_space_effects.html	firefox		
+samples-webgl/multipass/multipass_screen_space_effects_v2.html	chrome-angle-vulkan		
+samples-webgl/multipass/multipass_shadow_mapping.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b10_s46_instancing_base.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b10_s47_primrestart_ranges.html	none	webgl_api_error	WebGL: INVALID_ENUM: enable: invalid capability
+samples-webgl/mutations/mutation_b10_s48_provoking_flat.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b10_s49_rasterizer_discard_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBuffer: attempt to use a deleted object
+samples-webgl/mutations/mutation_b10_s50_context_state.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBuffer: attempt to use a deleted object
+samples-webgl/mutations/mutation_b11_s51_ubo_large_blocks.html	firefox		
+samples-webgl/mutations/mutation_b11_s52_ubo_std140_packing.html	firefox		
+samples-webgl/mutations/mutation_b11_s53_ubo_copy_ranges.html	firefox		
+samples-webgl/mutations/mutation_b11_s54_ubo_invalidate.html	firefox		
+samples-webgl/mutations/mutation_b11_s55_ubo_map_ranges.html	firefox		
+samples-webgl/mutations/mutation_b12_s56_tf_rasterizer_discard.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+samples-webgl/mutations/mutation_b12_s57_tf_primitives_written.html	firefox		
+samples-webgl/mutations/mutation_b12_s58_tf_buffer_overflow.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+samples-webgl/mutations/mutation_b12_s59_tf_multi_program.html	firefox		
+samples-webgl/mutations/mutation_b12_s60_tf_indexed_drawing.html	none	webgl_api_error	WebGL: INVALID_ENUM: enable: invalid capability
+samples-webgl/mutations/mutation_b13_s61_sync_multiple_fences.html	firefox		
+samples-webgl/mutations/mutation_b13_s62_sync_wait_timeout.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b13_s63_sync_server_wait.html	none	webgl_api_error	WebGL: INVALID_VALUE: waitSync: invalid timeout
+samples-webgl/mutations/mutation_b13_s64_sync_query_interaction.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b13_s65_sync_delete_active.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: attempt to use a deleted object
+samples-webgl/mutations/mutation_b14_s66_query_occlusion_conservative.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginQuery: a query is already active for target
+samples-webgl/mutations/mutation_b14_s67_query_primitives_generated.html	none	webgl_api_error	WebGL: INVALID_ENUM: beginQuery: invalid target
+samples-webgl/mutations/mutation_b14_s68_sampler_all_parameters.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindSampler: attempt to use a deleted object
+samples-webgl/mutations/mutation_b14_s69_sampler_shadow_compare.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b14_s70_sampler_anisotropic.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindSampler: attempt to use a deleted object
+samples-webgl/mutations/mutation_b15_s71_integer_r32i_rw.html	none	webgl_api_error	WebGL: INVALID_ENUM: texSubImage2D: invalid texture target
+samples-webgl/mutations/mutation_b15_s72_integer_rgba32i_atomic.html	none	webgl_api_error	[.WebGL-0x1c2c00144e00] GL_INVALID_ENUM: glTexStorage2D: The 0x8C1A <target> is not supported in the current context or its dimensionality does not match the co
+samples-webgl/mutations/mutation_b15_s73_integer_texture_buffer.html	none	webgl_api_error	WebGL: INVALID_ENUM: bindTexture: invalid target
+samples-webgl/mutations/mutation_b15_s74_integer_mixed_formats.html	none	webgl_api_error	[.WebGL-0x1c2c00134e00] GL_INVALID_ENUM: glTexStorage2D: The 0x8C1A <target> is not supported in the current context or its dimensionality does not match the co
+samples-webgl/mutations/mutation_b15_s75_integer_render_target.html	none	webgl_api_error	[.WebGL-0x1c2c00178800] GL_INVALID_ENUM: glTexStorage2D: The 0x8C1A <target> is not supported in the current context or its dimensionality does not match the co
+samples-webgl/mutations/mutation_b16_s76_3dtex_volume_slices.html	firefox		
+samples-webgl/mutations/mutation_b16_s77_3dtex_subimage.html	firefox		
+samples-webgl/mutations/mutation_b16_s78_3dtex_compressed.html	firefox		
+samples-webgl/mutations/mutation_b16_s79_texarray_layers.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b16_s80_texarray_framebuffer.html	firefox		
+samples-webgl/mutations/mutation_b17_s81_texarray_cubemap.html	none	webgl_api_error	WebGL: INVALID_ENUM: bindTexture: invalid target
+samples-webgl/mutations/mutation_b17_s82_texarray_3d_mixed.html	firefox		
+samples-webgl/mutations/mutation_b17_s83_mrt_eight_targets.html	firefox		
+samples-webgl/mutations/mutation_b17_s84_mrt_mixed_formats.html	firefox		
+samples-webgl/mutations/mutation_b17_s85_mrt_layered.html	firefox		
+samples-webgl/mutations/mutation_b18_s86_mrt_blend_separate.html	firefox		
+samples-webgl/mutations/mutation_b18_s87_mrt_equation_separate.html	firefox		
+samples-webgl/mutations/mutation_b18_s88_depth_complex_functions.html	firefox		
+samples-webgl/mutations/mutation_b18_s89_stencil_twosided_ops.html	firefox		
+samples-webgl/mutations/mutation_b18_s90_depth_stencil_combined.html	firefox		
+samples-webgl/mutations/mutation_b19_s91_complex_vao_instancing.html	firefox		
+samples-webgl/mutations/mutation_b19_s92_indirect_drawing_multi.html	none	webgl_api_error	WebGL: INVALID_ENUM: bindBuffer: invalid target
+samples-webgl/mutations/mutation_b19_s93_pbo_async_transfers.html	none	webgl_api_error	WebGL: INVALID_OPERATION: texImage2D: a buffer is bound to PIXEL_UNPACK_BUFFER
+samples-webgl/mutations/mutation_b19_s94_copy_buffer_patterns.html	firefox		
+samples-webgl/mutations/mutation_b19_s95_vertex_attrib_formats.html	none	webgl_api_error	[.WebGL-0x1c2c00174800] GL_INVALID_OPERATION: glDrawArrays: Vertex shader input type does not match the type of the bound vertex attribute.
+samples-webgl/mutations/mutation_b1_s1_mrt_float_blend.html	firefox		
+samples-webgl/mutations/mutation_b1_s2_mrt_integer_layered.html	firefox		
+samples-webgl/mutations/mutation_b1_s3_depth_shadow_pcf.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b1_s4_stencil_twosided.html	firefox		
+samples-webgl/mutations/mutation_b1_s5_scissor_viewport.html	firefox		
+samples-webgl/mutations/mutation_b20_s100_hypercomplex_state_machine.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b20_s96_kitchen_sink_ubo_tf_mrt.html	none	webgl_api_error	WebGL: INVALID_ENUM: bindTransformFeedback: target must be TRANSFORM_FEEDBACK
+samples-webgl/mutations/mutation_b20_s97_kitchen_sink_sync_query_sampler.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b20_s98_kitchen_sink_integer_arrays.html	none	webgl_api_error	[.WebGL-0x1c2c00141a00] GL_INVALID_FRAMEBUFFER_OPERATION: glDrawArrays: Framebuffer is incomplete: No attachments and default size is zero.
+samples-webgl/mutations/mutation_b20_s99_kitchen_sink_depth_stencil_blend.html	firefox		
+samples-webgl/mutations/mutation_b21_s101_integer_r8_r16_formats.html	none	webgl_api_error	[.WebGL-0x1c2c00130800] GL_INVALID_OPERATION: glTexStorage2D: Texture is immutable.
+samples-webgl/mutations/mutation_b21_s102_integer_multisample.html	none	webgl_api_error	WebGL: INVALID_OPERATION: renderbufferStorageMultisample: for integer formats, samples > 0
+samples-webgl/mutations/mutation_b21_s103_integer_copy_operations.html	none	webgl_api_error	[.WebGL-0x1c2c00138e00] GL_INVALID_OPERATION: glDrawArrays: Fragment shader output type does not match the bound framebuffer attachment type.
+samples-webgl/mutations/mutation_b21_s104_integer_clear_patterns.html	none	webgl_api_error	[.WebGL-0x1c2c0013e000] GL_INVALID_OPERATION: glDrawArrays: Fragment shader output type does not match the bound framebuffer attachment type.
+samples-webgl/mutations/mutation_b21_s105_integer_readpixels.html	none	webgl_api_error	[.WebGL-0x1c2c00138e00] GL_INVALID_OPERATION: glDrawArrays: Fragment shader output type does not match the bound framebuffer attachment type.
+samples-webgl/mutations/mutation_b22_s106_texarray_64_layers.html	none	js_exception	ReferenceError: texArray2 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d06
+samples-webgl/mutations/mutation_b22_s107_texarray_copy_layers.html	none	js_exception	ReferenceError: texArray2 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d06
+samples-webgl/mutations/mutation_b22_s108_texarray_integer_layers.html	none	js_exception	[.WebGL-0x1c2c00139a00] GL_INVALID_ENUM: glTexStorage3D: The <internalformat> is not a sized or compressed texture format or it is unsupported in the current co
+samples-webgl/mutations/mutation_b22_s109_texarray_compressed_layers.html	none	js_exception	ReferenceError: compArray2 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d0
+samples-webgl/mutations/mutation_b22_s110_texarray_mrt_layers.html	none	js_exception	ReferenceError: mrtArray1 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d06
+samples-webgl/mutations/mutation_b23_s111_sampler_16_objects.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b23_s112_sampler_lod_control.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b23_s113_sampler_border_color.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b23_s114_sampler_deletion_patterns.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindSampler: attempt to use a deleted object
+samples-webgl/mutations/mutation_b23_s115_sampler_multitexture.html	none	webgl_api_error	[.WebGL-0x1c2c00138800] GL_INVALID_OPERATION: glDrawArrays: Two textures of different types use the same sampler location.
+samples-webgl/mutations/mutation_b24_s116_query_16_objects.html	firefox		
+samples-webgl/mutations/mutation_b24_s117_query_time_elapsed.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginQuery: a query is already active for target
+samples-webgl/mutations/mutation_b24_s118_query_delete_active.html	none	webgl_api_error	WebGL: INVALID_OPERATION: endQuery: target query is not active
+samples-webgl/mutations/mutation_b24_s119_query_availability_spam.html	firefox		
+samples-webgl/mutations/mutation_b24_s120_query_tf_overflow.html	none	js_exception	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b25_s121_sync_16_fences.html	none	webgl_api_error	WebGL: INVALID_ENUM: fenceSync: condition must be SYNC_GPU_COMMANDS_COMPLETE
+samples-webgl/mutations/mutation_b25_s122_sync_zero_timeout.html	none	webgl_api_error	WebGL: INVALID_ENUM: fenceSync: condition must be SYNC_GPU_COMMANDS_COMPLETE
+samples-webgl/mutations/mutation_b25_s123_sync_flush_control.html	none	webgl_api_error	WebGL: INVALID_ENUM: fenceSync: condition must be SYNC_GPU_COMMANDS_COMPLETE
+samples-webgl/mutations/mutation_b25_s124_sync_multi_context.html	none	webgl_api_error	WebGL: INVALID_ENUM: fenceSync: condition must be SYNC_GPU_COMMANDS_COMPLETE
+samples-webgl/mutations/mutation_b25_s125_sync_getSyncParameter.html	none	webgl_api_error	WebGL: INVALID_ENUM: fenceSync: condition must be SYNC_GPU_COMMANDS_COMPLETE
+samples-webgl/mutations/mutation_b26_s126_tf_integer_feedback.html	none	js_exception	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+samples-webgl/mutations/mutation_b26_s127_tf_query_combined.html	none	js_exception	ReferenceError: program is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d0633
+samples-webgl/mutations/mutation_b26_s128_tf_vao_switching.html	none	js_exception	ReferenceError: vao1 is not defined at main (
+samples-webgl/mutations/mutation_b26_s129_tf_buffer_base_range.html	none	js_exception	[.WebGL-0x10b400138800] GL_INVALID_OPERATION: glDrawArrays: It is undefined behaviour to have a used but unbound uniform buffer.
+samples-webgl/mutations/mutation_b26_s130_tf_integer_output.html	none	js_exception	[.WebGL-0x10b400139a00] GL_INVALID_FRAMEBUFFER_OPERATION: glClearBufferfv: Framebuffer is incomplete: No attachments and default size is zero.
+samples-webgl/mutations/mutation_b27_s131_mrt_integer_8_targets.html	none	js_exception	ReferenceError: tex0 is not defined at main (
+samples-webgl/mutations/mutation_b27_s132_mrt_per_target_blend.html	none	js_exception	ReferenceError: tex0 is not defined at main (
+samples-webgl/mutations/mutation_b27_s133_mrt_array_layered.html	none	js_exception	ReferenceError: texArray0 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d06
+samples-webgl/mutations/mutation_b27_s134_mrt_depth_variations.html	none	js_exception	ReferenceError: tex0 is not defined at main (
+samples-webgl/mutations/mutation_b27_s135_mrt_readbuffer.html	none	js_exception	ReferenceError: tex0 is not defined at main (
+samples-webgl/mutations/mutation_b28_s136_3dtex_256_depth.html	none	js_exception	[.WebGL-0x10b400138200] GL_INVALID_OPERATION: glTexImage3DRobustANGLE: Invalid combination of format, type and internalFormat.
+samples-webgl/mutations/mutation_b28_s137_3dtex_mipmap_complete.html	none	js_exception	ReferenceError: texture2 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d063
+samples-webgl/mutations/mutation_b28_s138_3dtex_sampler_wrap_r.html	none	js_exception	ReferenceError: sampler1 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d063
+samples-webgl/mutations/mutation_b28_s139_3dtex_integer_volume.html	none	js_exception	ReferenceError: texture2 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d063
+samples-webgl/mutations/mutation_b28_s140_sampler_compare_3d.html	none	js_exception	[.WebGL-0x10b400138200] GL_INVALID_OPERATION: glDrawArrays: Mismatch between texture format and sampler type (signed/unsigned/float/shadow).
+samples-webgl/mutations/mutation_b29_s141_instancing_1024_instances.html	none	js_exception	ReferenceError: instBuffer1 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d
+samples-webgl/mutations/mutation_b29_s142_instancing_query_combined.html	none	js_exception	ReferenceError: instBuffer is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d0
+samples-webgl/mutations/mutation_b29_s143_instancing_ubo_arrays.html	none	js_exception	[.WebGL-0x10b400138800] GL_INVALID_OPERATION: glDrawArraysInstanced: It is undefined behaviour to have a used but unbound uniform buffer.
+samples-webgl/mutations/mutation_b29_s144_instancing_tf_combined.html	none	js_exception	WebGL: INVALID_ENUM: bindTransformFeedback: target must be TRANSFORM_FEEDBACK
+samples-webgl/mutations/mutation_b29_s145_instancing_mrt_layered.html	none	js_exception	[.WebGL-0x10b400138800] GL_INVALID_OPERATION: glTexStorage3D: Texture is immutable.
+samples-webgl/mutations/mutation_b2_s10_pixel_pack_read.html	firefox		
+samples-webgl/mutations/mutation_b2_s6_alpha_coverage_ms.html	firefox		
+samples-webgl/mutations/mutation_b2_s7_sample_shading_min.html	firefox		
+samples-webgl/mutations/mutation_b2_s8_colormask_drawbuffers.html	none	webgl_api_error	WebGL: INVALID_OPERATION: drawBuffers: COLOR_ATTACHMENTi_EXT or NONE
+samples-webgl/mutations/mutation_b2_s9_fbo_blit_resolve.html	none	webgl_api_error	[.WebGL-0x10b400138800] GL_INVALID_OPERATION: glBlitFramebuffer: Attempt to blit from a multisampled framebuffer and the bounds or format of the color buffer do
+samples-webgl/mutations/mutation_b30_s146_kitchen_sink_integer_sampler_query.html	none	js_exception	[.WebGL-0x10b400138200] GL_INVALID_OPERATION: glTexStorage2D: Texture is immutable.
+samples-webgl/mutations/mutation_b30_s147_kitchen_sink_texarray_sync_tf.html	none	js_exception	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+samples-webgl/mutations/mutation_b30_s148_kitchen_sink_3dtex_mrt_instancing.html	none	js_exception	ReferenceError: mrtTex1 is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d0633
+samples-webgl/mutations/mutation_b30_s149_kitchen_sink_sampler_query_sync.html	none	js_exception	ReferenceError: program is not defined at main (ad11d964-7859-43f5-aafc-b7ba9d0633
+samples-webgl/mutations/mutation_b30_s150_hypercomplex_underrepresented.html	none	js_exception	[.WebGL-0x10b400138200] GL_INVALID_OPERATION: glDrawArraysInstanced: Two textures of different types use the same sampler location.
+samples-webgl/mutations/mutation_b31_s151_renderbuffer_multisample.html	none	webgl_api_error	[.WebGL-0x10b400138800] GL_INVALID_OPERATION: glRenderbufferStorageMultisample: Samples value is negative or greater than maximum supported value for the format
+samples-webgl/mutations/mutation_b31_s152_renderbuffer_formats.html	firefox		
+samples-webgl/mutations/mutation_b31_s153_renderbuffer_blitting.html	firefox		
+samples-webgl/mutations/mutation_b31_s154_renderbuffer_reallocation.html	firefox		
+samples-webgl/mutations/mutation_b31_s155_renderbuffer_mrt.html	none	webgl_api_error	[.WebGL-0x10b402338200] GL_INVALID_FRAMEBUFFER_OPERATION: glClearBufferfi: Framebuffer is incomplete: No attachments and default size is zero.
+samples-webgl/mutations/mutation_b32_s156_readpixels_formats.html	none	webgl_api_error	GL_INVALID_OPERATION : glReadPixels: invalid pack params combination
+samples-webgl/mutations/mutation_b32_s157_async_pixel_reads.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b32_s158_copytexsubimage_variants.html	firefox		
+samples-webgl/mutations/mutation_b32_s159_pixel_unpack.html	none	webgl_api_error	GL_INVALID_OPERATION : glTexImage3D: invalid unpack params combination
+samples-webgl/mutations/mutation_b32_s160_pixel_integer.html	none	webgl_api_error	GL_INVALID_OPERATION : glReadPixels: invalid pack params combination
+samples-webgl/mutations/mutation_b33_s161_integer_renderbuffers.html	none	webgl_api_error	WebGL: INVALID_OPERATION: renderbufferStorageMultisample: for integer formats, samples > 0
+samples-webgl/mutations/mutation_b33_s162_mixed_int_float_rbo.html	none	webgl_api_error	WebGL: INVALID_OPERATION: drawArrays: no valid shader program in use
+samples-webgl/mutations/mutation_b33_s163_int_tex_rbo_fbo.html	firefox		
+samples-webgl/mutations/mutation_b33_s164_rbo_blit_integer.html	none	webgl_api_error	WebGL: INVALID_OPERATION: renderbufferStorageMultisample: for integer formats, samples > 0
+samples-webgl/mutations/mutation_b33_s165_rbo_churn_integer.html	chrome-angle-gl		
+samples-webgl/mutations/mutation_b34_s166_instanced_readback.html	none	webgl_api_error	WebGL: INVALID_OPERATION: readPixels: buffer is not large enough for dimensions
+samples-webgl/mutations/mutation_b34_s167_instanced_mrt_reads.html	none	webgl_api_error	WebGL: INVALID_OPERATION: readPixels: buffer is not large enough for dimensions
+samples-webgl/mutations/mutation_b34_s168_instanced_copytex.html	firefox		
+samples-webgl/mutations/mutation_b34_s169_instanced_int_pixels.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b34_s170_multi_instance_read.html	none	webgl_api_error	WebGL: INVALID_OPERATION: readPixels: buffer is not large enough for dimensions
+samples-webgl/mutations/mutation_b35_s171_sampler_fence_sync.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b35_s172_sampler_lod_sync.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b35_s173_shadow_sampler_sync.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b35_s174_sampler_churn_sync.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindSampler: attempt to use a deleted object
+samples-webgl/mutations/mutation_b35_s175_anisotropic_sync.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b36_s176_tf_query_integration.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginQuery: a query is already active for target
+samples-webgl/mutations/mutation_b36_s177_multi_query_tf.html	none	webgl_api_error	[.WebGL-0x1ab400138800] GL_INVALID_OPERATION: glDrawArrays: Not enough space in bound transform feedback buffers.
+samples-webgl/mutations/mutation_b36_s178_query_deletion_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: getQueryParameter: attempt to use a deleted object
+samples-webgl/mutations/mutation_b36_s179_tf_rasterizer_query.html	firefox		
+samples-webgl/mutations/mutation_b36_s180_tf_query_vao_inst.html	none	webgl_api_error	[.WebGL-0x1ab400138800] GL_INVALID_OPERATION: glDrawArraysInstanced: Not enough space in bound transform feedback buffers.
+samples-webgl/mutations/mutation_b37_s181_rbo_read_sample.html	firefox		
+samples-webgl/mutations/mutation_b37_s182_sampler_int_rbo.html	none	webgl_api_error	[.WebGL-0x1ab400138800] GL_INVALID_FRAMEBUFFER_OPERATION: glReadPixelsRobustANGLE: Framebuffer is incomplete: No attachments and default size is zero.
+samples-webgl/mutations/mutation_b37_s183_multi_rbo_read_sampler.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float not enabled
+samples-webgl/mutations/mutation_b37_s184_rbo_blit_unpack_sampler.html	firefox		
+samples-webgl/mutations/mutation_b37_s185_rbo_mrt_read_samplers.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float not enabled
+samples-webgl/mutations/mutation_b38_s186_int_mrt_inst_query.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b38_s187_int_array_inst_query.html	none	webgl_api_error	[.WebGL-0x1ab400139a00] GL_INVALID_OPERATION: glDrawArraysInstanced: Fragment shader output type does not match the bound framebuffer attachment type.
+samples-webgl/mutations/mutation_b38_s188_int_3d_inst_query.html	none	webgl_api_error	[.WebGL-0x1ab400138800] GL_INVALID_OPERATION: glDrawArraysInstanced: Fragment shader output type does not match the bound framebuffer attachment type.
+samples-webgl/mutations/mutation_b38_s189_int_tex_indirect_query.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b38_s190_mixed_int_inst_query.html	none	webgl_api_error	[.WebGL-0x1ab400138800] GL_INVALID_OPERATION: glDrawArraysInstanced: Fragment shader output type does not match the bound framebuffer attachment type.
+samples-webgl/mutations/mutation_b39_s191_octopus_light.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b39_s192_octopus_medium.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b39_s193_octopus_heavy.html	none	webgl_api_error	WebGL not supported
+samples-webgl/mutations/mutation_b39_s194_octopus_integrated.html	none	webgl_api_error	WebGL not supported
+samples-webgl/mutations/mutation_b39_s195_octopus_stress.html	none	webgl_api_error	WebGL: INVALID_VALUE: transformFeedbackVaryings: too many varyings
+samples-webgl/mutations/mutation_b3_s11_ubo_multipoint.html	none	webgl_api_error	[.WebGL-0x1ab400138800] GL_INVALID_OPERATION: glDrawArrays: It is undefined behaviour to have a used but unbound uniform buffer.
+samples-webgl/mutations/mutation_b3_s12_ubo_offsets_range.html	firefox		
+samples-webgl/mutations/mutation_b3_s13_tf_interleaved.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+samples-webgl/mutations/mutation_b3_s14_tf_separate_pause.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: not enough transform feedback buffers bound
+samples-webgl/mutations/mutation_b3_s15_copy_buffer_subdata.html	firefox		
+samples-webgl/mutations/mutation_b40_s196_megamix_alpha.html	none	webgl_api_error	[.WebGL-0x1ab400137000] GL_INVALID_FRAMEBUFFER_OPERATION: glClearBufferfv: Framebuffer is incomplete: Attachments are not all the same size.
+samples-webgl/mutations/mutation_b40_s197_megamix_beta.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b40_s198_megamix_gamma.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b40_s199_megamix_delta.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b40_s200_final_boss.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b41_s201_renderbuffer_readpixels_mega.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b41_s202_renderbuffer_copytexsubimage.html	none	webgl_api_error	[.WebGL-0x1ab400139a00] GL_INVALID_OPERATION: glRenderbufferStorageMultisample: Samples value is negative or greater than maximum supported value for the format
+samples-webgl/mutations/mutation_b41_s203_renderbuffer_pixel_unpack.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b41_s204_renderbuffer_storage_extreme.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b41_s205_renderbuffer_mrt_pixel_reads.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b42_s206_integer_instancing_extreme.html	none	webgl_api_error	WebGL: INVALID_VALUE: clearBufferiv: invalid array size / srcOffset
+samples-webgl/mutations/mutation_b42_s207_integer_3d_instanced_layers.html	none	webgl_api_error	WebGL: INVALID_VALUE: clearBufferiv: invalid array size / srcOffset
+samples-webgl/mutations/mutation_b42_s208_integer_texarray_instancing.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b42_s209_mixed_integer_instancing.html	none	webgl_api_error	WebGL: INVALID_VALUE: clearBufferiv: invalid array size / srcOffset
+samples-webgl/mutations/mutation_b42_s210_integer_indirect_instancing.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b43_s211_sampler_extreme_sync.html	firefox		
+samples-webgl/mutations/mutation_b43_s212_sampler_lod_sync_polling.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b43_s213_shadow_samplers_waitsync.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b43_s214_anisotropic_sync_churn.html	firefox		
+samples-webgl/mutations/mutation_b43_s215_sampler_sync_query_triple.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b44_s216_query_mega_texarray.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginQuery: query type does not match target
+samples-webgl/mutations/mutation_b44_s217_texarray_query_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginQuery: a query is already active for target
+samples-webgl/mutations/mutation_b44_s218_renderbuffer_texarray_query.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b44_s219_renderbuffer_extreme_alpha.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b44_s220_renderbuffer_extreme_beta.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b45_s221_renderbuffer_perfection_alpha.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b45_s222_renderbuffer_perfection_beta.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b45_s223_renderbuffer_unused_apis.html	none	webgl_api_error	WebGL: INVALID_ENUM: renderbufferStorage: EXT_color_buffer_float/EXT_color_buffer_half_float not enabled
+samples-webgl/mutations/mutation_b45_s224_complete_api_coverage.html	firefox		
+samples-webgl/mutations/mutation_b45_s225_extension_diversity.html	none	webgl_api_error	[.WebGL-0x2b4c00138200] GL_INVALID_OPERATION: glCompressedTexImage3D: The format is not supported for 3D textures.
+samples-webgl/mutations/mutation_b46_s226_texarray_tf_write.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: transform feedback is already active
+samples-webgl/mutations/mutation_b46_s227_texarray_layered_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: getQueryParameter: 'query' is not a query object yet, since it has't been used by beginQuery
+samples-webgl/mutations/mutation_b46_s228_texarray_integer_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: transform feedback is already active
+samples-webgl/mutations/mutation_b46_s229_texarray_tf_rasterizer_discard.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b46_s230_texarray_compressed_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: transform feedback is already active
+samples-webgl/mutations/mutation_b47_s231_3dtexture_tf_write.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b47_s232_3dtexture_layered_tf.html	none	webgl_api_error	[.WebGL-0x2b4c00138800] GL_INVALID_OPERATION: glDrawArraysInstanced: Feedback loop formed between Framebuffer and active Texture.
+samples-webgl/mutations/mutation_b47_s233_3dtexture_integer_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b47_s234_3dtexture_tf_compute_style.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b47_s235_3dtexture_mipmap_tf.html	none	webgl_api_error	WebGL: INVALID_ENUM: getParameter: invalid parameter name
+samples-webgl/mutations/mutation_b48_s236_pixel_texarray_vao.html	none	webgl_api_error	GL_INVALID_OPERATION : glReadPixels: invalid pack params combination
+samples-webgl/mutations/mutation_b48_s237_int_rb_texarray.html	none	webgl_api_error	[.WebGL-0x2b4c00138200] GL_INVALID_FRAMEBUFFER_OPERATION: glClearBufferiv: Framebuffer is incomplete: Attachments are not all the same size.
+samples-webgl/mutations/mutation_b48_s238_int_pixel_texarray.html	none	webgl_api_error	GL_INVALID_OPERATION : glTexSubImage3D: invalid unpack params combination
+samples-webgl/mutations/mutation_b48_s239_rb_sync_texarray.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b48_s240_int_texarray_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginTransformFeedback: current active program does not specify any transform feedback varyings to record
+samples-webgl/mutations/mutation_b49_s241_instanced_renderbuffers_texarray.html	none	webgl_api_error	[.WebGL-0x2b4c00139a00] GL_INVALID_OPERATION: glDrawElementsInstanced: Feedback loop formed between Framebuffer and active Texture.
+samples-webgl/mutations/mutation_b49_s242_samplers_texarray_transformfeedback.html	firefox		
+samples-webgl/mutations/mutation_b49_s243_3dtex_integer_renderbuffers.html	none	webgl_api_error	[.WebGL-0x2b4c00138800] GL_INVALID_OPERATION: glDrawArrays: Feedback loop formed between Framebuffer and active Texture.
+samples-webgl/mutations/mutation_b4_s16_orphan_map.html	firefox		
+samples-webgl/mutations/mutation_b4_s17_vao_multiple.html	firefox		
+samples-webgl/mutations/mutation_b4_s18_index_primrestart.html	none	webgl_api_error	WebGL: INVALID_ENUM: enable: invalid capability
+samples-webgl/mutations/mutation_b4_s19_indirect_multidraw.html	none	webgl_api_error	WebGL: INVALID_ENUM: bindBuffer: invalid target
+samples-webgl/mutations/mutation_b4_s20_pbo_async.html	none	webgl_api_error	[.WebGL-0x2b4c0013a600] GL_INVALID_FRAMEBUFFER_OPERATION: glClear: Framebuffer is incomplete: No attachments and default size is zero.
+samples-webgl/mutations/mutation_b50_s244_3dtex_samplers_transformfeedback.html	none	webgl_api_error	[.WebGL-0x2b4c00138800] GL_INVALID_OPERATION: glDrawArrays: Not enough space in bound transform feedback buffers.
+samples-webgl/mutations/mutation_b50_s245_mrt_pixelops_transformfeedback.html	none	webgl_api_error	[.WebGL-0x2b4c00138800] GL_INVALID_FRAMEBUFFER_OPERATION: glClear: Framebuffer is incomplete: Attachment is not renderable.
+samples-webgl/mutations/mutation_b50_s246_mrt_renderbuffers_transformfeedback.html	none	webgl_api_error	WebGL: INVALID_OPERATION: drawBuffers: COLOR_ATTACHMENTi_EXT or NONE
+samples-webgl/mutations/mutation_b50_s247_3dtex_pixelops_transformfeedback.html	none	webgl_api_error	[.WebGL-0x2b4c00139a00] GL_INVALID_FRAMEBUFFER_OPERATION: glClear: Framebuffer is incomplete: Attachment is not renderable.
+samples-webgl/mutations/mutation_b51_s248_blending_renderbuffers_texture_arrays.html	firefox		
+samples-webgl/mutations/mutation_b51_s249_depth_stencil_ops_renderbuffers_texture_arrays.html	firefox		
+samples-webgl/mutations/mutation_b51_s250_renderbuffers_texture_arrays_ubos.html	firefox		
+samples-webgl/mutations/mutation_b52_s251_sampler_texarray_vao.html	firefox		
+samples-webgl/mutations/mutation_b52_s252_sync_texarray_vao.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b52_s253_pixelops_texarray_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: readPixels: buffer is not large enough for dimensions
+samples-webgl/mutations/mutation_b53_s254_3dtex_pixops_tf.html	none	webgl_api_error	WebGL: INVALID_VALUE: pixelStorei: invalid parameter for alignment
+samples-webgl/mutations/mutation_b53_s255_3dtex_pixops_vao.html	none	webgl_api_error	WebGL: INVALID_VALUE: pixelStorei: invalid parameter for alignment
+samples-webgl/mutations/mutation_b53_s256_pixops_texarray_vao.html	none	webgl_api_error	WebGL: INVALID_VALUE: pixelStorei: invalid parameter for alignment
+samples-webgl/mutations/mutation_b54_s257_sampler_texarray_tf.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b54_s258_integer_texarray_tf.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b54_s259_mrt_renderbuffers_tf.html	none	webgl_api_error	[.WebGL-0x34c400138200] GL_INVALID_FRAMEBUFFER_OPERATION: glDrawArrays: Framebuffer is incomplete: All attachments must be unique.
+samples-webgl/mutations/mutation_b5_s21_3dtex_volume.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b5_s22_texarray_layers.html	none	webgl_api_error	[.WebGL-0x34c400138200] GL_INVALID_FRAMEBUFFER_OPERATION: glClear: Framebuffer is incomplete: No attachments and default size is zero.
+samples-webgl/mutations/mutation_b5_s23_cubemap_array_seamless.html	none	webgl_api_error	WebGL: INVALID_ENUM: bindTexture: invalid target
+samples-webgl/mutations/mutation_b5_s24_swizzle_reinterpret.html	none	webgl_api_error	WebGL: INVALID_ENUM: texParameter: invalid parameter name
+samples-webgl/mutations/mutation_b5_s25_compressed_mipmaps.html	firefox		
+samples-webgl/mutations/mutation_b6_s26_texstorage_immutable.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b6_s27_integer_atomic.html	none	webgl_api_error	WebGL: INVALID_ENUM: bindBuffer: invalid target
+samples-webgl/mutations/mutation_b6_s28_sampler_compare.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b6_s29_subimage_storage3d.html	none	webgl_api_error	WebGL: INVALID_OPERATION: useProgram: program not valid
+samples-webgl/mutations/mutation_b6_s30_texview_levels.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b7_s31_ubo_array_dynamic.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b7_s32_texarray_dynamic.html	none	webgl_api_error	[.WebGL-0x2fa400136000] GL_INVALID_OPERATION: glTexStorage3D: Texture is immutable.
+samples-webgl/mutations/mutation_b7_s33_int_vertex_norm.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bufferData: no buffer
+samples-webgl/mutations/mutation_b7_s34_interp_flat_smooth.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindBuffer: attempt to use a deleted object
+samples-webgl/mutations/mutation_b7_s35_derivatives_lod.html	none	webgl_api_error	WebGL: INVALID_OPERATION: bindTexture: attempt to use a deleted object
+samples-webgl/mutations/mutation_b8_s36_bitfield_intmath.html	firefox		
+samples-webgl/mutations/mutation_b8_s37_builtins_ids.html	firefox		
+samples-webgl/mutations/mutation_b8_s38_stages_varyings.html	firefox		
+samples-webgl/mutations/mutation_b8_s39_precision_mixed.html	firefox		
+samples-webgl/mutations/mutation_b8_s40_preprocessor_macro.html	firefox		
+samples-webgl/mutations/mutation_b9_s41_sync_clientwait.html	none	webgl_api_error	WebGL: INVALID_OPERATION: clientWaitSync: timeout > MAX_CLIENT_WAIT_TIMEOUT_WEBGL
+samples-webgl/mutations/mutation_b9_s42_sync_serverwait.html	chrome-angle-vulkan		
+samples-webgl/mutations/mutation_b9_s43_query_occlusion.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginQuery: a query is already active for target
+samples-webgl/mutations/mutation_b9_s44_query_tf.html	none	webgl_api_error	WebGL: INVALID_OPERATION: beginQuery: a query is already active for target
+samples-webgl/mutations/mutation_b9_s45_instancing_divisors.html	firefox		
+samples-webgl/rendering/rendering_advanced_pipeline.html	firefox		
+samples-webgl/rendering/rendering_complex_lighting_advanced.html	firefox		
+samples-webgl/rendering/rendering_gbuffer_mrt_instanced.html	firefox		
+samples-webgl/rendering/rendering_ping_pong_texturing.html	firefox		
+samples-webgl/resource/resource_buffer_orphaning_cycles.html	firefox		
+samples-webgl/seeds/seed_compute_ssbo_atomic_transform_feedback_mrt.html	none	uncaught_error	WebGL Error: 1280
+samples-webgl/seeds/seed_compute_ssbo_transform_feedback_mrt_occlusion_ubo_sampler_3d.html	firefox		
+samples-webgl/seeds/seed_compute_transform_feedback_mrt_particles.html	chrome-angle-vulkan		
+samples-webgl/seeds/seed_hypercomplex_compute_atomic_ssbo_tf_mrt_3d_instanced_ubo_sampler_query.html	none	uncaught_error	WebGL Error: 1280
+samples-webgl/seeds/seed_hypercomplex_compute_transform_mrt_storm.html	none	js_exception	Failed to execute 'shaderSource' on 'WebGL2RenderingContext': parameter 1 is not of type 'WebGLShader'.
+samples-webgl/seeds/seed_hyperdimensional_particle_storm.html	none	js_exception	Identifier 'particleData' has already been declared
+samples-webgl/seeds/seed_integer_sync_transform_mrt_instanced.html	firefox		
+samples-webgl/seeds/seed_minimal_test.html	firefox		
+samples-webgl/seeds/seed_quantum_field_simulator.html	none	uncaught_error	WebGL Error: 1282
+samples-webgl/seeds/seed_query_conditional_mrt_stencil_blend_ubos.html	none	uncaught_error	WebGL Error: 1282
+samples-webgl/seeds/seed_simplified_biomass.html	none	uncaught_error	WebGL Error: 1280
+samples-webgl/seeds/seed_sparse_texture_view_msa_indirect_churn.html	none	js_exception	Failed to execute 'shaderSource' on 'WebGL2RenderingContext': parameter 1 is not of type 'WebGLShader'.
+samples-webgl/seeds/seed_ssbo_atomic_mrt_conditional_stencil_blend.html	firefox		
+samples-webgl/seeds/seed_ssbo_atomic_sync_timer_3d_mrt_instanced.html	none	uncaught_error	WebGL Error: 1282
+samples-webgl/seeds/seed_ssbo_atomic_timer_3d_mrt_instanced.html	none	js_exception	Identifier 'sharedData' has already been declared
+samples-webgl/seeds/seed_timer_sync_3d_mrt_instanced.html	firefox		
+samples-webgl/seeds/seed_transform_feedback_instanced_3d_texture.html	none	js_exception	Identifier 'texLoc' has already been declared
+samples-webgl/seeds/seed_transform_feedback_instanced_mrt_3d_texture.html	chrome-angle-vulkan		
+samples-webgl/seeds/seed_ubo_ssbo_tf_mrt_instanced_churn.html	firefox		
+samples-webgl/seeds/seed_webgl2_core_fusion.html	none	uncaught_error	WebGL Error: 1282
+samples-webgl/shaders/shaders_megashader_stress.html	firefox		
+samples-webgl/shaders/shaders_precision_torture.html	firefox		
+samples-webgl/texture_tech/texture_tech_advanced_filtering.html	firefox		
+samples-webgl/texture_tech/texture_tech_atlasing_packing.html	firefox		
+samples-webgl/texture_tech/texture_tech_dynamic_synthesis.html	firefox		
+samples-webgl/webgl2/webgl2_3d_textures.html	firefox		
+samples-webgl/webgl2/webgl2_blend_modes_advanced.html	firefox		
+samples-webgl/webgl2/webgl2_fragment_depth_modification.html	firefox		
+samples-webgl/webgl2/webgl2_instanced_rendering_core.html	firefox		
+samples-webgl/webgl2/webgl2_integer_textures_attributes.html	firefox		
+samples-webgl/webgl2/webgl2_query_objects.html	firefox		
+samples-webgl/webgl2/webgl2_sampler_objects_comparison.html	firefox		
+samples-webgl/webgl2/webgl2_shader_derivatives_core.html	firefox		
+samples-webgl/webgl2/webgl2_supremacy_integrated.html	firefox		
+samples-webgl/webgl2/webgl2_sync_objects_synchronization.html	firefox		
+samples-webgl/webgl2/webgl2_texture_arrays.html	firefox		
+samples-webgl/webgl2/webgl2_texture_lod_explicit.html	chrome-angle-vulkan		
+samples-webgl/webgl2/webgl2_transform_feedback_particle_simulation.html	firefox		
+samples-webgl/webgl2/webgl2_uniform_buffers_binding.html	none	js_exception	Identifier 'vertices' has already been declared
+samples-webgl/webgl2/webgl2_uniform_buffers_objects.html	firefox		
+samples-webgl/webgl2/webgl2_vertex_arrays_state_isolation.html	firefox		
