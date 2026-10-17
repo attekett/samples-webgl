@@ -305,6 +305,7 @@ Run `bash scripts/analyze_corpus.sh` for live numbers.
 - Low-diversity (monoculture) flags: 0 at 3-way, 0 at 4-way (api_audit combination matrix)
 - API surface (226 methods, 559 constants, 56 extensions): **225/226 methods exercised (99.6%)**. The only gap, `makeXRCompatible`, stays in the surface by decision because it needs a WebXR device.
 - GLSL builtin functions: **54/54**. GLSL built-in variables: **22/22**.
+- These figures are relative to the current coverage model. `docs/coverage-mapping-gaps-2026-10-17.md` lists the spec features, over-broad categories and missing topology edges the model cannot see, with proposed mapping changes.
 
 ## Browser Compatibility
 
