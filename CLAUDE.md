@@ -92,12 +92,16 @@ bash scripts/feature_matrix.sh
 # Corpus statistics (file count, lines, try-catch density, gl.* call density)
 bash scripts/analyze_corpus.sh
 
-# Generate recipes for closing 3-way gaps
+# Screenshot analysis: blank frames, visual duplicates, determinism
+./venv/bin/python scripts/analyze_screenshots.py --json /tmp/shots.json
+
+# Generate recipes for closing 3-way gaps (--availability ranks gaps by extensions testable here)
 PYTHONPATH=scripts ./venv/bin/python -m api_audit \
   --surface docs/webgl_api_surface.json \
   --corpus-dirs samples-webgl agent_outputs \
   --feature-categories docs/feature_categories.json \
   --interaction-topology docs/interaction_topology.json \
+  --availability docs/browser_webgl_info.txt \
   --combination-matrix /tmp/matrix.json \
   --gap-recipes /tmp/recipes.json \
   --n-way 3
@@ -260,6 +264,8 @@ Python-based Playwright test runner (~960 lines) that:
 | `scripts/feature_matrix.sh` | Legacy shell wrapper around feature_coverage.py |
 | `scripts/analyze_corpus.sh` | Corpus statistics (file count, line count, try-catch/gl.* call density) |
 | `scripts/api_audit/` | Python package: tree-sitter-based JS parsing, GLSL extraction, feature detection, combination matrix |
+| `scripts/analyze_screenshots.py` | Blank-frame detection, perceptual-hash dedupe, determinism diffing |
+| `scripts/api_audit/availability.py` | Availability-aware gap ranking (joins the surface with `check_gl.py` output) |
 
 ## Corpus Statistics
 

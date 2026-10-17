@@ -346,8 +346,12 @@ def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict,
 
     # Strip GLSL comments and match builtins across all shader sources
     result = set()
+    extra_set = set(extra_builtins) if extra_builtins else set()
     for source in shader_sources:
         stripped = strip_glsl_comments(source)
         result |= _match_builtins(stripped, all_builtin_names)
+        for name in extra_set:
+            if name not in result and re.search(rf'\b{re.escape(name)}\b', stripped):
+                result.add(name)
 
     return result

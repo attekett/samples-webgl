@@ -301,7 +301,7 @@ async function main() {
       currentWriteFBO = fbo2;
     }
 
-    requestAnimationFrame(render);
+    if ((window.__fc = (window.__fc || 0) + 1) < 8) requestAnimationFrame(render);
   }
 
   render();

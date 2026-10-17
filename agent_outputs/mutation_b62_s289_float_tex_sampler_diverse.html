@@ -3,7 +3,7 @@
 <body>
 <canvas id="webgl-canvas" width="256" height="256"></canvas>
 <script>
-const REQUIRED_EXTENSIONS = ['OES_texture_float'];
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
 
 async function main() {
     const canvas = document.getElementById('webgl-canvas');
@@ -15,7 +15,6 @@ async function main() {
         throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
     }
     REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
-    gl.getExtension('EXT_color_buffer_float');
 
     const texSize = 256;
     const texPixels = texSize * texSize;

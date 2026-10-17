@@ -86,6 +86,8 @@ def split_required_bonus_methods(category_def):
     Heuristic: first REQUIRED_METHOD_CAP methods are required, remainder is
     bonus. extension_methods and glsl_functions are always required because
     the category match rules depend on them.
+    For extension-only categories (requires_any_extension, no core methods),
+    the extension name itself is treated as a required gate.
     """
     methods = list(category_def.get("methods", []))
     extension_methods = list(category_def.get("extension_methods", []))
@@ -95,6 +97,11 @@ def split_required_bonus_methods(category_def):
     bonus_methods = methods[REQUIRED_METHOD_CAP:]
 
     required = required_methods + extension_methods + glsl_functions
+
+    if (not required and category_def.get("requires_any_extension")
+            and category_def.get("extensions")):
+        required = ["getExtension('" + category_def["extensions"][0] + "')"]
+
     return required, bonus_methods
 
 

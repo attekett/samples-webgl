@@ -362,7 +362,7 @@ async function main() {
    gl.disable(gl.BLEND);
    gl.bindTexture(gl.TEXTURE_3D, null);
 
-   requestAnimationFrame(render);
+   if ((window.__fc = (window.__fc || 0) + 1) < 8) requestAnimationFrame(render);
  }
 
  // Start rendering

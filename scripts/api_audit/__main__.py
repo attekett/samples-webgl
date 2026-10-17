@@ -121,6 +121,9 @@ def main():
                         help='Path to feature_categories.json config')
     parser.add_argument('--interaction-topology', type=Path, default=None,
                         help='Path to interaction_topology.json config')
+    parser.add_argument('--availability', type=Path, default=None,
+                        help='Path to browser_webgl_info.txt (check_gl.py '
+                             'output) for availability-aware gap ranking')
     parser.add_argument('--combination-matrix', type=Path, default=None,
                         help='Output combination matrix report (JSON)')
     parser.add_argument('--n-way', type=int, default=2,
@@ -294,10 +297,42 @@ def main():
                 if categories_config:
                     all_feature_names |= set(cats.keys())
 
+                avail_summary = None
+                if args.availability:
+                    from api_audit.availability import (
+                        parse_browser_info, extension_availability,
+                        annotate_and_sort_gaps, summarize_extension_coverage)
+
+                    browsers = parse_browser_info(args.availability)
+                    surface_exts = list(surface.get('extensions', {}).keys())
+                    avail_map = extension_availability(surface_exts, browsers)
+                    testable = [e for e, v in avail_map.items() if v['union']]
+                    print(f"Availability: {len(browsers)} browsers probed, "
+                          f"{len(testable)}/{len(surface_exts)} extensions "
+                          f"testable in env")
+
+                    report_matrix['gaps'] = annotate_and_sort_gaps(
+                        report_matrix['gaps'], categories_config, avail_map)
+                    avail_summary = summarize_extension_coverage(
+                        categories_config, avail_map)
+                    not_testable = [r['category'] for r in avail_summary
+                                    if not r['testable_in_env']]
+                    print(f"  Extension categories testable now: "
+                          f"{len(avail_summary) - len(not_testable)}"
+                          f"/{len(avail_summary)}")
+                    if not_testable:
+                        print(f"  Not testable in env: "
+                              f"{', '.join(not_testable)}")
+
                 output_data = {
                     "corpus_size": len(results),
                     "feature_count": len(all_feature_names),
                     "phase2_enriched": False,
+                    "availability": {
+                        "source": str(args.availability),
+                        "extensions": avail_map,
+                    } if args.availability else None,
+                    "extension_categories": avail_summary,
                     f"{n}way_combinations": report_matrix,
                 }
 
@@ -311,7 +346,10 @@ def main():
                 if report_matrix['gaps']:
                     print(f"  Top gaps ({len(report_matrix['gaps'])} total):")
                     for g in report_matrix['gaps'][:5]:
-                        print(f"    {g['priority']}: {g['combo']}")
+                        avail = g.get('availability', 'available')
+                        browsers = ','.join(g.get('available_browsers', []))
+                        print(f"    {g['priority']} [{avail}:{browsers}]: "
+                              f"{g['combo']}")
 
                 if args.gap_recipes:
                     from api_audit.gap_spec import generate_recipes

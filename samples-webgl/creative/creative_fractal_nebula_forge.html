@@ -59,10 +59,19 @@ async function main() {
   }
   gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 10, 10, gl.RGBA, gl.FLOAT, initialParams);
 
+  const geneticPoolTextureB = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, geneticPoolTextureB);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 10, 10, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 10, 10, gl.RGBA, gl.FLOAT, initialParams);
+
   // Create derivative texture for MRT
   const derivativeTexture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, derivativeTexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 10, 10, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 10, 10, 0, gl.RGBA, gl.FLOAT, new Float32Array(10 * 10 * 4));
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 
@@ -268,7 +277,7 @@ async function main() {
   `;
 
   // Create programs
-  const evolutionProgram = createProgram(gl, evolutionVS, evolutionFS);
+  const evolutionProgram = createProgram(gl, evolutionVS, evolutionFS, ['vEvolvedParams']);
   const mandelbrotProgram = createProgram(gl, mandelbrotVS, mandelbrotFS);
 
   if (!evolutionProgram || !mandelbrotProgram) {
@@ -318,6 +327,8 @@ async function main() {
   let time = 0;
   let currentTFBuffer = tfBuffer1;
   let nextTFBuffer = tfBuffer2;
+  let poolRead = geneticPoolTexture;
+  let poolWrite = geneticPoolTextureB;
 
   function render() {
     time += 0.016;
@@ -330,15 +341,16 @@ async function main() {
     gl.bindVertexArray(evolutionVAO);
 
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, geneticPoolTexture);
+    gl.bindTexture(gl.TEXTURE_2D, poolRead);
     gl.uniform1i(evolutionUniforms.uGeneticPool, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, poolWrite, 0);
     gl.uniform1f(evolutionUniforms.uMutationRate, mutationRate);
     gl.uniform1i(evolutionUniforms.uPrecisionMode, precisionMode);
 
     // Bind current TF buffer as input
     gl.bindBuffer(gl.ARRAY_BUFFER, currentTFBuffer);
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
 
-    // Bind next TF buffer as output
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, nextTFBuffer);
 
@@ -347,6 +359,7 @@ async function main() {
     gl.drawArrays(gl.POINTS, 0, organismCount);
     gl.endTransformFeedback();
     gl.disable(gl.RASTERIZER_DISCARD);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
 
     // MRT rendering pass
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -361,7 +374,6 @@ async function main() {
 
     // Upload evolved parameters as uniforms
     for (let i = 0; i < organismCount; i++) {
-      ivec2 texCoord = ivec2(i % 10, i / 10);
       // Read evolved parameters from MRT texture
       // In real implementation, would read from texture and upload
       gl.uniform4f(gl.getUniformLocation(mandelbrotProgram, `uFractalParams[${i}]`),
@@ -373,8 +385,9 @@ async function main() {
 
     // Swap TF buffers
     [currentTFBuffer, nextTFBuffer] = [nextTFBuffer, currentTFBuffer];
+    [poolRead, poolWrite] = [poolWrite, poolRead];
 
-    requestAnimationFrame(render);
+    if ((window.__fc = (window.__fc || 0) + 1) < 8) requestAnimationFrame(render);
   }
 
   render();
@@ -385,7 +398,7 @@ async function main() {
   }
 }
 
-function createProgram(gl, vsSource, fsSource) {
+function createProgram(gl, vsSource, fsSource, tfVaryings) {
   const vertexShader = gl.createShader(gl.VERTEX_SHADER);
   gl.shaderSource(vertexShader, vsSource);
   gl.compileShader(vertexShader);
@@ -397,6 +410,9 @@ function createProgram(gl, vsSource, fsSource) {
   const program = gl.createProgram();
   gl.attachShader(program, vertexShader);
   gl.attachShader(program, fragmentShader);
+  if (tfVaryings) {
+    gl.transformFeedbackVaryings(program, tfVaryings, gl.SEPARATE_ATTRIBS);
+  }
   gl.linkProgram(program);
 
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {

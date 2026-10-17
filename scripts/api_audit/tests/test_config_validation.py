@@ -169,6 +169,8 @@ def test_category_glsl_functions_in_surface_or_known_extras(
     KNOWN_EXTRAS = {
         "smoothstep", "refract", "reflect", "faceforward",
         "matrixCompMult", "inversesqrt", "textureGather", "textureGatherOffset",
+        "gl_SampleID", "gl_SamplePosition", "gl_SampleMaskIn", "gl_SampleMask",
+        "sample", "noperspective", "gl_ClipDistance", "gl_FragDepth", "depth_greater",
     }
     missing = []
     for cat_name, cat in feature_categories["categories"].items():
