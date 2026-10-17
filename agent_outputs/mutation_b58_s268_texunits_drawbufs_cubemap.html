@@ -111,14 +111,17 @@ void main() {
         gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT5, texTarget2D, fboTextures[5], 0);
         gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT6, texTarget2D, fboTextures[6], 0);
         gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT7, texTarget2D, fboTextures[7], 0);
-        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, texTarget2D, fboTextures[8], 0);
-        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT1, texTarget2D, fboTextures[9], 0);
-        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT2, texTarget2D, fboTextures[10], 0);
-        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT3, texTarget2D, fboTextures[11], 0);
-        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT4, texTarget2D, fboTextures[12], 0);
-        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT5, texTarget2D, fboTextures[13], 0);
-        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT6, texTarget2D, fboTextures[14], 0);
-        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT7, texTarget2D, fboTextures[15], 0);
+        const maxColorAttachments = gl.getParameter(gl.MAX_COLOR_ATTACHMENTS);
+        if (maxColorAttachments > 8) {
+            gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT8, texTarget2D, fboTextures[8], 0);
+            gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT9, texTarget2D, fboTextures[9], 0);
+            gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT10, texTarget2D, fboTextures[10], 0);
+            gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT11, texTarget2D, fboTextures[11], 0);
+            gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT12, texTarget2D, fboTextures[12], 0);
+            gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT13, texTarget2D, fboTextures[13], 0);
+            gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT14, texTarget2D, fboTextures[14], 0);
+            gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT15, texTarget2D, fboTextures[15], 0);
+        }
     } catch(e) {}
 
     let vao, vbo;
@@ -191,14 +194,17 @@ void main() {
         const db5 = gl.getParameter(gl.DRAW_BUFFER5);
         const db6 = gl.getParameter(gl.DRAW_BUFFER6);
         const db7 = gl.getParameter(gl.DRAW_BUFFER7);
-        const db8 = gl.getParameter(gl.DRAW_BUFFER0);
-        const db9 = gl.getParameter(gl.DRAW_BUFFER1);
-        const db10 = gl.getParameter(gl.DRAW_BUFFER2);
-        const db11 = gl.getParameter(gl.DRAW_BUFFER3);
-        const db12 = gl.getParameter(gl.DRAW_BUFFER4);
-        const db13 = gl.getParameter(gl.DRAW_BUFFER5);
-        const db14 = gl.getParameter(gl.DRAW_BUFFER6);
-        const db15 = gl.getParameter(gl.DRAW_BUFFER7);
+        const maxDrawBuffers = gl.getParameter(gl.MAX_DRAW_BUFFERS);
+        if (maxDrawBuffers > 8) {
+            gl.getParameter(gl.DRAW_BUFFER8);
+            gl.getParameter(gl.DRAW_BUFFER9);
+            gl.getParameter(gl.DRAW_BUFFER10);
+            gl.getParameter(gl.DRAW_BUFFER11);
+            gl.getParameter(gl.DRAW_BUFFER12);
+            gl.getParameter(gl.DRAW_BUFFER13);
+            gl.getParameter(gl.DRAW_BUFFER14);
+            gl.getParameter(gl.DRAW_BUFFER15);
+        }
     } catch(e) {}
 
     try {
@@ -226,6 +232,7 @@ void main() {
 
     try {
         const err = gl.getError();
+        if (gl.getParameter(gl.ACTIVE_TEXTURE) !== gl.TEXTURE) { gl.getParameter(gl.ACTIVE_TEXTURE); }
         if (err === gl.INVALID_ENUM) {}
         if (err === gl.INVALID_VALUE) {}
         if (err === gl.OUT_OF_MEMORY) {}

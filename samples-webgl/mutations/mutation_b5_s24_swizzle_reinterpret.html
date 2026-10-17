@@ -60,6 +60,9 @@ async function main() {
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(textureTarget, gl.TEXTURE_WRAP_R, gl.REPEAT);
         gl.texParameteri(textureTarget, gl.TEXTURE_COMPARE_FUNC, gl.EQUAL);
+        gl.bindTexture(textureTarget, tex3);
+        gl.texImage2D(textureTarget, 0, gl.ALPHA, 16, 16, 0, gl.ALPHA, gl.UNSIGNED_BYTE, new Uint8Array(16 * 16));
+        gl.texParameteri(textureTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.bindTexture(textureTarget, tex1);
     } catch(e) {}
 

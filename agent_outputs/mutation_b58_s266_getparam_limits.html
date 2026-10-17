@@ -229,6 +229,13 @@ void main() {
         gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS);
         gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS);
         gl.getParameter(gl.TRANSFORM_FEEDBACK_BUFFER_BINDING);
+        gl.bindBufferRange(gl.TRANSFORM_FEEDBACK_BUFFER, 0, buffer2, 4, 256);
+        gl.getIndexedParameter(gl.TRANSFORM_FEEDBACK_BUFFER_SIZE, 0);
+        gl.getIndexedParameter(gl.TRANSFORM_FEEDBACK_BUFFER_START, 0);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        gl.getProgramParameter(program, gl.ACTIVE_UNIFORM_BLOCKS);
+        gl.getProgramParameter(program, gl.TRANSFORM_FEEDBACK_BUFFER_MODE);
+        gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_IMMUTABLE_LEVELS);
         gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
         gl.getParameter(gl.READ_FRAMEBUFFER_BINDING);
         gl.getParameter(gl.VERTEX_ARRAY_BINDING);

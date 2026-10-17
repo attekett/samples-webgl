@@ -165,7 +165,8 @@ async function main() {
         // Fill with integer data
         const scratchTex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, scratchTex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 64, 64, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.ALPHA, 64, 64, 0, gl.ALPHA, gl.UNSIGNED_BYTE, new Uint8Array(64 * 64));
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         const scratchArray = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, scratchArray);
         gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 64, 64, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
