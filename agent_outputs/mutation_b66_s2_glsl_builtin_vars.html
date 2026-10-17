@@ -121,6 +121,23 @@ void main() {
     } catch(e) {}
 
     try {
+        const probe = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(probe, `#version 300 es
+out gl_PerVertex {
+    vec4 gl_Position;
+    float gl_PointSize;
+};
+void main() {
+    gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+    gl_PointSize = 1.0;
+}`);
+        gl.compileShader(probe);
+        gl.getShaderParameter(probe, gl.COMPILE_STATUS);
+        gl.getShaderInfoLog(probe);
+        gl.deleteShader(probe);
+    } catch(e) {}
+
+    try {
         program = gl.createProgram();
         gl.attachShader(program, vs);
         gl.attachShader(program, fs);
