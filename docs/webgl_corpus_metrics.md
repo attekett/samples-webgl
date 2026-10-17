@@ -116,4 +116,4 @@ Each lane ran the baseline and expanded manifests for 300 seconds on the same ma
 
 Both expanded campaigns preserved every baseline requirement. Firefox failed the gate only on clean variants, by 8. Rerunning the unchanged Firefox baseline moved that count by 60, so the 8-variant shortfall is within the run-to-run spread; the image gain (+39) is larger than the repeat's (+9). No Chrome repeat was run. Grizzly per-control time is about 2.1 times the profiler's in Chrome and 1.0 times in Firefox.
 
-The active `mutator_baseline` symlinks are unchanged by this measurement.
+On this evidence the six seeds were added to `mutator_baseline`: the five WebGL2 core seeds in `core/` and the multi-draw seed in `chrome_extensions/`. The resulting directories match the measured Firefox and Chrome manifests exactly.
