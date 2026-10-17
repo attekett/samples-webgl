@@ -103,3 +103,17 @@ Six self-contained seeds now cover the main measured gaps. The five WebGL2 core 
 Compared with the original clean controls, the [expanded Chrome report](snapshots/webgl-corpus-expanded-chrome-2026-10-16.md) adds 72 executed requirements and the [expanded Firefox report](snapshots/webgl-corpus-expanded-firefox-2026-10-16.md) adds 73, without losing a baseline requirement. The additions include 23 core methods and 23 overloads in each lane, plus new value classes, API pairs, and resource-flow sequences. The full inventory is now 428 canonical HTML sources. The complete campaigns measured 14/14 clean Chrome controls with 143/144 clean variants, and 12/12 clean Firefox controls with 129/130 clean variants. The single non-clean variant in each lane replaced a UBO seed's final draw count with zero, so it had no positive-work draw.
 
 The 12-second [Chrome comparison](snapshots/webgl-corpus-expanded-chrome-comparison-2026-10-16.md) preserved baseline requirements and increased distinct images from 24 to 30, but produced 48 rather than 52 clean variants; distinct flow signatures stayed at 32. The [Firefox comparison](snapshots/webgl-corpus-expanded-firefox-comparison-2026-10-16.md) produced 18 clean variants, 13 flow signatures, and 15 images, versus 25, 18, and 18 for the existing baseline. These finite campaigns do not pass the equal-time adoption gate, and the new controls have no Grizzly calibration. The six files remain in `agent_outputs/` for targeted corpus use; the active `mutator_baseline` symlinks remain unchanged. The expanded raw ledgers are under `/tmp/periwinkle-coverage-expanded-*-release-20261016` and `/tmp/periwinkle-coverage-expanded-*-time-20261016`.
+
+## 300-second comparison and calibration (2026-10-17)
+
+Each lane ran the baseline and expanded manifests for 300 seconds on the same machine, browser executables, and lanes as above, with `--rng-seed 947 --samples-per-family 1 --mixed-samples 300 --max-edits 3`. No campaign exhausted its samples. Grizzly calibration of the expanded controls completed 28/28 Chrome and 24/24 Firefox runs with verified lanes, and both reports attach it with status `calibrated`.
+
+| Lane | Clean variants | Distinct flows | Distinct images | Gate |
+| --- | --- | --- | --- | --- |
+| [Chrome/ANGLE-Vulkan](snapshots/webgl-corpus-expanded-chrome-comparison-300s-2026-10-17.md), 8 → 14 seeds | 1123 → 1157 | 478 → 544 | 256 → 312 | eligible |
+| [Firefox](snapshots/webgl-corpus-expanded-firefox-comparison-300s-2026-10-17.md), 7 → 12 seeds | 548 → 540 | 264 → 289 | 149 → 188 | not eligible |
+| [Firefox repeat](snapshots/webgl-corpus-firefox-repeat-300s-2026-10-17.md), same 7 seeds twice | 548 → 608 | 264 → 286 | 149 → 158 | — |
+
+Both expanded campaigns preserved every baseline requirement. Firefox failed the gate only on clean variants, by 8. Rerunning the unchanged Firefox baseline moved that count by 60, so the 8-variant shortfall is within the run-to-run spread; the image gain (+39) is larger than the repeat's (+9). No Chrome repeat was run. Grizzly per-control time is about 2.1 times the profiler's in Chrome and 1.0 times in Firefox.
+
+The active `mutator_baseline` symlinks are unchanged by this measurement.
