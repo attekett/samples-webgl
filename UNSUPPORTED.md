@@ -128,6 +128,7 @@ Based on `docs/browser_webgl_info.txt`, the extension availability is **browser-
 - **Cause**: Firefox has stricter WebGL validation than Chromium, rejecting certain operations that Chromium allows
 - **Status**: Functional in Chromium, Firefox has stricter validation rules
 - **Impact**: Some complex tests work in Chromium but not Firefox automation environment
+- **Pixel-unpack-buffer uploads**: Firefox logs a performance warning ("Uploads from a buffer with a final row with a byte count smaller than the row stride") for every `texImage`/`texSubImage` sourced from a `PIXEL_UNPACK_BUFFER`, whatever the size or alignment. Validate seeds built on such uploads, such as `creative_data_ouroboros.html`, in Chromium
 
 ## Environment Notes
 - **Firefox**: Full extension support, recommended for extension-heavy tests

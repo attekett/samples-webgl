@@ -8,7 +8,6 @@
         const REQUIRED_EXTENSIONS = [];
 
         async function main() {
-            console.log("Starting Main...");
             const canvas = document.getElementById('webgl-canvas');
             const gl = canvas.getContext('webgl2');
             if (!gl) throw new Error("WebGL2 not supported");
@@ -25,7 +24,6 @@
                 gl.compileShader(shader);
                 if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
                     const log = gl.getShaderInfoLog(shader);
-                    console.error("Shader Compile Error:", log);
                     throw new Error("Shader Compile Error: " + log);
                 }
                 return shader;
@@ -38,7 +36,6 @@
                 gl.linkProgram(program);
                 if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
                     const log = gl.getProgramInfoLog(program);
-                    console.error("Program Link Error:", log);
                     throw new Error("Program Link Error: " + log);
                 }
                 return program;
@@ -104,10 +101,8 @@
     }
     `;
 
-            console.log("Compiling Shaders...");
             const processProg = createProgram(gl, processVS, processFS);
             const verifyProg = createProgram(gl, verifyVS, verifyFS);
-            console.log("Shaders Compiled.");
 
             // --- Resources ---
 
@@ -184,7 +179,6 @@
 
             const TOTAL_CYCLES = 5;
 
-            console.log("Starting Cycles...");
             for (let cycle = 0; cycle < TOTAL_CYCLES; cycle++) {
 
                 // 1. VBO -> PBO Unpack
@@ -246,16 +240,11 @@
 
             const error = gl.getError();
             if (error !== gl.NO_ERROR) {
-                console.error("WebGL Error Code:", error);
                 throw new Error("WebGL Error: " + error);
             }
-            console.log("Success");
         }
 
-        main().catch(e => {
-            console.error("Exception:", e.message);
-            console.error(e.stack);
-        });
+        main().catch(err => { throw err; });
     </script>
 </body>
 
