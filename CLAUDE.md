@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **WebGL/WebGL2 fuzzing corpus project** containing **405 validated test files** designed for mutation-based fuzzing with Radamsa. The corpus is split between `agent_outputs/` (38 mutation seeds, batches b55–b66) and `samples-webgl/` (367 files across themed subdirectories — `mutations/`, `seeds/`, `creative/`, `webgl2/`, `extensions/`, etc.).
+This is a **WebGL/WebGL2 fuzzing corpus project** containing **572 test files** designed for mutation-based fuzzing with Radamsa. The corpus is split between `agent_outputs/` (207 HTML files at the top level, including mutation seed batches b55–b99, plus the `mutator_baseline/` symlink set) and `samples-webgl/` (365 files across themed subdirectories — `mutations/`, `seeds/`, `creative/`, `webgl2/`, `extensions/`, etc.).
 
 **Critical distinction**: This is NOT a conformance test suite. Test cases are "high-biomass" seeds for mutation-based fuzzing, featuring "spaghetti-like" valid resource usage patterns that mutators can corrupt into security vulnerabilities.
 
-**Corpus status**: Production-ready. All critical, high, and medium 3-way feature combination gaps are closed. WebGL 2.0 reference card is 100% covered across methods, constants, GLSL functions, and GLSL built-in variables. See `docs/plans/2026-01-28-round8-completion-summary.md` for the round-8 milestone and recent commits (b62–b66) for follow-up coverage work.
+**Corpus status**: Production-ready. The 3-way (526/526) and 4-way (2947/2947) connected feature combinations are fully covered, with 0 low-diversity flags. 225/226 API surface methods are exercised; only `makeXRCompatible` is missing (see Coverage Milestones). Every seed runs strictly clean in at least one browser lane (see Browser Compatibility). See `docs/plans/2026-01-28-round8-completion-summary.md` for the round-8 milestone and recent commits (b71–b99) for newer coverage work.
 
 ## Project-Specific Rules
 
@@ -29,6 +29,7 @@ This is a **WebGL/WebGL2 fuzzing corpus project** containing **405 validated tes
 - Extension checking required before advanced features
 - WebGL2 context required for all tests
 - Output files go to `agent_outputs/` directory
+- Seeds must not call `loseContext`: the runner always fails on context loss
 
 ## Build & Test Commands
 
@@ -61,11 +62,15 @@ deactivate
 # Test multiple files
 ./run_tests.sh --test-dir samples-webgl --browsers firefox
 
-# Run all tests with batch processing
-python run_all_tests.py
+# Chrome lanes (ANGLE-Vulkan, ANGLE-GL)
+./run_tests.sh --test-file <f> --browsers chromium --browser-config config/angle_vulkan.json
+./run_tests.sh --test-file <f> --browsers chromium --browser-config config/angle_gl.json
+
+# Unit tests (580 passed at ea64864)
+python -m pytest -q scripts/tests scripts/api_audit/tests
 ```
 
-**Important**: Always test with **Firefox** for extension-heavy tests, as it has superior WebGL extension support compared to Chromium in Playwright.
+**Important**: Test with **Firefox** first, then with the Chrome lane the seed targets (see Browser Compatibility).
 
 ### Test Validation
 
@@ -75,11 +80,14 @@ After running tests, check the generated `.json` file for success criteria:
 {
   "passed": true,
   "console_logs": [],
+  "warnings": [],
   "javascript_errors": [],
   "webgl_errors": [],
   "errors": []
 }
 ```
+
+`webgl_test_runner.py` sets `passed` only when there are no errors, JS errors, WebGL errors or warnings. Console `warn` counts as a warning and console `error`/`assert` counts as an error. Context loss, an unfinished test or a missing canvas also fails. A clean seed additionally needs empty `console_logs`. Known perf-warning traps: every `PIXEL_UNPACK_BUFFER` texture upload warns in Firefox (target those seeds at Chrome), and Chrome warns on synchronous `readPixels` stalls (read through a `PIXEL_PACK_BUFFER`).
 
 **Never assume fixes work - always re-run validation after changes.**
 
@@ -109,12 +117,16 @@ PYTHONPATH=scripts ./venv/bin/python -m api_audit \
 # Primary coverage tool (AST-based, replaces grep-based feature_matrix.sh)
 python3 scripts/feature_coverage.py                       # Feature matrix with depth (P/M/D)
 python3 scripts/feature_coverage.py --combinations 3      # 3-way feature combination gaps
+python3 scripts/feature_coverage.py --combinations 4      # 4-way feature combination gaps
 python3 scripts/feature_coverage.py --api-surface-coverage # Per-method WebGL2 API coverage
 python3 scripts/feature_coverage.py --glsl-detail          # Per-GLSL-builtin seed counts
 python3 scripts/feature_coverage.py --glsl-vars-detail     # Per-GLSL-built-in-variable seed counts
 python3 scripts/feature_coverage.py --passed-only          # Filter to seeds that pass at runtime
 python3 scripts/feature_coverage.py --snapshot FILE        # Save coverage to JSON for diffing
 python3 scripts/feature_coverage.py --diff PREV_SNAPSHOT   # Compare against an earlier snapshot
+
+# Inventory, per-lane mutation profile, coverage report (usage: docs/webgl_corpus_metrics.md)
+python scripts/corpus_metrics.py inventory|profile|report ...
 ```
 
 ## Architecture Overview
@@ -196,14 +208,14 @@ Tests maximize "fuzzing biomass" for Radamsa mutation. See **docs/plans/2026-01-
 
 ### Test Categories
 
-**`agent_outputs/` (38 files):** Recent agent-generated mutation seeds, batches b55–b66, targeting specific feature-combination and reference-card coverage gaps. New seeds typically land here.
+**`agent_outputs/` (207 HTML files):** Agent-generated mutation seeds, batches b55–b99 (the local b66–b70 line was renumbered b94–b98), plus targeted WebGL2 seeds. New seeds typically land here. `agent_outputs/mutator_baseline/` holds symlinks to the deployable mutator input: `core/` (12 seeds, Firefox or Chrome) and `chrome_extensions/` (2 seeds, Chrome ANGLE-Vulkan only).
 
-**`samples-webgl/` (367 files):** Bulk corpus, organized into themed subdirectories.
+**`samples-webgl/` (365 files):** Bulk corpus, organized into themed subdirectories.
 
 | Subdirectory | Files | Purpose |
 |---|---|---|
 | `mutations/` | 259 | Mutation seeds, batches b1–b54 (the corpus core) |
-| `seeds/` | 21 | Hypercomplex / high-biomass seeds combining many features |
+| `seeds/` | 20 | Hypercomplex / high-biomass seeds combining many features |
 | `creative/` | 18 | Visual effect demos |
 | `webgl2/` | 16 | WebGL2 core feature tests |
 | `extensions/` | 14 | Extension-specific seeds |
@@ -212,7 +224,7 @@ Tests maximize "fuzzing biomass" for Radamsa mutation. See **docs/plans/2026-01-
 | `errors/` | 5 | Error path and boundary tests |
 | `rendering/` | 4 | Rendering pipeline tests |
 | `limits/` | 4 | WebGL limit tests |
-| `edge_cases/` | 4 | Error path and boundary tests |
+| `edge_cases/` | 3 | Error path and boundary tests |
 | `texture_tech/` | 3 | Texture technique tests |
 | `compute/` | 3 | Compute-style patterns |
 | `shaders/` | 2 | Shader-focused tests |
@@ -239,9 +251,9 @@ See **docs/plans/2026-01-27-mutation-fuzzing-seed-structure-design.md** for comp
 
 ### Test Runner (`webgl_test_runner.py`)
 
-Python-based Playwright test runner (~960 lines) that:
+Python-based Playwright test runner that:
 
-- Executes HTML test files in real browsers (Firefox, Chromium, Edge)
+- Executes HTML test files in real browsers (Firefox, Chromium with `--browser-config` lane files, WebKit)
 - Captures JavaScript errors, WebGL errors, and console output
 - Generates detailed JSON reports per test file
 - Takes screenshots of rendered output
@@ -253,8 +265,9 @@ Python-based Playwright test runner (~960 lines) that:
 | Script | Purpose |
 |--------|---------|
 | `run_tests.sh` | Main test launcher with venv auto-detection |
-| `webgl_test_runner.py` | Playwright-based test execution engine (~960 lines) |
-| `run_all_tests.py` | Batch test execution across the corpus |
+| `webgl_test_runner.py` | Playwright-based test execution engine; strict pass/fail; `--browser-config` selects the Chrome ANGLE lane |
+| `run_all_tests.py` | Stale: scans the missing `testcases/`; use `run_tests.sh --test-dir` |
+| `config/angle_vulkan.json`, `config/angle_gl.json` | Chrome lane flags |
 | `run_tests.py` | Python wrapper for venv management |
 | `setup_venv.sh` | Virtual environment initialization |
 | `cleanup_js_comments.py` | Strip comments from HTML test files |
@@ -265,37 +278,39 @@ Python-based Playwright test runner (~960 lines) that:
 | `scripts/analyze_corpus.sh` | Corpus statistics (file count, line count, try-catch/gl.* call density) |
 | `scripts/api_audit/` | Python package: tree-sitter-based JS parsing, GLSL extraction, feature detection, combination matrix |
 | `scripts/analyze_screenshots.py` | Blank-frame detection, perceptual-hash dedupe, determinism diffing |
+| `scripts/corpus_metrics.py` | Inventory, per-lane mutation profile, coverage report and seed manifest; see `docs/webgl_corpus_metrics.md` |
+| `scripts/webgl_mutator.py` | Valid-flow WebGL mutator |
+| `scripts/calibrate_webgl_lifecycle.py` | Grizzly lifecycle calibration for `corpus_metrics` |
 | `scripts/api_audit/availability.py` | Availability-aware gap ranking (joins the surface with `check_gl.py` output) |
 
 ## Corpus Statistics
 
 | Metric | Value |
 |--------|-------|
-| Total HTML test files | 405 (38 in `agent_outputs/`, 367 in `samples-webgl/`) |
-| Mutation seed batches | 66 (b1–b66; b1–b54 in `samples-webgl/mutations/`, b55–b66 in `agent_outputs/`) |
-| Mutation seeds | 297 |
-| Iterative rounds completed | 8 (round 8 complete; ongoing follow-up batches b62–b66 closing PDF reference gaps) |
-| Feature categories tracked | 23 (matrix) + 6 ubiquitous |
-| Average seed complexity | ~250 lines |
-| Total `gl.*` API calls | ~40,700 (avg 100/seed) |
-| Try-catch blocks | ~3,700 (avg 7.3/seed) |
+| Total HTML test files | 572 (207 in `agent_outputs/`, 365 in `samples-webgl/`) |
+| Mutation seed batches | b1–b99 (b1–b54 in `samples-webgl/mutations/`, b55–b99 in `agent_outputs/`) |
+| Mutation seeds | 455 |
+| Feature categories tracked | 33 (`docs/feature_categories.json`), 7 of them ubiquitous and left out of the matrix (Uniforms, Viewport/Scissor, Vertex Attributes, Buffer Operations, Shader Pipeline, Draw Calls, Pipeline State) |
+| Average seed complexity | ~235 lines |
+| Total lines | 134,827 |
+| Total `gl.*` API calls | 57,045 (avg 99/seed) |
+| Try-catch blocks | 4,842 (avg 7.1/seed) |
 
 Run `bash scripts/analyze_corpus.sh` for live numbers.
 
 ### Coverage Milestones
 
-- All critical 2-way feature gaps closed
-- All critical/high/medium 3-way feature gaps closed (83% reduction)
-- WebGL 2.0 reference card: **100% coverage** across methods (178/178), constants (235/235), GLSL builtin functions (44/44), GLSL builtin variables (22/22)
-- API surface: **225/225 methods exercised (100%)** across the corpus
-- GLSL builtins: **54/54** (function union of surface + categories)
-- 3-way feature combinations: **467/467 covered (100%)** topology-connected combos
-- Per-category coverage thresholds (Transform Feedback, Pixel Operations, Texture Arrays, etc.) all exceeded
+- 3-way feature combinations: **526/526** topology-connected combos covered (100%)
+- 4-way feature combinations: **2947/2947** covered (100%)
+- Low-diversity (monoculture) flags: 0 at 3-way, 0 at 4-way (api_audit combination matrix)
+- API surface (226 methods, 559 constants, 56 extensions): **225/226 methods exercised (99.6%)**. The only gap, `makeXRCompatible`, stays in the surface by decision because it needs a WebXR device.
+- GLSL builtin functions: **54/54**. GLSL built-in variables: **22/22**.
 
 ## Browser Compatibility
 
-- **Primary**: Firefox (best extension support for fuzzing, 24 extensions)
-- **Secondary**: Chromium (core WebGL2 only, ANGLE limits extension exposure)
+- **Lanes**: Firefox (Playwright build); Chrome ANGLE-Vulkan (`--browser-config config/angle_vulkan.json`); Chrome ANGLE-GL (`--browser-config config/angle_gl.json`), the only lane that exposes `WEBGL_clip_cull_distance`
+- Every corpus seed runs strictly clean (no console output, warning, WebGL error or JS error) in at least one lane. The per-seed lane from before the fix round is in `docs/snapshots/webgl-corpus-runtime-sweep-2026-10-17.tsv`.
+- Per-lane extension availability: see `UNSUPPORTED.md`
 - **Extension Detection**: Always check extension availability before use
 - **Playwright Firefox**: Configured with optimized prefs for WebGL2 + extensions (see `UNSUPPORTED.md` for details)
 - **Known unsupported**: `EXT_disjoint_timer_query_webgl2` in Firefox, various WebGL1 extensions in Chromium
@@ -307,22 +322,23 @@ Run `bash scripts/analyze_corpus.sh` for live numbers.
 3. Identify target feature from project documentation or coverage gaps
 4. Create test file in `agent_outputs/` following three-zone architecture with try-catch blocks
 5. **Include `console.log(e)` in all catch blocks during development**
-6. Run `./run_tests.sh --test-file <file> --browsers firefox`
+6. Run `./run_tests.sh --test-file <file> --browsers firefox`, or the Chrome lane the seed targets (`--browsers chromium --browser-config config/angle_vulkan.json` or `angle_gl.json`)
 7. Read generated `.json` file - check `console_logs` array for caught errors
 8. Fix issues (syntax, undefined vars, wrong enums) and re-verify (never assume fixes work)
 9. **Strip all `console.log(e)` statements** - replace with `catch(e) {}`
-10. Final validation run - verify `passed: true` and `console_logs: []`
+10. Final validation run - verify `passed: true` with empty `console_logs`, `warnings`, `errors`, `javascript_errors` and `webgl_errors`
 11. Commit clean seed file (no console.log statements)
-12. Run `python3 scripts/feature_coverage.py` to verify category coverage; add `--combinations 3` to check that the new seed closes its target gap
+12. Run `python3 scripts/feature_coverage.py` to verify category coverage; add `--combinations 3` and `--combinations 4` to check that the new seed closes its target gap
 
 ## File Organization
 
 ```
 samples-webgl/
-├── agent_outputs/           # Recent agent-generated seeds (38 HTML, batches b55–b66)
-├── samples-webgl/           # Bulk corpus (367 HTML across themed subdirs)
+├── agent_outputs/           # Agent-generated seeds (207 HTML, batches b55–b99)
+│   └── mutator_baseline/    # core/ (12) + chrome_extensions/ (2) symlinks: deployable mutator input
+├── samples-webgl/           # Bulk corpus (365 HTML across themed subdirs)
 │   ├── mutations/           # 259 mutation seeds, batches b1–b54
-│   ├── seeds/               # 21 hypercomplex / high-biomass seeds
+│   ├── seeds/               # 20 hypercomplex / high-biomass seeds
 │   ├── creative/            # 18 visual effect demos
 │   ├── webgl2/              # 16 WebGL2 core feature tests
 │   ├── extensions/          # 14 extension-specific seeds
@@ -331,15 +347,18 @@ samples-webgl/
 │   ├── errors/              # 5 error path tests
 │   ├── rendering/           # 4 rendering pipeline tests
 │   ├── limits/              # 4 WebGL limit tests
-│   ├── edge_cases/          # 4 boundary tests
+│   ├── edge_cases/          # 3 boundary tests
 │   ├── texture_tech/        # 3 texture technique tests
 │   ├── compute/             # 3 compute-style pattern tests
 │   ├── shaders/             # 2 shader-focused tests
 │   └── resource/            # 1 resource lifecycle test
 ├── screenshots/             # Visual output from test execution
+├── config/                  # Chrome lane browser configs (angle_vulkan.json, angle_gl.json)
 ├── docs/
 │   ├── plans/               # Design docs and round completion summaries
-│   ├── snapshots/           # Coverage snapshots (JSON, used by --snapshot/--diff)
+│   ├── snapshots/           # Coverage snapshots (JSON), corpus_metrics reports, runtime sweep TSV
+│   ├── webgl_corpus_metrics.md    # corpus_metrics.py usage
+│   ├── 2026-10-17-webgl-corpus-tooling-handoff.md  # Corpus tooling handoff
 │   ├── feature_categories.json    # AST-based feature category definitions
 │   ├── webgl_api_surface.json     # WebGL2 API surface (methods, constants, GLSL builtins/variables)
 │   ├── interaction_topology.json  # Connected-combo topology for n-way matrix
@@ -348,6 +367,11 @@ samples-webgl/
 │   ├── feature_coverage.py  # Primary coverage tool
 │   ├── feature_matrix.sh    # Legacy shell wrapper
 │   ├── analyze_corpus.sh    # Corpus statistics
+│   ├── corpus_metrics.py    # Inventory, mutation profile, coverage report
+│   ├── webgl_mutator.py     # Valid-flow WebGL mutator
+│   ├── calibrate_webgl_lifecycle.py  # Grizzly lifecycle calibration
+│   ├── analyze_screenshots.py  # Screenshot checks
+│   ├── tests/               # Unit tests
 │   └── api_audit/           # Python package: parsing, GLSL, feature detection, combination matrix
 ├── tests/fixtures/          # Synthetic seeds used by api_audit unit tests
 ├── old_docs/                # Archived documentation
