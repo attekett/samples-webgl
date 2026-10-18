@@ -24,7 +24,7 @@ from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "10"
+ANALYZER_VERSION = "11"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -409,7 +409,7 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
     for cat in cats_config.get("categories", {}).values():
         category_glsl.extend(cat.get("glsl_functions", []))
     summary, ctx = summarize_usage(root, surface, category_glsl)
-    static_calls = static_overload_calls(root, ctx.context_vars, surface)
+    static_calls = static_overload_calls(root, ctx, surface)
     glsl = summary["glsl_builtins"]
     glsl_vars = summary["glsl_variables"]
 

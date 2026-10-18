@@ -31,6 +31,8 @@ class ContextInfo:
     helper_functions: dict = field(default_factory=dict)
     markers: set = field(default_factory=set)
     canvas_vars: set = field(default_factory=set)
+    # (function start_byte, end_byte, parameter name) bound to a context at some call site.
+    context_params: set = field(default_factory=set)
 
 
 def _walk(node, node_type: str) -> list:
@@ -423,6 +425,89 @@ def _detect_helper_functions(root, context_vars: set[str]) -> dict[str, list[str
     return helpers
 
 
+_FUNCTION_NODES = ('function_declaration', 'function_expression', 'arrow_function')
+
+
+def _param_slots(fn) -> list[Optional[str]]:
+    """Parameter names by position; None for destructuring and rest slots."""
+    single = fn.child_by_field_name('parameter')
+    if single is not None:
+        return [single.text.decode('utf-8')] if single.type == 'identifier' else [None]
+    params = fn.child_by_field_name('parameters')
+    slots: list[Optional[str]] = []
+    for p in params.named_children if params is not None else []:
+        if p.type == 'assignment_pattern':
+            p = p.child_by_field_name('left')
+        slots.append(p.text.decode('utf-8') if p is not None and p.type == 'identifier' else None)
+    return slots
+
+
+def _function_name(fn) -> Optional[str]:
+    if fn.type == 'function_declaration':
+        name = fn.child_by_field_name('name')
+    else:
+        holder = fn.parent
+        if holder is not None and holder.type == 'variable_declarator':
+            name = holder.child_by_field_name('name')
+        elif holder is not None and holder.type == 'assignment_expression':
+            name = holder.child_by_field_name('left')
+        else:
+            return None
+    return name.text.decode('utf-8') if name is not None and name.type == 'identifier' else None
+
+
+def _binding_function(ident):
+    """Nearest enclosing function that binds the identifier's name as a parameter."""
+    name = ident.text.decode('utf-8')
+    node = ident.parent
+    while node is not None:
+        if node.type in _FUNCTION_NODES and name in _param_slots(node):
+            return node
+        node = node.parent
+    return None
+
+
+def is_context_receiver(ident, ctx) -> bool:
+    """A context variable, or a helper parameter some call site passes a context to."""
+    name = ident.text.decode('utf-8')
+    if name in ctx.context_vars:
+        return True
+    fn = _binding_function(ident)
+    return fn is not None and (fn.start_byte, fn.end_byte, name) in ctx.context_params
+
+
+def _detect_context_params(root, info) -> set:
+    """Fixed point of parameters that receive a context from a call site."""
+    defs: dict[str, list] = {}
+    for t in _FUNCTION_NODES:
+        for fn in _walk(root, t):
+            name = _function_name(fn)
+            if name:
+                defs.setdefault(name, []).append(fn)
+    if not defs:
+        return set()
+    calls = []
+    for call in _walk(root, 'call_expression'):
+        callee = call.child_by_field_name('function')
+        if callee.type == 'identifier' and callee.text.decode('utf-8') in defs:
+            calls.append((defs[callee.text.decode('utf-8')], call.child_by_field_name('arguments').named_children))
+    changed = True
+    while changed:
+        changed = False
+        for fns, args in calls:
+            for i, arg in enumerate(args):
+                if arg.type != 'identifier' or not is_context_receiver(arg, info):
+                    continue
+                for fn in fns:
+                    slots = _param_slots(fn)
+                    if i < len(slots) and slots[i]:
+                        key = (fn.start_byte, fn.end_byte, slots[i])
+                        if key not in info.context_params:
+                            info.context_params.add(key)
+                            changed = True
+    return info.context_params
+
+
 def detect_context(root_node, resolved_consts: dict) -> ContextInfo:
     """Detect WebGL context, extensions, and helper functions from AST.
 
@@ -446,6 +531,8 @@ def detect_context(root_node, resolved_consts: dict) -> ContextInfo:
     )
     info.extensions = extensions
     info.extension_aliases = extension_aliases
+
+    _detect_context_params(root_node, info)
 
     info.markers, info.canvas_vars = _detect_context_markers(root_node)
     info.markers |= _drawing_buffer_markers(root_node, info)

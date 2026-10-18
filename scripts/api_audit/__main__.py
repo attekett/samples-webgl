@@ -14,7 +14,7 @@ from api_audit.report import generate_report, generate_delta_report
 
 
 # Bump when analysis output changes; the per-file cache is keyed on content plus this.
-ANALYZER_VERSION = "9"
+ANALYZER_VERSION = "10"
 
 
 def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None,

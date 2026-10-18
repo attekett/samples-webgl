@@ -12,6 +12,7 @@ import re
 from typing import Optional
 
 from api_audit.const_propagation import collect_declarations
+from api_audit.context import is_context_receiver
 
 
 def _walk(node, node_type: str) -> list:
@@ -203,7 +204,7 @@ def _get_function_name(func_node) -> Optional[str]:
     return None
 
 
-def _collect_direct_shader_sources(root_node, context_vars: set, consts: dict,
+def _collect_direct_shader_sources(root_node, ctx, consts: dict,
                                     helper_functions: dict | None = None,
                                     decls: dict | None = None) -> list[str]:
     """Collect shader sources from direct gl.shaderSource(shader, source) calls.
@@ -224,7 +225,7 @@ def _collect_direct_shader_sources(root_node, context_vars: set, consts: dict,
         prop = callee.child_by_field_name('property')
         if obj is None or prop is None:
             continue
-        if obj.type != 'identifier' or _node_text(obj) not in context_vars:
+        if obj.type != 'identifier' or not is_context_receiver(obj, ctx):
             continue
         if _node_text(prop) != 'shaderSource':
             continue
@@ -360,7 +361,7 @@ def collect_shader_sources(root_node, ctx, consts: dict) -> list[str]:
     """
     decls = collect_declarations(root_node)
     sources = _collect_direct_shader_sources(
-        root_node, ctx.context_vars, consts, ctx.helper_functions, decls
+        root_node, ctx, consts, ctx.helper_functions, decls
     )
     sources.extend(_collect_helper_shader_sources(root_node, ctx, consts, decls))
     sources.extend(collect_literal_shader_sources(root_node, consts))

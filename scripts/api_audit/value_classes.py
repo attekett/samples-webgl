@@ -6,6 +6,8 @@ unknown. Runtime profiling can classify those after observing their values.
 
 from __future__ import annotations
 
+from api_audit.context import is_context_receiver
+
 
 TYPED_ARRAY_CONSTRUCTORS = {
     "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array",
@@ -88,7 +90,7 @@ def resolve_static_overload(method_name: str, arg_nodes: list, surface: dict) ->
     return overload_requirement(method_name, candidates[0])
 
 
-def static_overload_calls(root, context_vars: set[str], surface: dict) -> list[dict]:
+def static_overload_calls(root, ctx, surface: dict) -> list[dict]:
     """Collect direct core API calls with an overload key or explicit unknown."""
     calls = []
     stack = [root]
@@ -101,7 +103,7 @@ def static_overload_calls(root, context_vars: set[str], surface: dict) -> list[d
                 method = callee.child_by_field_name("property")
                 method_name = node_text(method)
                 if (receiver is not None and receiver.type == "identifier"
-                        and node_text(receiver) in context_vars
+                        and is_context_receiver(receiver, ctx)
                         and method_name in surface.get("methods", {})):
                     args = argument_nodes(node)
                     overload = resolve_static_overload(method_name, args, surface)

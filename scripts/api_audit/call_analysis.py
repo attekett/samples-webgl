@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from api_audit.const_propagation import GL_NAMESPACES, collect_declarations, loop_bound_constants
-from api_audit.context import _get_string_value, is_canvas_expr
+from api_audit.context import _get_string_value, is_canvas_expr, is_context_receiver
 
 
 @dataclass
@@ -48,7 +48,7 @@ def _get_arg_nodes(arguments_node) -> list:
     return [c for c in arguments_node.children if c.type not in ('(', ')', ',')]
 
 
-def _resolve_arg_constant(arg_node, context_vars: set, consts: dict) -> Optional[str]:
+def _resolve_arg_constant(arg_node, ctx, consts: dict) -> Optional[str]:
     """Resolve an argument node to a WebGL constant name (without 'gl.' prefix).
 
     Returns the constant name if the argument resolves to a gl.SOMETHING,
@@ -58,7 +58,7 @@ def _resolve_arg_constant(arg_node, context_vars: set, consts: dict) -> Optional
         obj = arg_node.child_by_field_name('object')
         prop = arg_node.child_by_field_name('property')
         if obj and prop and obj.type == 'identifier' and (
-                _node_text(obj) in context_vars or _node_text(obj) in GL_NAMESPACES):
+                is_context_receiver(obj, ctx) or _node_text(obj) in GL_NAMESPACES):
             return _node_text(prop)
         return None
 
@@ -75,11 +75,11 @@ def _resolve_arg_constant(arg_node, context_vars: set, consts: dict) -> Optional
         left = arg_node.child_by_field_name('left')
         right = arg_node.child_by_field_name('right')
         if left:
-            c = _resolve_arg_constant(left, context_vars, consts)
+            c = _resolve_arg_constant(left, ctx, consts)
             if c:
                 constants.append(c)
         if right:
-            c = _resolve_arg_constant(right, context_vars, consts)
+            c = _resolve_arg_constant(right, ctx, consts)
             if c:
                 constants.append(c)
         # Return first found for simple cases, or None
@@ -88,7 +88,7 @@ def _resolve_arg_constant(arg_node, context_vars: set, consts: dict) -> Optional
     return None
 
 
-def _resolve_all_arg_constants(arg_node, context_vars: set, consts: dict) -> list[str]:
+def _resolve_all_arg_constants(arg_node, ctx, consts: dict) -> list[str]:
     """Resolve an argument node to all WebGL constant names it contains.
 
     For binary_expression with |, returns all constituent constants.
@@ -97,7 +97,7 @@ def _resolve_all_arg_constants(arg_node, context_vars: set, consts: dict) -> lis
         obj = arg_node.child_by_field_name('object')
         prop = arg_node.child_by_field_name('property')
         if obj and prop and obj.type == 'identifier' and (
-                _node_text(obj) in context_vars or _node_text(obj) in GL_NAMESPACES):
+                is_context_receiver(obj, ctx) or _node_text(obj) in GL_NAMESPACES):
             return [_node_text(prop)]
         return []
 
@@ -118,7 +118,7 @@ def _resolve_all_arg_constants(arg_node, context_vars: set, consts: dict) -> lis
             resolved = consts.get(_node_text(obj))
             return [r[3:] for r in resolved] if isinstance(resolved, tuple) else []
         if obj is not None and obj.type == 'array':
-            return _resolve_all_arg_constants(obj, context_vars, consts)
+            return _resolve_all_arg_constants(obj, ctx, consts)
         return []
 
     if arg_node.type == 'binary_expression':
@@ -126,16 +126,16 @@ def _resolve_all_arg_constants(arg_node, context_vars: set, consts: dict) -> lis
         left = arg_node.child_by_field_name('left')
         right = arg_node.child_by_field_name('right')
         if left:
-            result.extend(_resolve_all_arg_constants(left, context_vars, consts))
+            result.extend(_resolve_all_arg_constants(left, ctx, consts))
         if right:
-            result.extend(_resolve_all_arg_constants(right, context_vars, consts))
+            result.extend(_resolve_all_arg_constants(right, ctx, consts))
         return result
 
     if arg_node.type == 'array':
         result = []
         for child in arg_node.children:
             if child.type not in ('[', ']', ','):
-                result.extend(_resolve_all_arg_constants(child, context_vars, consts))
+                result.extend(_resolve_all_arg_constants(child, ctx, consts))
         return result
 
     return []
@@ -266,9 +266,9 @@ def _upload_source_marker(arg, ctx, declarations) -> Optional[str]:
     return None
 
 
-def _process_call(call_node, context_vars: set, extension_aliases: dict,
+def _process_call(call_node, extension_aliases: dict,
                   consts: dict, surface: dict, result: CallAnalysisResult,
-                  ctx=None, declarations=None):
+                  ctx, declarations=None):
     """Process a single call_expression node."""
     callee = call_node.child_by_field_name('function')
     if callee is None or callee.type != 'member_expression':
@@ -285,7 +285,7 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
             inner_prop = inner_callee.child_by_field_name('property')
             if (inner_obj and inner_prop
                     and inner_obj.type == 'identifier'
-                    and _node_text(inner_obj) in context_vars
+                    and is_context_receiver(inner_obj, ctx)
                     and _node_text(inner_prop) == 'getExtension'):
                 inner_args = obj.child_by_field_name('arguments')
                 if inner_args:
@@ -314,7 +314,7 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
     method_name = _node_text(prop)
 
     # Determine if this is a context method call or extension method call
-    is_context_call = receiver_name in context_vars
+    is_context_call = is_context_receiver(obj, ctx)
     ext_name = extension_aliases.get(receiver_name) if not is_context_call else None
 
     if not is_context_call and ext_name is None:
@@ -334,7 +334,7 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
     constant_roles = {}
 
     for i, arg in enumerate(arg_nodes):
-        arg_constants = _resolve_all_arg_constants(arg, context_vars, consts)
+        arg_constants = _resolve_all_arg_constants(arg, ctx, consts)
         for const_name in arg_constants:
             constants.add(const_name)
 
@@ -354,7 +354,7 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
             for i, arg in enumerate(arg_nodes):
                 if i < len(params):
                     param_name = params[i].get('name', '')
-                    arg_constants = _resolve_all_arg_constants(arg, context_vars, consts)
+                    arg_constants = _resolve_all_arg_constants(arg, ctx, consts)
                     if not arg_constants and params[i].get('type') == 'GLenum':
                         enum_name = _numeric_enum(arg, consts, surface)
                         if enum_name:
@@ -386,7 +386,7 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
             result.extension_methods[ext_name].setdefault(method_name, []).append(record)
 
 
-def _detect_return_comparisons(root_node, context_vars: set, result: CallAnalysisResult):
+def _detect_return_comparisons(root_node, ctx, result: CallAnalysisResult):
     """Walk binary_expression nodes with === or !== to find return value comparisons.
 
     When one side is a gl.CONSTANT member_expression, record the constant name
@@ -410,7 +410,7 @@ def _detect_return_comparisons(root_node, context_vars: set, result: CallAnalysi
                 continue
             obj = side.child_by_field_name('object')
             prop = side.child_by_field_name('property')
-            if obj and prop and obj.type == 'identifier' and _node_text(obj) in context_vars:
+            if obj and prop and obj.type == 'identifier' and is_context_receiver(obj, ctx):
                 result.return_constants.add(_node_text(prop))
 
 
@@ -428,15 +428,14 @@ def analyze_calls(root_node, ctx, consts: dict, surface: dict) -> CallAnalysisRe
     """
     result = CallAnalysisResult()
 
-    context_vars = ctx.context_vars
     extension_aliases = ctx.extension_aliases
 
     declarations = collect_declarations(root_node)
     for call_node in _walk(root_node, 'call_expression'):
-        _process_call(call_node, context_vars, extension_aliases,
+        _process_call(call_node, extension_aliases,
                       consts, surface, result, ctx, declarations)
 
     # Detect return value comparisons (=== / !==)
-    _detect_return_comparisons(root_node, context_vars, result)
+    _detect_return_comparisons(root_node, ctx, result)
 
     return result
