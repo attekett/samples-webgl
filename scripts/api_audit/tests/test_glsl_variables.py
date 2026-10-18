@@ -74,3 +74,38 @@ def test_match_variables_only_function_call_form_excluded():
     src = "float gl_Position(float x) { return x; }"  # contrived collision
     found = _match_variables(src, ["gl_Position"])
     assert found == set()
+
+
+def test_clip_distance_write_detected(tmp_path, api_surface, feature_categories):
+    from feature_coverage import analyze_file
+    seed = tmp_path / "clip.html"
+    seed.write_text("""<!DOCTYPE html><html><body><canvas id="c"></canvas><script>
+    const gl = document.getElementById('c').getContext('webgl2');
+    gl.shaderSource(gl.createShader(gl.VERTEX_SHADER), `#version 300 es
+    void main() { gl_Position = vec4(0.0); gl_ClipDistance[0] = 1.0; }`);
+    </script></body></html>""")
+    fp = analyze_file(seed, api_surface, feature_categories)
+    assert "gl_ClipDistance" in fp["glsl_variables"]
+
+
+def test_variable_coverage_splits_core_and_extension(api_surface):
+    from feature_coverage import variable_coverage
+    cov = variable_coverage({"gl_Position": 3, "gl_ClipDistance": 2}, api_surface)
+    assert cov["core"]["total"] == 22
+    assert cov["extension"]["total"] == 11
+    assert "gl_ClipDistance" in cov["extension"]["used"]
+    assert "gl_ClipDistance" not in cov["core"]["used"]
+    assert "gl_Position" in cov["core"]["used"]
+
+
+def test_ldexp_frexp_removed_from_surface(tmp_path, api_surface, feature_categories):
+    from feature_coverage import analyze_file
+    seed = tmp_path / "ldexp.html"
+    seed.write_text("""<!DOCTYPE html><html><body><canvas id="c"></canvas><script>
+    const gl = document.getElementById('c').getContext('webgl2');
+    gl.shaderSource(gl.createShader(gl.FRAGMENT_SHADER), `#version 300 es
+    precision highp float; out vec4 o;
+    void main() { o = vec4(ldexp(1.0, 2)); }`);
+    </script></body></html>""")
+    fp = analyze_file(seed, api_surface, feature_categories)
+    assert "ldexp" not in fp["glsl_builtins"]

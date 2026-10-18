@@ -24,7 +24,7 @@ from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "12"
+ANALYZER_VERSION = "13"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -196,6 +196,19 @@ def aggregate_glsl_variables(fingerprints: list) -> dict:
         for v in fp.get("glsl_variables", []):
             counts[v] = counts.get(v, 0) + 1
     return counts
+
+
+def variable_coverage(var_counts: dict, surface: dict) -> dict:
+    """Split built-in variable usage into core and extension-only names."""
+    ext_of = surface.get("glsl_builtin_variable_extensions", {})
+    all_vars = {n for names in surface.get("glsl_builtin_variables", {}).values() for n in names}
+    core = all_vars - set(ext_of)
+    return {
+        "core": {"total": len(core), "used": sorted(core & set(var_counts)),
+                 "never": sorted(core - set(var_counts))},
+        "extension": {"total": len(ext_of), "used": sorted(set(ext_of) & set(var_counts)),
+                      "never": sorted(set(ext_of) - set(var_counts)), "extensions": ext_of},
+    }
 
 
 def diff_coverage_snapshots(prev: dict, curr: dict) -> dict:
@@ -615,19 +628,17 @@ def main():
 
     if args.glsl_vars_detail:
         var_counts = aggregate_glsl_variables(list(corpus_fingerprints.values()))
-        all_vars = set()
-        var_categories = surface.get("glsl_builtin_variables", {})
-        for category_names in var_categories.values():
-            all_vars.update(category_names)
-        used = sorted(var_counts.items(), key=lambda x: x[1], reverse=True)
-        used_in_known = set(var_counts) & all_vars
-        never = sorted(all_vars - set(var_counts))
+        cov = variable_coverage(var_counts, surface)
+        core, extv = cov["core"], cov["extension"]
         print("## GLSL Built-in Variable Coverage")
-        print(f"Used variables ({len(used_in_known)}/{len(all_vars)}):")
-        for name, count in used:
-            print(f"  {name:<40} {count:>4} seeds")
-        if never:
-            print(f"Never used ({len(never)}): {', '.join(never)}")
+        print(f"Core variables used ({len(core['used'])}/{core['total']}):")
+        for name in sorted(core["used"], key=lambda n: -var_counts[n]):
+            print(f"  {name:<40} {var_counts[name]:>4} seeds")
+        if core["never"]:
+            print(f"Never used ({len(core['never'])}): {', '.join(core['never'])}")
+        print(f"Extension variables used ({len(extv['used'])}/{extv['total']}):")
+        for name in sorted(extv["extensions"], key=lambda n: -var_counts.get(n, 0)):
+            print(f"  {name:<30} {var_counts.get(name, 0):>4} seeds  {extv['extensions'][name]}")
         print()
 
     if args.glsl_detail:

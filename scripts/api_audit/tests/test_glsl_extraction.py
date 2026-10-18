@@ -91,11 +91,11 @@ def test_user_defined_builtin_name_not_reported(tmp_path, api_surface, feature_c
         precision highp float; out vec4 o;
         {shader}`);"""
     user = _fp(tmp_path, api_surface, feature_categories, body(
-        "float frexp(float x) { return x; } void main() { o = vec4(frexp(1.0)); }"))
+        "float sinh(float x) { return x; } void main() { o = vec4(sinh(1.0)); }"))
     builtin = _fp(tmp_path, api_surface, feature_categories, body(
-        "void main() { o = vec4(ldexp(1.0, 2)); }"))
-    assert "frexp" not in user["glsl_builtins"]
-    assert "ldexp" in builtin["glsl_builtins"]
+        "void main() { o = vec4(sinh(1.0)); }"))
+    assert "sinh" not in user["glsl_builtins"]
+    assert "sinh" in builtin["glsl_builtins"]
 
 
 def test_shader_source_identifier_without_glsl_marker(tmp_path, api_surface, feature_categories):

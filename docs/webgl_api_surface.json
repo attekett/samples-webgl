@@ -13538,8 +13538,6 @@
       "isnan",
       "isinf",
       "modf",
-      "frexp",
-      "ldexp",
       "sinh",
       "cosh",
       "tanh",
@@ -13582,6 +13580,38 @@
       "gl_MaxDrawBuffers",
       "gl_MinProgramTexelOffset",
       "gl_MaxProgramTexelOffset"
+    ],
+    "WEBGL_clip_cull_distance": [
+      "gl_ClipDistance",
+      "gl_CullDistance",
+      "gl_MaxClipDistances",
+      "gl_MaxCullDistances"
+    ],
+    "OES_sample_variables": [
+      "gl_SampleID",
+      "gl_SamplePosition",
+      "gl_SampleMaskIn",
+      "gl_SampleMask",
+      "gl_NumSamples"
+    ],
+    "WEBGL_multi_draw": [
+      "gl_DrawID"
+    ],
+    "OVR_multiview2": [
+      "gl_ViewID_OVR"
     ]
+  },
+  "glsl_builtin_variable_extensions": {
+    "gl_ClipDistance": "WEBGL_clip_cull_distance",
+    "gl_CullDistance": "WEBGL_clip_cull_distance",
+    "gl_MaxClipDistances": "WEBGL_clip_cull_distance",
+    "gl_MaxCullDistances": "WEBGL_clip_cull_distance",
+    "gl_SampleID": "OES_sample_variables",
+    "gl_SamplePosition": "OES_sample_variables",
+    "gl_SampleMaskIn": "OES_sample_variables",
+    "gl_SampleMask": "OES_sample_variables",
+    "gl_NumSamples": "OES_sample_variables",
+    "gl_DrawID": "WEBGL_multi_draw",
+    "gl_ViewID_OVR": "OVR_multiview2"
   }
 }
