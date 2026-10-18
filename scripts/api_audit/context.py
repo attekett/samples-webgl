@@ -472,7 +472,7 @@ def _bound_names(fn) -> set:
     names: set = set()
 
     def visit(n):
-        if n.type == 'assignment_pattern':
+        if n.type in ('assignment_pattern', 'object_assignment_pattern'):
             n = n.child_by_field_name('left')
         if n.type in ('identifier', 'shorthand_property_identifier_pattern'):
             names.add(n.text.decode('utf-8'))

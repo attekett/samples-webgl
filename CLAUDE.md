@@ -8,7 +8,7 @@ This is a **WebGL/WebGL2 fuzzing corpus project** containing **572 test files** 
 
 **Critical distinction**: This is NOT a conformance test suite. Test cases are "high-biomass" seeds for mutation-based fuzzing, featuring "spaghetti-like" valid resource usage patterns that mutators can corrupt into security vulnerabilities.
 
-**Corpus status**: The coverage model was widened on 2026-10-18 (54 categories, 252 topology edges), which reopened gaps: 3-way 1719/2440 and 4-way 11792/24178 connected combos are covered (see Coverage Milestones). 225/226 API surface methods are exercised; only `makeXRCompatible` is missing (see Coverage Milestones). Every seed runs strictly clean in at least one browser lane (see Browser Compatibility). See `docs/plans/2026-01-28-round8-completion-summary.md` for the round-8 milestone and recent commits (b71–b99) for newer coverage work.
+**Corpus status**: The coverage model and its detectors were widened on 2026-10-18 (67 categories, 326 topology edges), which reopened gaps: 3-way 2167/3561 and 4-way 15810/41815 connected combos are covered (see Coverage Milestones). 225/226 API surface methods are exercised; only `makeXRCompatible` is missing (see Coverage Milestones). Every seed runs strictly clean in at least one browser lane (see Browser Compatibility). See `docs/plans/2026-01-28-round8-completion-summary.md` for the round-8 milestone and recent commits (b71–b99) for newer coverage work.
 
 ## Project-Specific Rules
 
@@ -66,7 +66,7 @@ deactivate
 ./run_tests.sh --test-file <f> --browsers chromium --browser-config config/angle_vulkan.json
 ./run_tests.sh --test-file <f> --browsers chromium --browser-config config/angle_gl.json
 
-# Unit tests (581 passed after the 2026-10-18 model change)
+# Unit tests (667 passed after the 2026-10-18 tooling fixes)
 python -m pytest -q scripts/tests scripts/api_audit/tests
 ```
 
@@ -290,7 +290,7 @@ Python-based Playwright test runner that:
 | Total HTML test files | 572 (207 in `agent_outputs/`, 365 in `samples-webgl/`) |
 | Mutation seed batches | b1–b99 (b1–b54 in `samples-webgl/mutations/`, b55–b99 in `agent_outputs/`) |
 | Mutation seeds | 455 |
-| Feature categories tracked | 54 (`docs/feature_categories.json`), 7 of them ubiquitous and left out of the matrix (Uniforms, Viewport/Scissor, Vertex Attributes, Buffer Operations, Shader Pipeline, Draw Calls, Pipeline State) |
+| Feature categories tracked | 67 (`docs/feature_categories.json`), 7 of them ubiquitous (one shared set in `scripts/api_audit/combination_matrix.py`) and left out of the feature table (Uniforms, Viewport/Scissor, Vertex Attributes, Buffer Operations, Shader Pipeline, Draw Calls, Pipeline State) |
 | Average seed complexity | ~235 lines |
 | Total lines | 134,827 |
 | Total `gl.*` API calls | 57,045 (avg 99/seed) |
@@ -300,15 +300,15 @@ Run `bash scripts/analyze_corpus.sh` for live numbers.
 
 ### Coverage Milestones
 
-- 2-way feature combinations: **231/252** topology-connected combos covered; 21 gaps
-- 3-way feature combinations: **1719/2440** covered (70%); 721 gaps, 280 of them involving a category no seed matches yet
-- 4-way feature combinations: **11792/24178** covered (49%); 12386 gaps, 4047 of them involving a zero-seed category
-- Low-diversity (monoculture) flags: 64 at 3-way, 318 at 4-way (api_audit combination matrix)
-- Zero-seed categories: `ext_multiview`, `ext_blend_func_extended`, `ext_renderable_formats`, `ext_debug_info` (all exposed on Chrome ANGLE-Vulkan; norm16 and the debug extensions also on Firefox)
+- 2-way feature combinations: **279/326** topology-connected combos covered; 47 gaps
+- 3-way feature combinations: **2167/3561** covered (61%); 1394 gaps, 497 of them involving a category no seed matches yet
+- 4-way feature combinations: **15810/41815** covered (38%); 26005 gaps, 8224 of them involving a zero-seed category
+- Low-diversity (monoculture) flags: 79 at 3-way, 348 at 4-way (api_audit combination matrix)
+- Zero-seed categories: `ext_multiview`, `ext_blend_func_extended`, `ext_renderable_formats`, `ext_debug_info` (exposed on Chrome ANGLE-Vulkan; norm16 and the debug extensions also on Firefox), `glsl_ubo_layout` and `dom_texture_sources`
 - Before the 2026-10-18 model change the same corpus scored 526/526 at 3-way and 2947/2947 at 4-way
 - API surface (226 methods, 559 constants, 56 extensions): **225/226 methods exercised (99.6%)**. The only gap, `makeXRCompatible`, stays in the surface by decision because it needs a WebXR device.
-- GLSL builtin functions: **54/54**. GLSL built-in variables: **22/22**.
-- These figures are relative to the current coverage model. `docs/coverage-mapping-gaps-2026-10-17.md` lists what the model could not see; its "Applied 2026-10-18" section says which proposals are now in the model and which still need detector work.
+- GLSL builtin functions: **50/50** (`frexp`/`ldexp` removed as ESSL 3.10; shader extraction now also scans string literals). GLSL built-in variables: **22/22** core, 6/11 extension-only (`--glsl-vars-detail`).
+- These figures are relative to the current coverage model. `docs/coverage-mapping-gaps-2026-10-17.md` lists what the model could not see; its "Applied" sections record which proposals are now in the model (categories, topology and the detector changes T1-T13) and what is still left out.
 
 ## Browser Compatibility
 

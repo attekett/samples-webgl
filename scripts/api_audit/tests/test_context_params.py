@@ -83,3 +83,8 @@ def test_destructured_param_shadows(tmp_path):
 def test_default_value_does_not_shadow(tmp_path):
     r = run(tmp_path, "function f(c, x = c){ c.flush(); } f(gl);")
     assert 'flush' in r['all_methods']
+
+
+def test_object_pattern_default_does_not_shadow(tmp_path):
+    r = run(tmp_path, "function f(c){ const k = ({x = c}) => c.flush(); k({}); } f(gl);")
+    assert 'flush' in r['all_methods']

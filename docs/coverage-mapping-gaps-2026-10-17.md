@@ -36,7 +36,7 @@ The JSON-only proposals are now in the model: 54 categories (was 33) and 252 edg
 - `ctx:cross_object`.
 - Struct nesting depth.
 
-## Applied 2026-10-xx (detector changes)
+## Applied 2026-10-18 (detector changes)
 
 Rows are connected/covered/gaps/low_diversity, before then after. Per-category counts are seeds. The `covered_adjusted` figure is in each task's report. CLAUDE.md's coverage figures (526/526, 2947/2947, 54 categories not mentioned) are now stale; CLAUDE.md is outside this plan's file scope.
 
@@ -51,8 +51,8 @@ Rows are connected/covered/gaps/low_diversity, before then after. Per-category c
 - **T10, helper context parameters:** two seeds (`mutation_b25_s124_sync_multi_context`, `mutation_b75_s1_multicontext_pair`) gain 14 and 1 methods; `attributes`, `buffer_ops`, `shader_pipeline` and `uniforms` +1 each. 3-way 2166/1395 to 2167/1394; 4-way 15803/26005 to 15810/26005 (gaps 26012 to 26005).
 - **T11, gap recipes:** recipes now list concrete required items for every gate key, with no missing-category warnings. No count changes.
 - **T12, review fixes for T1-T8:** call receivers of `getContext` are deduplicated by source text, inline constant arrays accept identifiers, numeric context attributes normalise to booleans, and the marker and call-constant gates have regression tests. No count changes.
-- **T13, review fixes for T9-T12:** `getContext` receivers that create a canvas (`document.createElement`, other calls, `new OffscreenCanvas`) count once per call site, and only element lookups (`getElementById`, `querySelector*`, `getElementsBy*`, possibly indexed) deduplicate by text. Helper-parameter detection covers generator functions and methods, and destructured or rest parameters shadow the context name. Comments inside inline constant arrays are skipped. `drawing_buffer` marks `drawingBufferStorage` as `lane_restricted_methods`, so its recipe requires `canvas:resize` instead of a Chrome-only call. No count changes.
 - **T9, surface edits:** `gl_ClipDistance`, `gl_CullDistance`, `gl_MaxClipDistances`, `gl_MaxCullDistances`, the five `OES_sample_variables` names, `gl_DrawID` and `gl_ViewID_OVR` are grouped by extension and listed in `glsl_builtin_variable_extensions`; `--glsl-vars-detail` reports core 22/22 and extension 6/11. `frexp` and `ldexp` (ESSL 3.10) are gone from `glsl_builtins`. No count changes.
+- **T13, review fixes for T9-T12:** `getContext` receivers that create a canvas (`document.createElement`, other calls, `new OffscreenCanvas`) count once per call site, and only element lookups (`getElementById`, `querySelector*`, `getElementsBy*`, possibly indexed) deduplicate by text. Helper-parameter detection covers generator functions and methods, and destructured or rest parameters shadow the context name. Comments inside inline constant arrays are skipped. `drawing_buffer` marks `drawingBufferStorage` as `lane_restricted_methods`, so its recipe requires `canvas:resize` instead of a Chrome-only call. No count changes.
 
 Total, from the start of the plan to now (seeds 572):
 
