@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float'];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { stencil: true, preserveDrawingBuffer: true });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const extColorFloat = gl.getExtension('EXT_color_buffer_float');
+    const ctxAttrs = gl.getContextAttributes();
+
+    const texSize = 256;
+    const halfSize = 128;
+    const idDim = 16;
+    const fboDim = 64;
+    const pointCount = idDim * idDim;
+    const capBytes = pointCount * 4;
+    const idStride = 37;
+    const domHalf = 8;
+
+    const unpackTarget = gl.PIXEL_UNPACK_BUFFER;
+    const packTarget = gl.PIXEL_PACK_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const colorFormat = gl.RGBA16F;
+
+    var tfProg, fboProg, showProg;
+    var capBuf, packBuf, tfObj, vaoEmpty;
+    var idTex, domTex, colTex, fbo;
+
+    try {
+        const vs1 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs1, `#version 300 es
+precision highp float;
+precision highp int;
+flat out uint vOut;
+void main() {
+    vOut = uint((gl_VertexID * 37) % 256);
+    gl_Position = vec4(0.0);
+    gl_PointSize = 1.0;
+}`);
+        gl.compileShader(vs1);
+        const fs1 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs1, `#version 300 es
+precision highp float;
+out vec4 o;
+void main() { o = vec4(0.0); }`);
+        gl.compileShader(fs1);
+        tfProg = gl.createProgram();
+        gl.attachShader(tfProg, vs1);
+        gl.attachShader(tfProg, fs1);
+        gl.transformFeedbackVaryings(tfProg, ['vOut'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(tfProg);
+
+        const vs2 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs2, `#version 300 es
+precision highp float;
+out vec2 vUv;
+void main() {
+    vec2 q = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    vUv = q;
+    gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0);
+}`);
+        gl.compileShader(vs2);
+        const fs2 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs2, `#version 300 es
+precision highp float;
+precision highp int;
+precision highp usampler2D;
+in vec2 vUv;
+uniform usampler2D uIds;
+uniform sampler2D uDom;
+out vec4 o;
+void main() {
+    uint id = texelFetch(uIds, ivec2(gl_FragCoord.xy) / 4, 0).r;
+    vec4 d = texture(uDom, vUv);
+    o = vec4(float(id) / 255.0, d.rgb * 2.0 + float(id & 3u) * 0.1);
+}`);
+        gl.compileShader(fs2);
+        fboProg = gl.createProgram();
+        gl.attachShader(fboProg, vs2);
+        gl.attachShader(fboProg, fs2);
+        gl.linkProgram(fboProg);
+
+        const fs3 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs3, `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uCol;
+uniform vec4 uTint;
+out vec4 o;
+void main() {
+    o = vec4(texture(uCol, vUv).rgb * uTint.rgb, 1.0);
+}`);
+        gl.compileShader(fs3);
+        showProg = gl.createProgram();
+        gl.attachShader(showProg, vs2);
+        gl.attachShader(showProg, fs3);
+        gl.linkProgram(showProg);
+    } catch(e) {}
+
+    try {
+        capBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, capBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, capBytes, gl.DYNAMIC_COPY);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, capBuf);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        packBuf = gl.createBuffer();
+        gl.bindBuffer(packTarget, packBuf);
+        gl.bufferData(packTarget, 16 * 16 * 8, gl.STREAM_READ);
+        gl.bindBuffer(packTarget, null);
+        const scratchBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, scratchBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, 64, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        gl.deleteBuffer(scratchBuf);
+
+        vaoEmpty = gl.createVertexArray();
+        gl.bindVertexArray(vaoEmpty);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        tfObj = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfTarget, 0, capBuf);
+        gl.bindBufferBase(tfTarget, 0, null);
+        gl.bindBufferBase(tfTarget, 0, capBuf);
+
+        gl.useProgram(tfProg);
+        gl.bindVertexArray(vaoEmpty);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+        gl.endTransformFeedback();
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.bindBufferBase(tfTarget, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        idTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, idTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32UI, idDim, idDim);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+        gl.bindBuffer(unpackTarget, capBuf);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, idDim, idDim, gl.RED_INTEGER, gl.UNSIGNED_INT, 0);
+        gl.bindBuffer(unpackTarget, null);
+    } catch(e) {}
+
+    try {
+        const imgData = new ImageData(new Uint8ClampedArray(domHalf * idDim * 4), domHalf, idDim);
+        for (let i = 0; i < domHalf * idDim; i++) {
+            imgData.data[i * 4 + 0] = (i * idStride) % 256;
+            imgData.data[i * 4 + 1] = 40;
+            imgData.data[i * 4 + 2] = 200 - i;
+            imgData.data[i * 4 + 3] = 255;
+        }
+        const domCanvas = document.createElement('canvas');
+        domCanvas.width = domHalf;
+        domCanvas.height = idDim;
+        const ctx2d = domCanvas.getContext('2d');
+        ctx2d.fillStyle = '#20c060';
+        ctx2d.fillRect(0, 0, domHalf, idDim);
+        ctx2d.fillStyle = '#e0a020';
+        ctx2d.fillRect(2, 2, 4, 12);
+
+        domTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, domTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, idDim, idDim);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, imgData);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, domHalf, 0, gl.RGBA, gl.UNSIGNED_BYTE, domCanvas);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    } catch(e) {}
+
+    try {
+        colTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, colTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, colorFormat, fboDim, fboDim);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        const scratchTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, scratchTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, colorFormat, fboDim, fboDim);
+        gl.bindTexture(gl.TEXTURE_2D, colTex);
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colTex, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, null, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, scratchTex, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colTex, 0);
+        gl.deleteTexture(scratchTex);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        if (status !== gl.FRAMEBUFFER_COMPLETE) throw new Error('fbo incomplete');
+
+        gl.useProgram(fboProg);
+        gl.uniform1i(gl.getUniformLocation(fboProg, 'uIds'), 0);
+        gl.uniform1i(gl.getUniformLocation(fboProg, 'uDom'), 1);
+        gl.useProgram(showProg);
+        gl.uniform1i(gl.getUniformLocation(showProg, 'uCol'), 2);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.viewport(0, 0, fboDim, fboDim);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(fboProg);
+        gl.bindVertexArray(vaoEmpty);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+        gl.bindBuffer(packTarget, packBuf);
+        gl.pixelStorei(gl.PACK_ALIGNMENT, 4);
+        gl.readPixels(24, 24, 16, 16, gl.RGBA, gl.HALF_FLOAT, 0);
+        gl.bindBuffer(packTarget, null);
+        gl.bindVertexArray(null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    function presentFrame(tintScale) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.useProgram(showProg);
+        const tintLoc = gl.getUniformLocation(showProg, 'uTint');
+        gl.bindVertexArray(vaoEmpty);
+        if (ctxAttrs.stencil) {
+            gl.enable(gl.STENCIL_TEST);
+            gl.stencilFunc(gl.ALWAYS, 1, 0xff);
+            gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+            gl.uniform4f(tintLoc, 1.0, 1.0, 1.0, 1.0);
+            gl.viewport(canvas.width / 4, canvas.height / 4, canvas.width / 2, canvas.height / 2);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+            gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
+            gl.uniform4f(tintLoc, 0.3 * tintScale, 0.6 * tintScale, 1.0, 1.0);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.disable(gl.STENCIL_TEST);
+        } else {
+            gl.uniform4f(tintLoc, 1.0, 1.0, 1.0, 1.0);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+        gl.bindVertexArray(null);
+    }
+
+    var shotLen = 1;
+    try {
+        presentFrame(1.0);
+        await new Promise(r => requestAnimationFrame(r));
+        canvas.width = halfSize;
+        canvas.height = halfSize;
+        presentFrame(0.5);
+        canvas.width = texSize;
+        canvas.height = texSize;
+        presentFrame(1.0);
+        const shot = canvas.toDataURL();
+        shotLen = shot.length;
+    } catch(e) {}
+
+    try {
+        await new Promise(r => requestAnimationFrame(r));
+        presentFrame(0.5 + (shotLen % 7) / 14);
+        gl.deleteTransformFeedback(tfObj);
+        gl.deleteProgram(tfProg);
+        gl.deleteBuffer(packBuf);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
