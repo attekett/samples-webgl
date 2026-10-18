@@ -7,8 +7,11 @@ known GLSL builtin names from the API surface definition.
 
 from __future__ import annotations
 
+import codecs
 import re
 from typing import Optional
+
+from api_audit.const_propagation import collect_declarations
 
 
 def _walk(node, node_type: str) -> list:
@@ -38,11 +41,18 @@ def strip_glsl_comments(source: str) -> str:
     return source
 
 
+def _defines(shader_source: str, name: str) -> bool:
+    """True when the source defines or prototypes `name` (ESSL 3.00 forbids redefining builtins)."""
+    return bool(re.search(
+        rf'\b(?:void|float|int|uint|bool|[iub]?vec[234]|mat[234](?:x[234])?)\s+{re.escape(name)}\s*\(',
+        shader_source))
+
+
 def _match_builtins(shader_source: str, builtin_names: list[str]) -> set[str]:
-    """Match GLSL builtins using word-boundary regex."""
+    """Match GLSL builtins using word-boundary regex, skipping user-defined names."""
     found = set()
     for name in builtin_names:
-        if re.search(rf'\b{re.escape(name)}\s*\(', shader_source):
+        if re.search(rf'\b{re.escape(name)}\s*\(', shader_source) and not _defines(shader_source, name):
             found.add(name)
     return found
 
@@ -79,32 +89,97 @@ def _flatten_variable_names(surface: dict) -> list[str]:
     return names
 
 
-def _resolve_shader_arg(arg_node, consts: dict) -> Optional[str]:
-    """Resolve a shader source argument to its string value.
+SHADER_MARKER = re.compile(r'#version|\bvoid\s+main\s*\(')
 
-    Handles:
-    - identifier: look up in consts dict
-    - template_string: extract string_fragment children
+
+def _decode_escape(esc: str) -> str:
+    try:
+        return codecs.decode(esc, 'unicode_escape')
+    except UnicodeDecodeError:
+        return esc[1:]
+
+
+def _render_leaf(node, consts: dict) -> str:
+    """Render a non-literal operand: a known constant's text, else ''."""
+    if node.type == 'identifier':
+        v = consts.get(_node_text(node))
+        return str(v) if isinstance(v, (str, int, float)) else ''
+    if node.type == 'number':
+        return _node_text(node)
+    return ''
+
+
+def _render_operand(node, consts: dict) -> str:
+    if node.type in ('string', 'template_string', 'binary_expression', 'parenthesized_expression'):
+        r = render_js_string(node, consts)
+        return r if r is not None else ''
+    return _render_leaf(node, consts)
+
+
+def render_js_string(node, consts: dict, decls: dict | None = None,
+                     _seen: frozenset = frozenset()) -> Optional[str]:
+    """Render a JS string, template or '+' concatenation to text, else None.
+
+    Escapes are decoded; ${} substitutions and non-literal '+' operands
+    render as the text of a known constant, otherwise as ''.
     """
+    t = node.type
+    if t in ('string', 'template_string'):
+        parts = []
+        for c in node.children:
+            if c.type == 'string_fragment':
+                parts.append(_node_text(c))
+            elif c.type == 'escape_sequence':
+                parts.append(_decode_escape(_node_text(c)))
+            elif c.type == 'template_substitution':
+                expr = next((e for e in c.children if e.type not in ('${', '}')), None)
+                if expr is not None and expr.type == 'identifier':
+                    parts.append(_render_leaf(expr, consts))
+        return ''.join(parts)
+    if t == 'parenthesized_expression':
+        inner = next((c for c in node.children if c.type not in ('(', ')')), None)
+        return render_js_string(inner, consts, decls, _seen) if inner is not None else None
+    if t == 'binary_expression':
+        op = node.child_by_field_name('operator')
+        if op is None or op.type != '+':
+            return None
+        return (_render_operand(node.child_by_field_name('left'), consts)
+                + _render_operand(node.child_by_field_name('right'), consts))
+    if t == 'identifier' and decls:
+        name = _node_text(node)
+        if name in decls and name not in _seen:
+            return render_js_string(decls[name], consts, decls, _seen | {name})
+    return None
+
+
+def collect_literal_shader_sources(root, consts: dict) -> list[str]:
+    """Every string/template/'+' literal in the tree that looks like GLSL."""
+    found: list[str] = []
+
+    def visit(node):
+        if node.type in ('string', 'template_string', 'binary_expression'):
+            text = render_js_string(node, consts)
+            if text is not None and SHADER_MARKER.search(text):
+                found.append(text)
+                return
+        for c in node.children:
+            visit(c)
+
+    visit(root)
+    return found
+
+
+def _resolve_shader_arg(arg_node, consts: dict, decls: dict | None = None) -> Optional[str]:
+    """Resolve a shader source argument to its string value."""
+    if arg_node.type in ('identifier', 'string', 'template_string', 'binary_expression',
+                         'parenthesized_expression'):
+        rendered = render_js_string(arg_node, consts, decls)
+        if rendered is not None:
+            return rendered
     if arg_node.type == 'identifier':
-        name = _node_text(arg_node)
-        resolved = consts.get(name)
+        resolved = consts.get(_node_text(arg_node))
         if isinstance(resolved, str):
             return resolved
-        return None
-
-    if arg_node.type == 'template_string':
-        fragments = [c for c in arg_node.children if c.type == 'string_fragment']
-        if fragments:
-            return ''.join(f.text.decode('utf-8') for f in fragments)
-        return ''
-
-    if arg_node.type == 'string':
-        fragments = [c for c in arg_node.children if c.type == 'string_fragment']
-        if fragments:
-            return fragments[0].text.decode('utf-8')
-        return ''
-
     return None
 
 
@@ -129,7 +204,8 @@ def _get_function_name(func_node) -> Optional[str]:
 
 
 def _collect_direct_shader_sources(root_node, context_vars: set, consts: dict,
-                                    helper_functions: dict | None = None) -> list[str]:
+                                    helper_functions: dict | None = None,
+                                    decls: dict | None = None) -> list[str]:
     """Collect shader sources from direct gl.shaderSource(shader, source) calls.
 
     Only skips calls inside known helper function bodies (they are handled
@@ -176,14 +252,14 @@ def _collect_direct_shader_sources(root_node, context_vars: set, consts: dict,
             continue
 
         source_arg = arg_nodes[1]
-        resolved = _resolve_shader_arg(source_arg, consts)
+        resolved = _resolve_shader_arg(source_arg, consts, decls)
         if resolved is not None:
             sources.append(resolved)
 
     return sources
 
 
-def _collect_helper_shader_sources(root_node, ctx, consts: dict) -> list[str]:
+def _collect_helper_shader_sources(root_node, ctx, consts: dict, decls: dict | None = None) -> list[str]:
     """Collect shader sources from helper functions that wrap shaderSource.
 
     For each helper function detected by context.detect_context():
@@ -269,20 +345,26 @@ def _collect_helper_shader_sources(root_node, ctx, consts: dict) -> list[str]:
                     continue
 
                 actual_arg = site_arg_nodes[param_index]
-                resolved = _resolve_shader_arg(actual_arg, consts)
+                resolved = _resolve_shader_arg(actual_arg, consts, decls)
                 if resolved is not None:
                     sources.append(resolved)
 
     return sources
 
 
-def _collect_all_shader_sources(root_node, ctx, consts: dict) -> list[str]:
-    """Collect every shader source string referenced by the test file."""
+def collect_shader_sources(root_node, ctx, consts: dict) -> list[str]:
+    """Every shader source in the file, comment-stripped and deduplicated.
+
+    Combines shaderSource() calls (direct and via helpers) with a scan for
+    GLSL-looking literals, which catches sources the call tracing cannot follow.
+    """
+    decls = collect_declarations(root_node)
     sources = _collect_direct_shader_sources(
-        root_node, ctx.context_vars, consts, ctx.helper_functions
+        root_node, ctx.context_vars, consts, ctx.helper_functions, decls
     )
-    sources.extend(_collect_helper_shader_sources(root_node, ctx, consts))
-    return sources
+    sources.extend(_collect_helper_shader_sources(root_node, ctx, consts, decls))
+    sources.extend(collect_literal_shader_sources(root_node, consts))
+    return list(dict.fromkeys(strip_glsl_comments(s) for s in sources))
 
 
 def extract_glsl_variables(root_node, ctx, consts: dict, surface: dict,
@@ -305,11 +387,9 @@ def extract_glsl_variables(root_node, ctx, consts: dict, surface: dict,
     if not all_var_names:
         return set()
 
-    sources = _collect_all_shader_sources(root_node, ctx, consts)
     result = set()
-    for source in sources:
-        stripped = strip_glsl_comments(source)
-        result |= _match_variables(stripped, all_var_names)
+    for source in collect_shader_sources(root_node, ctx, consts):
+        result |= _match_variables(source, all_var_names)
     return result
 
 
@@ -334,24 +414,13 @@ def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict,
     if not all_builtin_names:
         return set()
 
-    context_vars = ctx.context_vars
-
-    # Collect shader sources from direct shaderSource calls
-    shader_sources = _collect_direct_shader_sources(
-        root_node, context_vars, consts, ctx.helper_functions
-    )
-
-    # Collect shader sources from helper function call sites
-    shader_sources.extend(_collect_helper_shader_sources(root_node, ctx, consts))
-
-    # Strip GLSL comments and match builtins across all shader sources
     result = set()
     extra_set = set(extra_builtins) if extra_builtins else set()
-    for source in shader_sources:
-        stripped = strip_glsl_comments(source)
+    for stripped in collect_shader_sources(root_node, ctx, consts):
         result |= _match_builtins(stripped, all_builtin_names)
         for name in extra_set:
-            if name not in result and re.search(rf'\b{re.escape(name)}\b', stripped):
+            if (name not in result and re.search(rf'\b{re.escape(name)}\b', stripped)
+                    and not _defines(stripped, name)):
                 result.add(name)
 
     return result

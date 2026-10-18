@@ -108,27 +108,28 @@ def _resolve_node(node, declarations: dict, seen: set) -> Optional[str | list[st
     return None
 
 
-def resolve_constants(root) -> dict[str, str | list[str]]:
-    """Two-pass constant resolution over a tree-sitter AST root node.
-
-    Pass 1: Walk all variable_declarator nodes, collect name -> initializer node.
-    Pass 2: Resolve each initializer. Forward references are handled because
-            pass 1 collects everything before pass 2 resolves.
-
-    Returns:
-        dict mapping variable name to resolved value. Only includes entries
-        where the value could be resolved (str or list[str]). Unresolvable
-        declarations are omitted.
-    """
-    # Pass 1: collect all declarations
-    declarators = _walk(root, 'variable_declarator')
+def collect_declarations(root) -> dict[str, object]:
+    """Pass 1: map each declared variable name to its initializer node."""
     declarations: dict[str, object] = {}
-    for decl in declarators:
+    for decl in _walk(root, 'variable_declarator'):
         name_node = decl.child_by_field_name('name')
         value_node = decl.child_by_field_name('value')
         if name_node and value_node:
-            name = name_node.text.decode('utf-8')
-            declarations[name] = value_node
+            declarations[name_node.text.decode('utf-8')] = value_node
+    return declarations
+
+
+def resolve_constants(root) -> dict[str, str | list[str]]:
+    """Two-pass constant resolution over a tree-sitter AST root node.
+
+    Pass 1 (collect_declarations) collects every initializer before pass 2
+    resolves them, so forward references work.
+
+    Returns:
+        dict mapping variable name to resolved value. Unresolvable
+        declarations are omitted.
+    """
+    declarations = collect_declarations(root)
 
     # Pass 2: resolve each declaration
     result: dict[str, str | list[str]] = {}
