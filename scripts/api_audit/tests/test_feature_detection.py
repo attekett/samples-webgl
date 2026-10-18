@@ -469,3 +469,69 @@ gl.enable(gl.DEPTH_TEST);
     fb = feature_coverage.analyze_file(f, surface, cfg)
     assert "depth_textures" in fa["features"] and "depth_textures" in fb["features"]
     assert "depth_stencil" in fa["features"]
+
+
+# ---------------------------------------------------------------------------
+# GLSL construct gates (glsl_patterns / glsl_variables)
+# ---------------------------------------------------------------------------
+
+def _glsl(categories, name, sources=(), variables=(), extensions=()):
+    return is_category_match(categories[name], set(), set(), set(extensions), set(), set(),
+                             glsl_sources=list(sources),
+                             glsl_variables=frozenset(variables))[0]
+
+
+class TestGlslGates:
+    def test_control_flow(self, categories):
+        assert _glsl(categories, "glsl_control_flow",
+                     ["void main(){ switch (i) { case 0: break; } }"])
+        assert not _glsl(categories, "glsl_control_flow", ["void main(){}"])
+
+    def test_smoothstep_is_not_interpolation(self, categories):
+        assert not _glsl(categories, "glsl_interpolation",
+                         ["void main(){ x = smoothstep(0.,1.,y); }"])
+        assert _glsl(categories, "glsl_interpolation", ["smooth out vec4 v;"])
+
+    def test_kill_depth_variable_or_discard(self, categories):
+        assert _glsl(categories, "glsl_fragment_kill_depth", variables={"gl_FragDepth"})
+        assert _glsl(categories, "glsl_fragment_kill_depth", ["void main(){ discard; }"])
+        assert not _glsl(categories, "glsl_fragment_kill_depth", ["void main(){}"])
+
+    def test_conservative_depth_needs_extension_and_layout(self, categories):
+        src = ["layout(depth_greater) out float gl_FragDepth;"]
+        ext = ("EXT_conservative_depth",)
+        assert _glsl(categories, "ext_conservative_depth", src, extensions=ext)
+        assert not _glsl(categories, "ext_conservative_depth", src)
+        assert not _glsl(categories, "ext_conservative_depth", ["void main(){}"], extensions=ext)
+
+    def test_preprocessor_anchored_at_line_start(self, categories):
+        assert _glsl(categories, "glsl_preprocessor", ["#version 300 es\n#define X 1\n"])
+        assert not _glsl(categories, "glsl_preprocessor", ["x #define X 1"])
+
+    def test_glsl_hits_count_toward_depth(self, categories):
+        fp = detect_features({"glsl_sources": ["void main(){ discard; }"],
+                              "glsl_variables": ["gl_FragDepth"]},
+                             set(), categories_config={"c": categories["glsl_fragment_kill_depth"]})
+        assert fp["methods_per_feature"]["c"] == ["gl_FragDepth", "glsl:discard"]
+        assert fp["depth_ratios"]["c"] == 1.0
+
+    def test_comment_stripped_end_to_end(self, api_surface, feature_categories, tmp_path):
+        from feature_coverage import analyze_file
+        from api_audit.__main__ import analyze_file as audit_file
+        seed = tmp_path / "glsl.html"
+        seed.write_text("""<!DOCTYPE html><html><body>
+        <canvas id="c"></canvas><script>
+        const gl = document.getElementById('c').getContext('webgl2');
+        const s = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(s, `#version 300 es
+        precision highp float; out vec4 o;
+        // switch (x) { }
+        void main(){ o = vec4(1); discard; }`);
+        </script></body></html>""")
+        fp = analyze_file(seed, api_surface, feature_categories)
+        assert "glsl_control_flow" not in fp["features"]
+        assert "glsl_fragment_kill_depth" in fp["features"]
+        r = audit_file(seed, api_surface, None)
+        fp2 = detect_features(r, set(r["glsl_builtins"]), feature_categories)
+        assert "glsl_control_flow" not in fp2["features"]
+        assert "glsl_fragment_kill_depth" in fp2["features"]

@@ -1063,7 +1063,11 @@
         "EXT_conservative_depth"
       ],
       "min_methods_for_match": 0,
-      "requires_any_extension": true
+      "requires_any_extension": true,
+      "glsl_patterns": {
+        "depth_layout": "\\blayout\\s*\\(\\s*depth_(?:any|greater|less|unchanged)\\s*\\)"
+      },
+      "min_glsl_patterns_for_match": 1
     },
     "ext_sample_shading": {
       "description": "Per-sample shading and interpolation extensions",
@@ -1229,6 +1233,112 @@
           "DEPTH_STENCIL"
         ]
       }
+    },
+    "glsl_preprocessor": {
+      "description": "GLSL preprocessor directives and predefined macros",
+      "glsl_patterns": {
+        "define": "^[ \\t]*#[ \\t]*define\\b",
+        "undef": "^[ \\t]*#[ \\t]*undef\\b",
+        "conditional": "^[ \\t]*#[ \\t]*(?:if|ifdef|ifndef|elif|else|endif)\\b",
+        "error": "^[ \\t]*#[ \\t]*error\\b",
+        "line": "^[ \\t]*#[ \\t]*line\\b",
+        "pragma": "^[ \\t]*#[ \\t]*pragma\\b",
+        "defined_op": "\\bdefined\\b",
+        "predefined_macro": "\\b(?:__LINE__|__FILE__|__VERSION__|GL_ES)\\b"
+      },
+      "methods": [],
+      "constants": [],
+      "min_methods_for_match": 0,
+      "min_glsl_patterns_for_match": 1
+    },
+    "glsl_control_flow": {
+      "description": "GLSL control flow beyond plain for loops: switch, while, do-while, break/continue, out/inout parameters",
+      "glsl_patterns": {
+        "switch": "\\bswitch\\s*\\(",
+        "while": "\\bwhile\\s*\\(",
+        "do_while": "\\bdo\\s*\\{",
+        "inout_param": "\\binout\\b",
+        "out_param": "[(,]\\s*(?:(?:highp|mediump|lowp)\\s+)?out\\s+\\w+\\s+\\w+",
+        "continue": "\\bcontinue\\s*;",
+        "break": "\\bbreak\\s*;"
+      },
+      "methods": [],
+      "constants": [],
+      "min_methods_for_match": 0,
+      "min_glsl_patterns_for_match": 1
+    },
+    "glsl_interpolation": {
+      "description": "Interpolation and invariance qualifiers",
+      "glsl_patterns": {
+        "flat": "\\bflat\\b",
+        "smooth": "\\bsmooth\\b",
+        "centroid": "\\bcentroid\\b",
+        "invariant": "\\binvariant\\b",
+        "pragma_invariant_all": "#[ \\t]*pragma[ \\t]+STDGL[ \\t]+invariant"
+      },
+      "methods": [],
+      "constants": [],
+      "min_methods_for_match": 0,
+      "min_glsl_patterns_for_match": 1
+    },
+    "glsl_ubo_layout": {
+      "description": "Uniform block layout: matrix layout qualifiers, block arrays, default layout statement, shared/packed probes",
+      "glsl_patterns": {
+        "row_major": "\\brow_major\\b",
+        "column_major": "\\bcolumn_major\\b",
+        "shared_packed": "\\blayout\\s*\\([^)]*\\b(?:shared|packed)\\b",
+        "default_block_layout": "\\blayout\\s*\\([^)]*\\)\\s*uniform\\s*;",
+        "block_array": "\\buniform\\s+\\w+\\s*\\{[^}]*\\}\\s*\\w+\\s*\\["
+      },
+      "methods": [],
+      "constants": [],
+      "min_methods_for_match": 0,
+      "min_glsl_patterns_for_match": 1
+    },
+    "glsl_fragment_kill_depth": {
+      "description": "Fragment kill and depth output: discard and gl_FragDepth",
+      "glsl_patterns": {
+        "discard": "\\bdiscard\\s*;"
+      },
+      "glsl_variables": [
+        "gl_FragDepth"
+      ],
+      "methods": [],
+      "constants": [],
+      "min_methods_for_match": 0,
+      "min_glsl_patterns_for_match": 1
+    },
+    "glsl_integer_ops": {
+      "description": "Unsigned types and integer/bitwise operators in shaders",
+      "glsl_patterns": {
+        "uint_type": "\\b(?:uint|uvec[234])\\b",
+        "shift": "<<|>>",
+        "bit_and": "(?<!&)&(?!&)",
+        "bit_or": "(?<!\\|)\\|(?!\\|)",
+        "bit_xor": "(?<!\\^)\\^(?!\\^)",
+        "bit_not": "~",
+        "modulo": "%",
+        "uint_literal": "\\b(?:0[xX][0-9a-fA-F]+|\\d+)[uU]\\b"
+      },
+      "methods": [],
+      "constants": [],
+      "min_methods_for_match": 0,
+      "min_glsl_patterns_for_match": 1
+    },
+    "glsl_aggregates": {
+      "description": "Structs, arrays, .length() and WebGL must-fail identifier rules",
+      "glsl_patterns": {
+        "struct": "\\bstruct\\s+\\w+\\s*\\{",
+        "array_decl": "\\b(?:float|int|uint|bool|[iub]?vec[234]|mat[234](?:x[234])?|[iu]?sampler\\w+)\\s+\\w+\\s*\\[\\s*\\w*\\s*\\]",
+        "array_constructor": "\\b(?:(?:float|int|uint|bool|[iub]?vec[234]|mat[234](?:x[234])?|[iu]?sampler\\w+)|[A-Z]\\w*)\\s*\\[\\s*\\w*\\s*\\]\\s*\\(",
+        "length_method": "\\.length\\s*\\(\\s*\\)",
+        "reserved_webgl_prefix": "\\b_?webgl_\\w+",
+        "long_token": "\\w{1025,}"
+      },
+      "methods": [],
+      "constants": [],
+      "min_methods_for_match": 0,
+      "min_glsl_patterns_for_match": 1
     }
   }
 }

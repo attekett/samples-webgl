@@ -8,6 +8,7 @@ along with depth metrics for each matched category.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -58,7 +59,7 @@ def _extract_from_call_analysis(call_analysis_result):
     for name, call_records in call_analysis_result.methods.items():
         method_constants[name] = {
             _strip_gl_prefix(c) for record in call_records for c in record.constants}
-    return methods_found, constants_found, extension_methods_found, method_constants
+    return methods_found, constants_found, extension_methods_found, method_constants, [], set()
 
 
 def _extract_from_dict(result_dict):
@@ -70,7 +71,8 @@ def _extract_from_dict(result_dict):
       - "extension_methods": {ext_name: {method_name: count}}
 
     Returns:
-        (methods_found, constants_found, extension_methods_found, method_constants)
+        (methods_found, constants_found, extension_methods_found, method_constants,
+         glsl_sources, glsl_variables)
     """
     methods_found = set(result_dict.get("methods", {}).keys())
     constants_found = set()
@@ -83,7 +85,9 @@ def _extract_from_dict(result_dict):
     method_constants = {
         m: {_strip_gl_prefix(c) for c in cs}
         for m, cs in result_dict.get("method_constants", {}).items()}
-    return methods_found, constants_found, extension_methods_found, method_constants
+    return (methods_found, constants_found, extension_methods_found, method_constants,
+            list(result_dict.get("glsl_sources", ())),
+            set(result_dict.get("glsl_variables", ())))
 
 
 def _call_constant_hit(spec, method_constants):
@@ -93,7 +97,7 @@ def _call_constant_hit(spec, method_constants):
 
 def is_category_match(category_def, methods_found, constants_found,
                       extensions_loaded, glsl_found, extension_methods_found,
-                      method_constants=None):
+                      method_constants=None, glsl_sources=(), glsl_variables=frozenset()):
     """Determine if a category definition matches the observed API usage.
 
     Uses AND-composed gates: all applicable gates must pass for a match.
@@ -107,6 +111,8 @@ def is_category_match(category_def, methods_found, constants_found,
         extension_methods_found: Set of extension method names found.
         method_constants: {method: set of constants passed to it}, for the
             match_if_call_constant (OR) and requires_call_constant (AND) gates.
+        glsl_sources: comment-stripped shader sources, searched by glsl_patterns.
+        glsl_variables: gl_* names found in shaders, matched by glsl_variables.
 
     Returns:
         Tuple of (matched: bool, matched_methods: set, method_count: int).
@@ -155,6 +161,14 @@ def is_category_match(category_def, methods_found, constants_found,
         return (False, set(), 0)
 
     all_matched = matched_methods | matched_ext_methods
+    glsl_hits = {f"glsl:{name}"
+                 for name, rx in category_def.get("glsl_patterns", {}).items()
+                 if any(re.search(rx, src, re.MULTILINE) for src in glsl_sources)}
+    glsl_hits |= set(category_def.get("glsl_variables", ())) & set(glsl_variables)
+    min_patterns = category_def.get("min_glsl_patterns_for_match", 0)
+    if min_patterns > 0 and len(glsl_hits) < min_patterns:
+        return (False, set(), 0)
+    all_matched |= glsl_hits
     return (True, all_matched, method_count)
 
 
@@ -184,10 +198,11 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
 
     if isinstance(call_analysis_result, dict):
         (methods_found, constants_found, ext_methods_extracted,
-         method_constants) = _extract_from_dict(call_analysis_result)
+         method_constants, glsl_sources, glsl_variables) = _extract_from_dict(call_analysis_result)
     else:
         (methods_found, constants_found, ext_methods_extracted,
-         method_constants) = _extract_from_call_analysis(call_analysis_result)
+         method_constants, glsl_sources, glsl_variables) = _extract_from_call_analysis(
+            call_analysis_result)
 
     if extensions is None:
         extensions = set()
@@ -213,7 +228,8 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
         matched, matched_methods, method_count = is_category_match(
             cat_def, methods_found, constants_found,
             extensions, glsl_builtins, extension_methods,
-            method_constants=method_constants
+            method_constants=method_constants,
+            glsl_sources=glsl_sources, glsl_variables=glsl_variables
         )
         if not matched:
             continue
@@ -224,13 +240,15 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
 
         cat_method_list = cat_def.get("methods", [])
         cat_ext_method_list = cat_def.get("extension_methods", [])
-        total_available = len(cat_method_list) + len(cat_ext_method_list)
+        total_available = (len(cat_method_list) + len(cat_ext_method_list)
+                           + len(cat_def.get("glsl_patterns", ()))
+                           + len(cat_def.get("glsl_variables", ())))
 
         if total_available == 0:
             depth_ratios[cat_name] = 1.0
             feature_depth[cat_name] = "deep"
         else:
-            ratio = method_count / total_available
+            ratio = len(matched_methods) / total_available
             depth_ratios[cat_name] = ratio
             if ratio >= 0.66:
                 feature_depth[cat_name] = "deep"

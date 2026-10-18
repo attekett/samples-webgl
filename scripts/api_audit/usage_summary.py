@@ -2,7 +2,8 @@
 from api_audit.context import detect_context
 from api_audit.const_propagation import resolve_constants
 from api_audit.call_analysis import analyze_calls
-from api_audit.glsl import extract_glsl_builtins, extract_glsl_variables
+from api_audit.glsl import (
+    collect_shader_sources, extract_glsl_builtins, extract_glsl_variables)
 
 
 def summarize_usage(root, surface: dict, extra_glsl_builtins: list[str] | None = None):
@@ -40,5 +41,6 @@ def summarize_usage(root, surface: dict, extra_glsl_builtins: list[str] | None =
         "api_version": ctx.api_version,
         "glsl_builtins": sorted(glsl),
         "glsl_variables": sorted(glsl_vars),
+        "glsl_sources": collect_shader_sources(root, ctx, consts),
     }
     return summary, ctx

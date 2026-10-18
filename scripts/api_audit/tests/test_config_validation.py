@@ -196,3 +196,23 @@ def test_call_constant_gates_reference_surface(feature_categories, api_surface):
                     bad.append(f"{cat_name}.{key}: method {m}")
                 bad += [f"{cat_name}.{key}.{m}: {c}" for c in cs if c not in consts]
     assert not bad, "\n".join(bad)
+
+
+def test_glsl_gates_valid(feature_categories, api_surface):
+    """glsl_patterns compile, glsl_variables exist in the surface, the minimum is reachable."""
+    import re
+    from api_audit.glsl import _flatten_variable_names
+    surface_vars = set(_flatten_variable_names(api_surface))
+    bad = []
+    for name, cat in feature_categories["categories"].items():
+        patterns = cat.get("glsl_patterns", {})
+        for pname, rx in patterns.items():
+            try:
+                re.compile(rx, re.MULTILINE)
+            except re.error as e:
+                bad.append(f"{name}.{pname}: {e}")
+        variables = cat.get("glsl_variables", [])
+        bad += [f"{name}: {v} not in surface" for v in variables if v not in surface_vars]
+        if cat.get("min_glsl_patterns_for_match", 0) > len(patterns) + len(variables):
+            bad.append(f"{name}: min_glsl_patterns_for_match unreachable")
+    assert not bad, "\n".join(bad)
