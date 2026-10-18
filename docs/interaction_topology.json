@@ -307,6 +307,26 @@
     {"pair": ["multi_context", "shader_pipeline"], "relationship": "programs and shaders are per-context"},
     {"pair": ["multi_context", "vao"], "relationship": "vertex array objects are per-context"},
     {"pair": ["multi_context", "sync"], "relationship": "fences signal per context; waits across contexts"},
-    {"pair": ["multi_context", "query"], "relationship": "queries are per-context"}
+    {"pair": ["multi_context", "query"], "relationship": "queries are per-context"},
+    {"pair": ["drawing_buffer", "fbo"], "relationship": "the default framebuffer is reallocated by resize and drawingBufferStorage"},
+    {"pair": ["drawing_buffer", "pixel_ops"], "relationship": "readPixels after presentation depends on preserveDrawingBuffer (WebGL1 s2.2)"},
+    {"pair": ["drawing_buffer", "viewport_scissor"], "relationship": "the viewport is not updated when the canvas is resized (WebGL1 s2.3)"},
+    {"pair": ["drawing_buffer", "texture_ops"], "relationship": "copyTexImage2D from the drawing buffer; the canvas as a texture source"},
+    {"pair": ["drawing_buffer", "draw_calls"], "relationship": "draws before and after a frame boundary or resize"},
+    {"pair": ["drawing_buffer", "srgb"], "relationship": "drawingBufferStorage(SRGB8_ALPHA8) and drawingBufferColorSpace conversion on present"},
+    {"pair": ["drawing_buffer", "context_attributes"], "relationship": "preserveDrawingBuffer/alpha/premultipliedAlpha govern presentation and readback"},
+    {"pair": ["drawing_buffer", "multi_context"], "relationship": "one context's canvas read back or uploaded by another"},
+    {"pair": ["dom_texture_sources", "texture_ops"], "relationship": "TexImageSource overloads of texImage2D/texSubImage2D"},
+    {"pair": ["dom_texture_sources", "unpack_webgl_params"], "relationship": "FLIP_Y / PREMULTIPLY_ALPHA / COLORSPACE_CONVERSION apply to DOM uploads"},
+    {"pair": ["dom_texture_sources", "pbo"], "relationship": "a TexImageSource upload with PIXEL_UNPACK_BUFFER bound is INVALID_OPERATION (WebGL2)"},
+    {"pair": ["dom_texture_sources", "texture_3d"], "relationship": "texImage3D/texSubImage3D from DOM sources with UNPACK_IMAGE_HEIGHT"},
+    {"pair": ["dom_texture_sources", "texture_arrays"], "relationship": "DOM sources uploaded into array layers"},
+    {"pair": ["dom_texture_sources", "pixel_ops"], "relationship": "UNPACK_ROW_LENGTH / SKIP_* apply to DOM sources in WebGL2"},
+    {"pair": ["dom_texture_sources", "drawing_buffer"], "relationship": "the WebGL canvas itself as an upload source (src:webgl_canvas)"},
+    {"pair": ["unpack_webgl_params", "texture_ops"], "relationship": "unpack parameters apply to texture uploads"},
+    {"pair": ["unpack_webgl_params", "pixel_ops"], "relationship": "pixelStorei state shared with the core unpack parameters"},
+    {"pair": ["unpack_webgl_params", "texture_3d"], "relationship": "FLIP_Y or PREMULTIPLY_ALPHA with a 3D upload from ArrayBufferView/PBO is INVALID_OPERATION (WebGL2)"},
+    {"pair": ["unpack_webgl_params", "texture_arrays"], "relationship": "same 3D-upload rule for 2D array textures"},
+    {"pair": ["unpack_webgl_params", "pbo"], "relationship": "FLIP_Y / PREMULTIPLY_ALPHA with a PIXEL_UNPACK_BUFFER upload (WebGL2)"}
   ]
 }

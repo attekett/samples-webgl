@@ -323,6 +323,61 @@ def _detect_context_markers(root) -> tuple[set[str], set[str]]:
     return markers, canvas_vars
 
 
+def is_canvas_expr(node, ctx) -> bool:
+    """An identifier in ctx.canvas_vars, or `<context var>.canvas`."""
+    if node.type == 'identifier':
+        return node.text.decode('utf-8') in ctx.canvas_vars
+    if node.type == 'member_expression':
+        obj = node.child_by_field_name('object')
+        prop = node.child_by_field_name('property')
+        return (obj.type == 'identifier' and obj.text.decode('utf-8') in ctx.context_vars
+                and prop.text.decode('utf-8') == 'canvas')
+    return False
+
+
+def _first_arg(call):
+    args = call.child_by_field_name('arguments').named_children
+    return args[0] if args else None
+
+
+def _drawing_buffer_markers(root, ctx) -> set[str]:
+    markers: set[str] = set()
+    for assign in _walk(root, 'assignment_expression'):
+        left = assign.child_by_field_name('left')
+        if left.type != 'member_expression':
+            continue
+        obj = left.child_by_field_name('object')
+        prop = left.child_by_field_name('property').text.decode('utf-8')
+        if prop in ('width', 'height') and is_canvas_expr(obj, ctx):
+            markers.add('canvas:resize')
+        elif (prop in ('drawingBufferColorSpace', 'unpackColorSpace') and obj.type == 'identifier'
+                and obj.text.decode('utf-8') in ctx.context_vars):
+            markers.add(f'attr:{prop}=')
+    for call in _walk(root, 'call_expression'):
+        callee = call.child_by_field_name('function')
+        arg = _first_arg(call)
+        if callee.type == 'identifier':
+            name = callee.text.decode('utf-8')
+        elif callee.type == 'member_expression':
+            name = callee.child_by_field_name('property').text.decode('utf-8')
+        else:
+            continue
+        if name == 'requestAnimationFrame' and (
+                callee.type == 'identifier'
+                or callee.child_by_field_name('object').text.decode('utf-8') == 'window'):
+            markers.add('frame:raf')
+        elif name in ('toDataURL', 'toBlob') and callee.type == 'member_expression':
+            if is_canvas_expr(callee.child_by_field_name('object'), ctx):
+                markers.add('canvas:readback')
+        elif name == 'drawImage' and callee.type == 'member_expression':
+            if arg is not None and is_canvas_expr(arg, ctx):
+                markers.add('canvas:readback')
+        elif name == 'createImageBitmap' and callee.type == 'identifier':
+            if arg is not None and is_canvas_expr(arg, ctx):
+                markers.add('canvas:readback')
+    return markers
+
+
 def _detect_helper_functions(root, context_vars: set[str]) -> dict[str, list[str]]:
     """Detect helper functions that accept a context variable as parameter.
 
@@ -393,6 +448,7 @@ def detect_context(root_node, resolved_consts: dict) -> ContextInfo:
     info.extension_aliases = extension_aliases
 
     info.markers, info.canvas_vars = _detect_context_markers(root_node)
+    info.markers |= _drawing_buffer_markers(root_node, info)
 
     # Step 3: Detect helper functions
     info.helper_functions = _detect_helper_functions(root_node, context_vars)

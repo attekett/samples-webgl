@@ -60,8 +60,7 @@
         "invalidateFramebuffer",
         "invalidateSubFramebuffer",
         "isFramebuffer",
-        "getFramebufferAttachmentParameter",
-        "drawingBufferStorage"
+        "getFramebufferAttachmentParameter"
       ],
       "constants": [
         "FRAMEBUFFER",
@@ -187,7 +186,7 @@
     },
     "instancing": {
       "description": "Instanced draw calls and per-instance vertex attribute divisors",
-      "overlap_note": "drawArraysInstanced and drawElementsInstanced also appear in draw_calls. This is intentional. instancing is not in SKIP_UBIQUITOUS; draw_calls is — so instancing seeds are visible in the table even though draw_calls is always matched.",
+      "overlap_note": "drawArraysInstanced and drawElementsInstanced also appear in draw_calls. This is intentional. instancing is not in SKIP_UBIQUITOUS; draw_calls is \u2014 so instancing seeds are visible in the table even though draw_calls is always matched.",
       "methods": [
         "drawArraysInstanced",
         "drawElementsInstanced",
@@ -1367,6 +1366,56 @@
         "ctx:offscreen"
       ],
       "min_methods_for_match": 1
+    },
+    "drawing_buffer": {
+      "description": "Drawing buffer: drawingBufferStorage, canvas resize, colour-space attributes, canvas readback, frame boundary",
+      "methods": [
+        "drawingBufferStorage"
+      ],
+      "constants": [],
+      "markers": [
+        "canvas:resize",
+        "attr:drawingBufferColorSpace=",
+        "attr:unpackColorSpace=",
+        "canvas:readback",
+        "frame:raf"
+      ],
+      "min_methods_for_match": 1
+    },
+    "dom_texture_sources": {
+      "description": "Texture uploads from DOM sources (ImageData, canvas, ImageBitmap, OffscreenCanvas, VideoFrame, image, video)",
+      "methods": [],
+      "constants": [],
+      "markers": [
+        "src:ImageData",
+        "src:canvas",
+        "src:webgl_canvas",
+        "src:ImageBitmap",
+        "src:OffscreenCanvas",
+        "src:VideoFrame",
+        "src:image",
+        "src:video"
+      ],
+      "min_methods_for_match": 1
+    },
+    "unpack_webgl_params": {
+      "description": "WebGL-specific unpack parameters set through pixelStorei",
+      "methods": [
+        "pixelStorei"
+      ],
+      "constants": [
+        "UNPACK_FLIP_Y_WEBGL",
+        "UNPACK_PREMULTIPLY_ALPHA_WEBGL",
+        "UNPACK_COLORSPACE_CONVERSION_WEBGL"
+      ],
+      "min_methods_for_match": 1,
+      "requires_call_constant": {
+        "pixelStorei": [
+          "UNPACK_FLIP_Y_WEBGL",
+          "UNPACK_PREMULTIPLY_ALPHA_WEBGL",
+          "UNPACK_COLORSPACE_CONVERSION_WEBGL"
+        ]
+      }
     }
   }
 }

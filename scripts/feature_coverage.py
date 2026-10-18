@@ -24,7 +24,7 @@ from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "9"
+ANALYZER_VERSION = "10"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -60,6 +60,9 @@ DISPLAY_NAMES = {
     "glsl_ubo_layout":              "GLSL UBO Layout",
     "context_attributes":           "Context Attributes",
     "multi_context":                "Multiple Contexts",
+    "drawing_buffer":               "Drawing Buffer",
+    "dom_texture_sources":          "DOM Texture Sources",
+    "unpack_webgl_params":          "WebGL Unpack Params",
     "glsl_fragment_kill_depth":     "GLSL Discard/FragDepth",
     "glsl_integer_ops":             "GLSL Integer Ops",
     "glsl_aggregates":              "GLSL Aggregates",

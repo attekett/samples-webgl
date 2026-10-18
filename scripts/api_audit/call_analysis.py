@@ -8,7 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from api_audit.const_propagation import GL_NAMESPACES, loop_bound_constants
+from api_audit.const_propagation import GL_NAMESPACES, collect_declarations, loop_bound_constants
+from api_audit.context import _get_string_value, is_canvas_expr
 
 
 @dataclass
@@ -24,6 +25,7 @@ class CallAnalysisResult:
     methods: dict = field(default_factory=dict)       # {method_name: [CallRecord]}
     extension_methods: dict = field(default_factory=dict)  # {ext_name: {method_name: [CallRecord]}}
     return_constants: set = field(default_factory=set)  # constants in === / !== comparisons
+    markers: set = field(default_factory=set)  # src:* texture upload sources
 
 
 def _walk(node, node_type: str) -> list:
@@ -225,8 +227,48 @@ def _find_extension_for_method(method_name: str, surface: dict) -> Optional[str]
     return None
 
 
+_DOM_UPLOADS = {'texImage2D', 'texSubImage2D', 'texImage3D', 'texSubImage3D'}
+_NEW_SOURCES = {'ImageData', 'OffscreenCanvas', 'VideoFrame'}
+_ELEMENT_SOURCES = {'img': 'image', 'video': 'video', 'canvas': 'canvas'}
+
+
+def _unwrap(node):
+    while node.type in ('await_expression', 'parenthesized_expression'):
+        node = node.named_children[0]
+    return node
+
+
+def _upload_source_marker(arg, ctx, declarations) -> Optional[str]:
+    """src:* marker for a texImage* source argument; identifiers resolve one declaration level."""
+    arg = _unwrap(arg)
+    if is_canvas_expr(arg, ctx):
+        return 'src:webgl_canvas'
+    if arg.type == 'identifier':
+        arg = declarations.get(_node_text(arg))
+        if arg is None:
+            return None
+        arg = _unwrap(arg)
+        if is_canvas_expr(arg, ctx):
+            return 'src:webgl_canvas'
+    if arg.type == 'new_expression':
+        ctor = _node_text(arg.child_by_field_name('constructor'))
+        if ctor in _NEW_SOURCES:
+            return f'src:{ctor}'
+        return 'src:image' if ctor == 'Image' else None
+    if arg.type == 'call_expression':
+        callee = arg.child_by_field_name('function')
+        if callee.type == 'identifier' and _node_text(callee) == 'createImageBitmap':
+            return 'src:ImageBitmap'
+        if callee.type == 'member_expression' and _node_text(callee) == 'document.createElement':
+            first = arg.child_by_field_name('arguments').named_children
+            tag = _get_string_value(first[0]) if first else None
+            return f'src:{_ELEMENT_SOURCES[tag]}' if tag in _ELEMENT_SOURCES else None
+    return None
+
+
 def _process_call(call_node, context_vars: set, extension_aliases: dict,
-                  consts: dict, surface: dict, result: CallAnalysisResult):
+                  consts: dict, surface: dict, result: CallAnalysisResult,
+                  ctx=None, declarations=None):
     """Process a single call_expression node."""
     callee = call_node.child_by_field_name('function')
     if callee is None or callee.type != 'member_expression':
@@ -332,6 +374,10 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
         # Only record if method is known in surface
         if method_name in surface.get('methods', {}):
             result.methods.setdefault(method_name, []).append(record)
+            if method_name in _DOM_UPLOADS and arg_nodes:
+                marker = _upload_source_marker(arg_nodes[-1], ctx, declarations)
+                if marker:
+                    result.markers.add(marker)
     elif ext_name:
         # Extension method call
         ext_info = surface.get('extensions', {}).get(ext_name, {})
@@ -385,10 +431,10 @@ def analyze_calls(root_node, ctx, consts: dict, surface: dict) -> CallAnalysisRe
     context_vars = ctx.context_vars
     extension_aliases = ctx.extension_aliases
 
-    # Process all call expressions
+    declarations = collect_declarations(root_node)
     for call_node in _walk(root_node, 'call_expression'):
         _process_call(call_node, context_vars, extension_aliases,
-                      consts, surface, result)
+                      consts, surface, result, ctx, declarations)
 
     # Detect return value comparisons (=== / !==)
     _detect_return_comparisons(root_node, context_vars, result)

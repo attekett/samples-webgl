@@ -67,3 +67,51 @@ const gl = document.getElementById('c').getContext('webgl2', {stencil: true});
     r = feature_coverage.analyze_file(f, SURFACE, CATS)
     assert 'context_attributes' in r['features']
     assert 'multi_context' not in r['features']
+
+
+def features(tmp_path, body):
+    f = tmp_path / "seed.html"
+    f.write_text(f"""<html><body><canvas id="c"></canvas><script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2');
+{body}
+</script></body></html>""")
+    return feature_coverage.analyze_file(f, SURFACE, CATS)
+
+
+def test_drawing_buffer_markers(tmp_path):
+    for body in ("canvas.width = 64;", "gl.canvas.height = 8;", "requestAnimationFrame(f);",
+                 "window.requestAnimationFrame(f);", "gl.drawingBufferStorage(gl.RGBA8, 4, 4);",
+                 "canvas.toDataURL();", "ctx2d.drawImage(canvas, 0, 0);"):
+        assert 'drawing_buffer' in features(tmp_path, body)['features'], body
+    assert 'drawing_buffer' not in features(tmp_path, "other.width = 4;")['features']
+
+
+def test_drawing_buffer_storage_not_fbo(tmp_path):
+    f = features(tmp_path, "gl.drawingBufferStorage(gl.RGBA8, 4, 4);")['features']
+    assert 'drawing_buffer' in f and 'fbo' not in f
+
+
+def test_colour_space_attribute_marker(tmp_path):
+    r = features(tmp_path, "gl.drawingBufferColorSpace = 'display-p3';")
+    assert 'attr:drawingBufferColorSpace=' in r['methods_per_feature']['drawing_buffer']
+
+
+def test_dom_texture_sources(tmp_path):
+    up = "gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, %s);"
+    r = features(tmp_path, up % "new ImageData(2, 2)")
+    assert 'src:ImageData' in r['methods_per_feature']['dom_texture_sources']
+    r = features(tmp_path, "const im = document.createElement('img');" + up % "im")
+    assert 'src:image' in r['methods_per_feature']['dom_texture_sources']
+    r = features(tmp_path, up % "await createImageBitmap(x)")
+    assert 'src:ImageBitmap' in r['methods_per_feature']['dom_texture_sources']
+    r = features(tmp_path, up % "canvas")
+    assert 'src:webgl_canvas' in r['methods_per_feature']['dom_texture_sources']
+    r = features(tmp_path, "gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(16));")
+    assert 'dom_texture_sources' not in r['features']
+
+
+def test_unpack_webgl_params(tmp_path):
+    assert 'unpack_webgl_params' in features(tmp_path, "gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);")['features']
+    assert 'unpack_webgl_params' not in features(tmp_path, "gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL);")['features']
+    assert 'unpack_webgl_params' not in features(tmp_path, "gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);")['features']
