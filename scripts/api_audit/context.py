@@ -45,7 +45,7 @@ def _walk(node, node_type: str) -> list:
     return results
 
 
-def _get_string_value(node) -> Optional[str]:
+def get_string_value(node) -> Optional[str]:
     """Extract the string value from a tree-sitter string node.
 
     String nodes contain string_fragment children with the actual text.
@@ -76,7 +76,7 @@ def _is_get_context_call(node) -> Optional[str]:
         return None
     for child in args.children:
         if child.type == 'string':
-            return _get_string_value(child)
+            return get_string_value(child)
     return None
 
 
@@ -100,7 +100,7 @@ def _is_get_extension_call(node) -> Optional[str]:
         return None
     for child in args.children:
         if child.type == 'string':
-            return _get_string_value(child)
+            return get_string_value(child)
     return None
 
 
@@ -271,11 +271,16 @@ def _attribute_markers(options, declarations) -> set[str]:
         value = pair.child_by_field_name('value')
         if key is None or value is None:
             continue
-        key_text = _get_string_value(key) if key.type == 'string' else key.text.decode('utf-8')
-        if value.type in ('true', 'false', 'number'):
+        key_text = get_string_value(key) if key.type == 'string' else key.text.decode('utf-8')
+        if value.type in ('true', 'false'):
             value_text = value.text.decode('utf-8')
+        elif value.type == 'number':
+            try:
+                value_text = 'true' if float(value.text.decode('utf-8')) else 'false'
+            except ValueError:
+                continue
         elif value.type == 'string':
-            value_text = _get_string_value(value)
+            value_text = get_string_value(value)
         else:
             continue
         default = CONTEXT_ATTRIBUTE_DEFAULTS.get(key_text)
@@ -312,8 +317,8 @@ def _detect_context_markers(root) -> tuple[set[str], set[str]]:
         receiver = call.child_by_field_name('function').child_by_field_name('object')
         if receiver.type == 'identifier':
             canvas_vars.add(receiver.text.decode('utf-8'))
-        # A call or new-expression receiver is a fresh canvas per site.
-        receivers.add(f'{receiver.start_byte}' if receiver.type in ('call_expression', 'new_expression')
+        # A new-expression receiver is a fresh canvas per site; call receivers match by source text.
+        receivers.add(f'{receiver.start_byte}' if receiver.type == 'new_expression'
                       else receiver.text.decode('utf-8'))
         if _is_offscreen_canvas(receiver, declarations):
             markers.add('ctx:offscreen')

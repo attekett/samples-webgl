@@ -5,6 +5,8 @@ from pathlib import Path
 from api_audit.context import detect_context
 from api_audit.parse import parse_js
 import feature_coverage
+from api_audit.feature_detection import detect_features
+from api_audit.usage_summary import summarize_usage
 
 ROOT = Path(__file__).resolve().parents[3]
 SURFACE = json.loads((ROOT / "docs/webgl_api_surface.json").read_text())
@@ -115,3 +117,56 @@ def test_unpack_webgl_params(tmp_path):
     assert 'unpack_webgl_params' in features(tmp_path, "gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);")['features']
     assert 'unpack_webgl_params' not in features(tmp_path, "gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL);")['features']
     assert 'unpack_webgl_params' not in features(tmp_path, "gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);")['features']
+
+
+def test_identical_call_receivers_are_one_context():
+    both = "document.getElementById('c').getContext('{}')"
+    src = f"const g = {both.format('webgl2')} || {both.format('webgl')};"
+    assert 'ctx:multiple' not in ctx(src).markers
+    assert 'ctx:multiple' in ctx(
+        "const a = document.getElementById('a').getContext('webgl2');"
+        "const b = document.getElementById('b').getContext('webgl2');").markers
+
+
+def test_numeric_attributes_normalise_to_booleans():
+    assert ctx("const g = c.getContext('webgl2', {stencil: 0, alpha: 1});").markers == set()
+    assert ctx("const g = c.getContext('webgl2', {stencil: 1});").markers == {'ctxattr:stencil=true'}
+    assert ctx("const g = c.getContext('webgl2', {alpha: 0});").markers == {'ctxattr:alpha=false'}
+
+
+def test_markers_count_toward_depth():
+    cat = {"markers": ["a", "b"]}
+    r = detect_features({"markers": ["a"]}, set(), {"c": cat})
+    assert r["depth_ratios"]["c"] == 0.5
+    assert r["methods_per_feature"]["c"] == ["a"]
+
+
+def usage_markers(body):
+    src = f"const canvas = document.getElementById('c'); const gl = canvas.getContext('webgl2'); {body}"
+    return summarize_usage(parse_js(src), SURFACE)[0]['markers']
+
+
+UP2 = "gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, %s);"
+
+
+def test_canvas_readback_via_create_image_bitmap():
+    assert 'canvas:readback' in usage_markers("createImageBitmap(canvas);")
+    assert 'canvas:readback' not in usage_markers("createImageBitmap(other);")
+
+
+def test_unpack_colour_space_marker():
+    assert 'attr:unpackColorSpace=' in usage_markers("gl.unpackColorSpace = 'display-p3';")
+
+
+def test_texture_source_markers():
+    for arg, marker in [("new OffscreenCanvas(2, 2)", 'src:OffscreenCanvas'),
+                        ("new VideoFrame(x)", 'src:VideoFrame'),
+                        ("document.createElement('video')", 'src:video'),
+                        ("document.createElement('canvas')", 'src:canvas')]:
+        assert marker in usage_markers(UP2 % arg), marker
+
+
+def test_texture_3d_upload_source_marker():
+    for m in ('texImage3D', 'texSubImage3D'):
+        body = f"gl.{m}(gl.TEXTURE_3D, 0, 0, 0, 0, 2, 2, 2, gl.RGBA, gl.UNSIGNED_BYTE, new ImageData(2, 2));"
+        assert 'src:ImageData' in usage_markers(body), m

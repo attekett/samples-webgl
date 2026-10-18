@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from api_audit.const_propagation import GL_NAMESPACES, collect_declarations, loop_bound_constants
-from api_audit.context import _get_string_value, is_canvas_expr, is_context_receiver
+from api_audit.context import get_string_value, is_canvas_expr, is_context_receiver
 
 
 @dataclass
@@ -261,7 +261,7 @@ def _upload_source_marker(arg, ctx, declarations) -> Optional[str]:
             return 'src:ImageBitmap'
         if callee.type == 'member_expression' and _node_text(callee) == 'document.createElement':
             first = arg.child_by_field_name('arguments').named_children
-            tag = _get_string_value(first[0]) if first else None
+            tag = get_string_value(first[0]) if first else None
             return f'src:{_ELEMENT_SOURCES[tag]}' if tag in _ELEMENT_SOURCES else None
     return None
 

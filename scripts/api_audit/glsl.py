@@ -369,7 +369,8 @@ def collect_shader_sources(root_node, ctx, consts: dict) -> list[str]:
 
 
 def extract_glsl_variables(root_node, ctx, consts: dict, surface: dict,
-                            extra_variables: list[str] | None = None) -> set[str]:
+                            extra_variables: list[str] | None = None,
+                            sources: list[str] | None = None) -> set[str]:
     """Extract GLSL built-in variables (gl_*) from shader sources.
 
     Args:
@@ -378,6 +379,7 @@ def extract_glsl_variables(root_node, ctx, consts: dict, surface: dict,
         consts: resolved constants from const_propagation.resolve_constants().
         surface: API surface dict.
         extra_variables: Optional list of additional variable names to scan for.
+        sources: Optional precomputed collect_shader_sources() result.
 
     Returns:
         Set of matched GLSL built-in variable names found in shader sources.
@@ -389,13 +391,16 @@ def extract_glsl_variables(root_node, ctx, consts: dict, surface: dict,
         return set()
 
     result = set()
-    for source in collect_shader_sources(root_node, ctx, consts):
+    if sources is None:
+        sources = collect_shader_sources(root_node, ctx, consts)
+    for source in sources:
         result |= _match_variables(source, all_var_names)
     return result
 
 
 def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict,
-                          extra_builtins: list[str] | None = None) -> set[str]:
+                          extra_builtins: list[str] | None = None,
+                          sources: list[str] | None = None) -> set[str]:
     """Extract GLSL builtins from shader sources in the file.
 
     Args:
@@ -405,6 +410,7 @@ def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict,
         surface: API surface dict (test_surface.json structure).
         extra_builtins: Optional list of additional builtin names to scan for
             (e.g. category-only builtins not in the surface definition).
+        sources: Optional precomputed collect_shader_sources() result.
 
     Returns:
         Set of matched GLSL builtin names found in shader sources.
@@ -417,7 +423,9 @@ def extract_glsl_builtins(root_node, ctx, consts: dict, surface: dict,
 
     result = set()
     extra_set = set(extra_builtins) if extra_builtins else set()
-    for stripped in collect_shader_sources(root_node, ctx, consts):
+    if sources is None:
+        sources = collect_shader_sources(root_node, ctx, consts)
+    for stripped in sources:
         result |= _match_builtins(stripped, all_builtin_names)
         for name in extra_set:
             if (name not in result and re.search(rf'\b{re.escape(name)}\b', stripped)

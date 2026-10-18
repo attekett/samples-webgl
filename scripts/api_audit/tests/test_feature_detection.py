@@ -452,6 +452,25 @@ class TestCallConstantGates:
                                      method_constants={"enable": {"A"}})[0]
 
 
+_REQ_CALL_CAT = {"methods": ["m"], "constants": ["X"], "min_methods_for_match": 1,
+                 "requires_any_constant": True, "requires_call_constant": {"m": ["Y"]}}
+
+
+def test_requires_call_constant_replaces_file_wide_constant_gate():
+    # Y is not in the category's constants, so only the call gate may decide.
+    assert is_category_match(_REQ_CALL_CAT, {"m"}, {"Y"}, set(), set(), set(),
+                             method_constants={"m": {"Y"}})[0]
+    assert not is_category_match(_REQ_CALL_CAT, {"m"}, {"X"}, set(), set(), set(),
+                                 method_constants={"m": {"X"}})[0]
+
+
+def test_requires_call_constant_via_call_analysis_result():
+    ca = MockCallAnalysis(methods={"m": [MockCallRecord(constants={"gl.Y"})]})
+    assert "c" in detect_features(ca, set(), {"c": _REQ_CALL_CAT})["features"]
+    ca = MockCallAnalysis(methods={"m": [MockCallRecord(constants={"X"})]})
+    assert "c" not in detect_features(ca, set(), {"c": _REQ_CALL_CAT})["features"]
+
+
 def test_depth_textures_end_to_end(tmp_path, categories):
     import feature_coverage
     from api_audit.__main__ import analyze_file as audit_analyze

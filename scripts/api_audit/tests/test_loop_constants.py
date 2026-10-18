@@ -45,3 +45,17 @@ def test_string_array_still_loads_extension(tmp_path, api_surface, feature_categ
     r = _analyze(tmp_path, api_surface, feature_categories,
                  "const REQUIRED_EXTENSIONS = ['EXT_color_buffer_float']; REQUIRED_EXTENSIONS.forEach(e => gl.getExtension(e));")
     assert "EXT_color_buffer_float" in r["requested_extensions"]
+
+
+def test_direct_subscript_argument(tmp_path, api_surface, feature_categories):
+    r = _analyze(tmp_path, api_surface, feature_categories,
+                 "const views = [gl.TEXTURE_2D_ARRAY]; gl.texStorage3D(views[i], 1, gl.RGBA8, 4, 4, 4);"
+                 "gl.texStorage3D([gl.TEXTURE_3D][i], 1, gl.RGBA8, 4, 4, 4);")
+    assert {"TEXTURE_2D_ARRAY", "TEXTURE_3D"} <= set(r["method_constants"]["texStorage3D"])
+
+
+def test_identifier_elements_of_inline_array(tmp_path, api_surface, feature_categories):
+    r = _analyze(tmp_path, api_surface, feature_categories,
+                 "const A = gl.TEXTURE_3D; for (const t of [A, gl.TEXTURE_2D_ARRAY]) "
+                 "gl.texStorage3D(t, 1, gl.RGBA8, 4, 4, 4);")
+    assert {"TEXTURE_3D", "TEXTURE_2D_ARRAY"} <= set(r["method_constants"]["texStorage3D"])

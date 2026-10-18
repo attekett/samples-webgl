@@ -1,6 +1,7 @@
 """Validation tests for feature_categories.json, interaction_topology.json,
 and their consistency with webgl_api_surface.json."""
 
+import re
 import warnings
 
 
@@ -200,7 +201,6 @@ def test_call_constant_gates_reference_surface(feature_categories, api_surface):
 
 def test_glsl_gates_valid(feature_categories, api_surface):
     """glsl_patterns compile, glsl_variables exist in the surface, the minimum is reachable."""
-    import re
     from api_audit.glsl import _flatten_variable_names
     surface_vars = set(_flatten_variable_names(api_surface))
     bad = []

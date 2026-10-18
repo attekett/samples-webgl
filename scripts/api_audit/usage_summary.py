@@ -10,9 +10,10 @@ def summarize_usage(root, surface: dict, extra_glsl_builtins: list[str] | None =
     consts = resolve_constants(root)
     ctx = detect_context(root, consts)
     calls = analyze_calls(root, ctx, consts, surface)
+    glsl_sources = collect_shader_sources(root, ctx, consts)
     glsl = extract_glsl_builtins(root, ctx, consts, surface,
-                                 extra_builtins=extra_glsl_builtins)
-    glsl_vars = extract_glsl_variables(root, ctx, consts, surface)
+                                 extra_builtins=extra_glsl_builtins, sources=glsl_sources)
+    glsl_vars = extract_glsl_variables(root, ctx, consts, surface, sources=glsl_sources)
 
     constants: dict = {}
     method_constants: dict = {}
@@ -42,6 +43,6 @@ def summarize_usage(root, surface: dict, extra_glsl_builtins: list[str] | None =
         "glsl_builtins": sorted(glsl),
         "glsl_variables": sorted(glsl_vars),
         "markers": sorted(ctx.markers | calls.markers),
-        "glsl_sources": collect_shader_sources(root, ctx, consts),
+        "glsl_sources": glsl_sources,
     }
     return summary, ctx

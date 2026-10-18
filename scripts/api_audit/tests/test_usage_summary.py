@@ -24,7 +24,7 @@ gl.enable(gl.DEPTH_TEST);
 const fs = `#version 300 es
 precision highp float;
 out vec4 o;
-void main() { o = texture(s, gl_FragCoord.xy); }`;
+void main() { o = texture(s, gl_FragCoord.xy) * smoothstep(0., 1., o.x); }`;
 gl.shaderSource(gl.createShader(gl.FRAGMENT_SHADER), fs);
 </script></body></html>"""
 
@@ -32,13 +32,15 @@ gl.shaderSource(gl.createShader(gl.FRAGMENT_SHADER), fs);
 def test_wrappers_agree(tmp_path):
     f = tmp_path / "seed.html"
     f.write_text(SEED)
-    a = audit_analyze(f, SURFACE)
+    extra = [g for c in CATS["categories"].values() for g in c.get("glsl_functions", [])]
+    a = audit_analyze(f, SURFACE, extra_glsl_builtins=extra)
     b = feature_coverage.analyze_file(f, SURFACE, CATS)
     assert a["methods"] == b["methods"]
     assert a["constants"] == b["constants"]
     assert a["extension_methods"] == b["extension_methods"]
     assert a["glsl_variables"] == sorted(b["glsl_variables"])
     assert set(a["glsl_builtins"]) == b["glsl_builtins"]
+    assert "smoothstep" in a["glsl_builtins"]
     fa = detect_features(a, set(a["glsl_builtins"]), CATS, extensions=set(a["extensions"]))
     assert fa["features"] == b["features"]
 

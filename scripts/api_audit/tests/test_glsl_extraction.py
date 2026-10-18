@@ -96,3 +96,26 @@ def test_user_defined_builtin_name_not_reported(tmp_path, api_surface, feature_c
         "void main() { o = vec4(ldexp(1.0, 2)); }"))
     assert "frexp" not in user["glsl_builtins"]
     assert "ldexp" in builtin["glsl_builtins"]
+
+
+def test_shader_source_identifier_without_glsl_marker(tmp_path, api_surface, feature_categories):
+    # No '#version' / 'void main(' so only the shaderSource(s, ident) path can find it.
+    fp = _fp(tmp_path, api_surface, feature_categories, """
+    const gl = document.getElementById('c').getContext('webgl2');
+    const frag = 'precision mediump float; vec4 f() { return gl_FragCoord; }';
+    gl.shaderSource(gl.createShader(gl.FRAGMENT_SHADER), frag);""")
+    assert "gl_FragCoord" in fp["glsl_variables"]
+
+
+def test_collect_shader_sources_runs_once_per_file(monkeypatch, api_surface):
+    from api_audit import usage_summary
+    from api_audit.parse import parse_js
+    calls = []
+    real = usage_summary.collect_shader_sources
+    monkeypatch.setattr(usage_summary, "collect_shader_sources",
+                        lambda *a: calls.append(1) or real(*a))
+    import api_audit.glsl as glsl
+    monkeypatch.setattr(glsl, "collect_shader_sources",
+                        lambda *a: calls.append(1) or real(*a))
+    usage_summary.summarize_usage(parse_js("const gl = c.getContext('webgl2');"), api_surface)
+    assert len(calls) == 1

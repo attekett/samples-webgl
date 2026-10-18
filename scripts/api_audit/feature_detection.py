@@ -148,7 +148,7 @@ def is_category_match(category_def, methods_found, constants_found,
         if min_methods > 0 and method_count < min_methods:
             return (False, set(), 0)
 
-        if requires_any_constant and not matched_constants:
+        if requires_any_constant and not requires_call and not matched_constants:
             return (False, set(), 0)
 
         if min_constants > 0 and len(matched_constants) < min_constants:

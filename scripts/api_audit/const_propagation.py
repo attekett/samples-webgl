@@ -2,8 +2,8 @@
 
 Pass 1: Collect all variable_declarator nodes, recording name and raw
          initializer node.
-Pass 2: Resolve each initializer to a concrete value (str, list[str])
-         or None if unresolvable. The two-pass approach handles forward
+Pass 2: Resolve each initializer to a concrete value (str, int, list[str],
+         tuple of 'gl.X') or None if unresolvable. The two-pass approach handles forward
          references.
 """
 
@@ -24,7 +24,8 @@ def _walk(node, node_type: str) -> list:
     return results
 
 
-def _resolve_node(node, declarations: dict, seen: set) -> Optional[str | list[str] | tuple[str, ...]]:
+def _resolve_node(node, declarations: dict, seen: set
+                  ) -> Optional[str | int | list[str] | tuple[str, ...]]:
     """Resolve an initializer node to a value.
 
     Args:
@@ -119,20 +120,20 @@ def collect_declarations(root) -> dict[str, object]:
     return declarations
 
 
-def resolve_constants(root) -> dict[str, str | list[str]]:
+def resolve_constants(root) -> dict[str, str | int | list[str] | tuple[str, ...]]:
     """Two-pass constant resolution over a tree-sitter AST root node.
 
     Pass 1 (collect_declarations) collects every initializer before pass 2
     resolves them, so forward references work.
 
     Returns:
-        dict mapping variable name to resolved value. Unresolvable
-        declarations are omitted.
+        dict mapping variable name to resolved value (str, int, list[str] or
+        tuple of 'gl.X'). Unresolvable declarations are omitted.
     """
     declarations = collect_declarations(root)
 
     # Pass 2: resolve each declaration
-    result: dict[str, str | list[str]] = {}
+    result: dict[str, str | int | list[str] | tuple[str, ...]] = {}
     for name, value_node in declarations.items():
         resolved = _resolve_node(value_node, declarations, {name})
         if resolved is not None:
@@ -154,7 +155,18 @@ def _constant_tuple(node, consts: dict) -> tuple:
     if node.type == 'identifier':
         v = consts.get(node.text.decode('utf-8'))
     elif node.type == 'array':
-        v = _resolve_node(node, {}, set())
+        names = []
+        for e in node.children:
+            if e.type in ('[', ']', ','):
+                continue
+            if e.type == 'identifier':
+                v = consts.get(e.text.decode('utf-8'))
+            else:
+                v = _resolve_node(e, {}, set())
+            if not (isinstance(v, str) and v.startswith('gl.')):
+                return ()
+            names.append(v)
+        return tuple(names)
     else:
         return ()
     return v if isinstance(v, tuple) else ()
@@ -185,26 +197,31 @@ def loop_bound_constants(ident_node, consts: dict) -> tuple[str, ...]:
                 return ()
         elif t == 'for_statement':
             init = node.child_by_field_name('initializer')
-            if init is not None and child.id == node.child_by_field_name('body').id and _binds(init, name):
+            body = node.child_by_field_name('body')
+            if init is not None and child.id == body.id and _binds(init, name):
                 return ()
         elif t in _FUNCTION_TYPES:
             params = node.child_by_field_name('parameters') or node.child_by_field_name('parameter')
             if params is not None and _binds(params, name):
                 first = node.child_by_field_name('parameter')
                 if first is None and params.type == 'formal_parameters':
-                    first = next((c for c in params.children if c.type not in ('(', ')', ',')), None)
+                    first = next(
+                        (c for c in params.children if c.type not in ('(', ')', ',')), None)
                 if (first is None or first.type != 'identifier'
                         or first.text.decode('utf-8') != name
                         or t not in ('arrow_function', 'function_expression')):
                     return ()
                 args = node.parent
                 call = args.parent if args is not None else None
-                fn = call.child_by_field_name('function') if call is not None and call.type == 'call_expression' else None
-                if args is None or args.type != 'arguments' or fn is None or fn.type != 'member_expression':
+                is_call = call is not None and call.type == 'call_expression'
+                fn = call.child_by_field_name('function') if is_call else None
+                if (args is None or args.type != 'arguments' or fn is None
+                        or fn.type != 'member_expression'):
                     return ()
                 meth = fn.child_by_field_name('property')
                 if meth is None or meth.text.decode('utf-8') not in _ITERATION_METHODS:
                     return ()
-                return tuple(c[3:] for c in _constant_tuple(fn.child_by_field_name('object'), consts))
+                return tuple(c[3:] for c in _constant_tuple(
+                    fn.child_by_field_name('object'), consts))
         child, node = node, node.parent
     return ()

@@ -24,7 +24,7 @@ from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "11"
+ANALYZER_VERSION = "12"
 
 
 # Display names for feature categories (matches old shell script terminology)
