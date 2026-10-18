@@ -7,17 +7,14 @@ from pathlib import Path
 
 from api_audit.html_extract import extract_script
 from api_audit.parse import parse_js
-from api_audit.context import detect_context
-from api_audit.const_propagation import resolve_constants
-from api_audit.call_analysis import analyze_calls
-from api_audit.glsl import extract_glsl_builtins
+from api_audit.usage_summary import summarize_usage
 from api_audit.lint import check_conventions
 from api_audit.cache import FileCache
 from api_audit.report import generate_report, generate_delta_report
 
 
 # Bump when analysis output changes; the per-file cache is keyed on content plus this.
-ANALYZER_VERSION = "2"
+ANALYZER_VERSION = "3"
 
 
 def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None,
@@ -35,43 +32,13 @@ def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None,
         return None
 
     root = parse_js(script)
-    consts = resolve_constants(root)
-    ctx = detect_context(root, consts)
-    calls = analyze_calls(root, ctx, consts, surface)
-    glsl = extract_glsl_builtins(root, ctx, consts, surface,
-                                 extra_builtins=extra_glsl_builtins)
-    warnings = check_conventions(root, context_vars=ctx.context_vars)
-
+    summary, ctx = summarize_usage(root, surface, extra_glsl_builtins)
     result = {
         'file': str(filepath),
-        'methods': {k: len(v) for k, v in calls.methods.items()},
-        'constants': {},
-        'glsl_builtins': {name: 1 for name in glsl},
-        'extension_methods': {},
-        'return_constants': list(calls.return_constants),
-        'extensions': list(ctx.extensions),
-        'lint_warnings': warnings,
+        **summary,
+        'glsl_builtins': {name: 1 for name in summary['glsl_builtins']},
+        'lint_warnings': check_conventions(root, context_vars=ctx.context_vars),
     }
-
-    # Aggregate constant roles from call records
-    # Map param names to the constant's own role names from the surface
-    surface_constants = surface.get('constants', {})
-    for method_name, call_records in calls.methods.items():
-        for call in call_records:
-            for const_name, param_name in call.constant_roles.items():
-                if const_name not in result['constants']:
-                    result['constants'][const_name] = {}
-                const_info = surface_constants.get(const_name, {})
-                roles = const_info.get('roles', [param_name])
-                for role in roles:
-                    result['constants'][const_name][role] = result['constants'][const_name].get(role, 0) + 1
-
-    # Aggregate extension methods
-    for ext_name, methods in calls.extension_methods.items():
-        if ext_name not in result['extension_methods']:
-            result['extension_methods'][ext_name] = {}
-        for method_name, records in methods.items():
-            result['extension_methods'][ext_name][method_name] = len(records) if isinstance(records, list) else records
 
     if cache:
         cache.store(filepath.name, content, result, config_hash=ANALYZER_VERSION)

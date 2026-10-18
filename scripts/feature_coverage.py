@@ -17,16 +17,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from api_audit.html_extract import extract_script
 from api_audit.parse import parse_js
-from api_audit.context import detect_context
-from api_audit.const_propagation import resolve_constants
-from api_audit.call_analysis import analyze_calls
-from api_audit.glsl import extract_glsl_builtins, extract_glsl_variables
+from api_audit.usage_summary import summarize_usage
 from api_audit.feature_detection import detect_features
 from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "3"
+ANALYZER_VERSION = "4"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -399,42 +396,24 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
         return None
 
     root = parse_js(script)
-    consts = resolve_constants(root)
-    ctx = detect_context(root, consts)
-    calls = analyze_calls(root, ctx, consts, surface)
-    static_calls = static_overload_calls(root, ctx.context_vars, surface)
-
     category_glsl = []
     for cat in cats_config.get("categories", {}).values():
         category_glsl.extend(cat.get("glsl_functions", []))
-    glsl = extract_glsl_builtins(root, ctx, consts, surface,
-                                 extra_builtins=category_glsl)
-    glsl_vars = extract_glsl_variables(root, ctx, consts, surface)
+    summary, ctx = summarize_usage(root, surface, category_glsl)
+    static_calls = static_overload_calls(root, ctx.context_vars, surface)
+    glsl = summary["glsl_builtins"]
+    glsl_vars = summary["glsl_variables"]
 
     result = {
-        "methods": {k: len(v) for k, v in calls.methods.items()},
-        "constants": {},
-        "extension_methods": {},
-        "core_methods": {k: len(v) for k, v in calls.methods.items()},
+        "methods": summary["methods"],
+        "constants": summary["constants"],
+        "extension_methods": summary["extension_methods"],
+        "core_methods": summary["methods"],
+        "method_constants": summary["method_constants"],
         "static_calls": static_calls,
         "api_version": ctx.api_version,
-        "requested_extensions": sorted(ctx.extensions),
+        "requested_extensions": summary["extensions"],
     }
-
-    surface_constants = surface.get("constants", {})
-    for method_name, call_records in calls.methods.items():
-        for call in call_records:
-            for const_name, param_name in call.constant_roles.items():
-                if const_name not in result["constants"]:
-                    result["constants"][const_name] = {}
-                roles = surface_constants.get(const_name, {}).get("roles", [param_name])
-                for role in roles:
-                    result["constants"][const_name][role] = (
-                        result["constants"][const_name].get(role, 0) + 1)
-
-    for ext_name, methods in calls.extension_methods.items():
-        result["extension_methods"][ext_name] = {
-            m: len(r) for m, r in methods.items()}
 
     fp = detect_features(
         result,
@@ -453,6 +432,7 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
                      "methods_per_feature": fp.get("methods_per_feature", {}),
                      "all_methods": sorted(all_methods),
                      "core_methods": result["core_methods"],
+                     "method_constants": summary["method_constants"],
                      "extension_methods": result["extension_methods"],
                      "static_calls": static_calls,
                      "api_version": ctx.api_version,
