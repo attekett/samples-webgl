@@ -87,6 +87,14 @@ This file documents WebGL extensions that are not supported in the current test 
 - **Used in**: Most `mutation_b76`–`b93` seeds and the `mutation_b98_*_chromium_*` seeds; validate them with `--browsers chromium`
 - **Shader directives**: Use `GL_ANGLE_clip_cull_distance`, `GL_EXT_conservative_depth`, `GL_NV_shader_noperspective_interpolation`, `GL_OES_sample_variables`, and `GL_OES_shader_multisample_interpolation`; the `WEBGL_*`/`EXT_*` names fail to compile in Chromium's translator
 
+### Lane traps found in the b100–b104 round (probed 2026-10-18)
+- **`WEBGL_polygon_mode`** (ANGLE-Vulkan only): `getExtension` logs a Chrome "very low support on mobile devices" warning, which fails the strict runner. Never use it; get `ext_rasterizer_ext` from `EXT_polygon_offset_clamp` or `EXT_depth_clamp`.
+- **`OVR_multiview2`** (ANGLE-Vulkan only): draws fail while transform feedback or a `TIME_ELAPSED` query is active, or when the program's `num_views` differs from the framebuffer's.
+- **`WEBGL_blend_func_extended`** (both Chrome lanes): declare `layout(location=0, index=1)` outputs; `gl_SecondaryFragColorEXT` does not compile.
+- **Renderable formats**: `EXT_render_snorm` is Chrome only and `WEBGL_render_shared_exponent` ANGLE-Vulkan only. Firefox has `EXT_texture_norm16` only, needs NEAREST filtering, and its snorm formats do not render.
+- **`WEBGL_debug_renderer_info`** logs a deprecation warning in Firefox; Firefox seeds use `WEBGL_debug_shaders` only.
+- **UBO layouts**: `shared` and `packed` fail to compile in every lane; `std140`, `row_major` and block arrays work.
+
 ## WebGL2 Features
 All core WebGL2 features tested so far are supported in the test environment.
 

@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **WebGL/WebGL2 fuzzing corpus project** containing **572 test files** designed for mutation-based fuzzing with Radamsa. The corpus is split between `agent_outputs/` (207 HTML files at the top level, including mutation seed batches b55–b99, plus the `mutator_baseline/` symlink set) and `samples-webgl/` (365 files across themed subdirectories — `mutations/`, `seeds/`, `creative/`, `webgl2/`, `extensions/`, etc.).
+This is a **WebGL/WebGL2 fuzzing corpus project** containing **618 test files** designed for mutation-based fuzzing with Radamsa. The corpus is split between `agent_outputs/` (253 HTML files at the top level, including mutation seed batches b55–b104, plus the `mutator_baseline/` symlink set) and `samples-webgl/` (365 files across themed subdirectories — `mutations/`, `seeds/`, `creative/`, `webgl2/`, `extensions/`, etc.).
 
 **Critical distinction**: This is NOT a conformance test suite. Test cases are "high-biomass" seeds for mutation-based fuzzing, featuring "spaghetti-like" valid resource usage patterns that mutators can corrupt into security vulnerabilities.
 
-**Corpus status**: The coverage model and its detectors were widened on 2026-10-18 (67 categories, 326 topology edges), which reopened gaps: 3-way 2167/3561 and 4-way 15810/41815 connected combos are covered (see Coverage Milestones). 225/226 API surface methods are exercised; only `makeXRCompatible` is missing (see Coverage Milestones). Every seed runs strictly clean in at least one browser lane (see Browser Compatibility). See `docs/plans/2026-01-28-round8-completion-summary.md` for the round-8 milestone and recent commits (b71–b99) for newer coverage work.
+**Corpus status**: The coverage model and its detectors were widened on 2026-10-18 (67 categories, 326 topology edges), which reopened gaps; seed batches b100–b104 then closed every 3-way gap a single lane can run: 3-way 3558/3561 and 4-way 33169/41815 connected combos are covered (see Coverage Milestones). 225/226 API surface methods are exercised; only `makeXRCompatible` is missing (see Coverage Milestones). Every seed runs strictly clean in at least one browser lane (see Browser Compatibility). See `docs/plans/2026-01-28-round8-completion-summary.md` for the round-8 milestone and recent commits (b71–b104) for newer coverage work.
 
 ## Project-Specific Rules
 
@@ -208,7 +208,7 @@ Tests maximize "fuzzing biomass" for Radamsa mutation. See **docs/plans/2026-01-
 
 ### Test Categories
 
-**`agent_outputs/` (207 HTML files):** Agent-generated mutation seeds, batches b55–b99 (the local b66–b70 line was renumbered b94–b98), plus targeted WebGL2 seeds. New seeds typically land here. `agent_outputs/mutator_baseline/` holds symlinks to the deployable mutator input: `core/` (12 seeds, Firefox or Chrome) and `chrome_extensions/` (2 seeds, Chrome ANGLE-Vulkan only).
+**`agent_outputs/` (253 HTML files):** Agent-generated mutation seeds, batches b55–b104 (the local b66–b70 line was renumbered b94–b98), plus targeted WebGL2 seeds. New seeds typically land here. `agent_outputs/mutator_baseline/` holds symlinks to the deployable mutator input: `core/` (12 seeds, Firefox or Chrome) and `chrome_extensions/` (2 seeds, Chrome ANGLE-Vulkan only).
 
 **`samples-webgl/` (365 files):** Bulk corpus, organized into themed subdirectories.
 
@@ -287,27 +287,27 @@ Python-based Playwright test runner that:
 
 | Metric | Value |
 |--------|-------|
-| Total HTML test files | 572 (207 in `agent_outputs/`, 365 in `samples-webgl/`) |
-| Mutation seed batches | b1–b99 (b1–b54 in `samples-webgl/mutations/`, b55–b99 in `agent_outputs/`) |
-| Mutation seeds | 455 |
+| Total HTML test files | 618 (253 in `agent_outputs/`, 365 in `samples-webgl/`) |
+| Mutation seed batches | b1–b104 (b1–b54 in `samples-webgl/mutations/`, b55–b104 in `agent_outputs/`) |
+| Mutation seeds | 501 |
 | Feature categories tracked | 67 (`docs/feature_categories.json`), 7 of them ubiquitous (one shared set in `scripts/api_audit/combination_matrix.py`) and left out of the feature table (Uniforms, Viewport/Scissor, Vertex Attributes, Buffer Operations, Shader Pipeline, Draw Calls, Pipeline State) |
-| Average seed complexity | ~235 lines |
-| Total lines | 134,827 |
-| Total `gl.*` API calls | 57,045 (avg 99/seed) |
-| Try-catch blocks | 4,842 (avg 7.1/seed) |
+| Average seed complexity | ~240 lines |
+| Total lines | 148,688 |
+| Total `gl.*` API calls | 64,175 (avg 104/seed) |
+| Try-catch blocks | 5,251 (avg 7.2/seed) |
 
 Run `bash scripts/analyze_corpus.sh` for live numbers.
 
 ### Coverage Milestones
 
-- 2-way feature combinations: **279/326** topology-connected combos covered; 47 gaps
-- 3-way feature combinations: **2167/3561** covered (61%); 1394 gaps, 497 of them involving a category no seed matches yet
-- 4-way feature combinations: **15810/41815** covered (38%); 26005 gaps, 8224 of them involving a zero-seed category
-- Low-diversity (monoculture) flags: 79 at 3-way, 348 at 4-way (api_audit combination matrix)
-- Zero-seed categories: `ext_multiview`, `ext_blend_func_extended`, `ext_renderable_formats`, `ext_debug_info` (exposed on Chrome ANGLE-Vulkan; norm16 and the debug extensions also on Firefox), `glsl_ubo_layout` and `dom_texture_sources`
+- 2-way feature combinations: **326/326** topology-connected combos covered
+- 3-way feature combinations: **3558/3561** covered; the 3 gaps pair `ext_multiview` (OVR_multiview2, ANGLE-Vulkan only) with `ext_clip_cull_distance` (ANGLE-GL only), so no lane can run them
+- 4-way feature combinations: **33169/41815** covered (79%); 8646 gaps
+- Low-diversity (monoculture) flags: 82 at 3-way, 334 at 4-way (api_audit combination matrix)
+- Every category has seeds; the thinnest (`ext_debug_info`, `ext_multiview`, `glsl_ubo_layout`, `ext_blend_func_extended`, `ext_renderable_formats`, 8-10 seeds each) were first seeded in b100–b104
 - Before the 2026-10-18 model change the same corpus scored 526/526 at 3-way and 2947/2947 at 4-way
 - API surface (226 methods, 559 constants, 56 extensions): **225/226 methods exercised (99.6%)**. The only gap, `makeXRCompatible`, stays in the surface by decision because it needs a WebXR device.
-- GLSL builtin functions: **50/50** (`frexp`/`ldexp` removed as ESSL 3.10; shader extraction now also scans string literals). GLSL built-in variables: **22/22** core, 6/11 extension-only (`--glsl-vars-detail`).
+- GLSL builtin functions: **50/50** (`frexp`/`ldexp` removed as ESSL 3.10; shader extraction now also scans string literals). GLSL built-in variables: **22/22** core, 8/11 extension-only (`--glsl-vars-detail`).
 - These figures are relative to the current coverage model. `docs/coverage-mapping-gaps-2026-10-17.md` lists what the model could not see; its "Applied" sections record which proposals are now in the model (categories, topology and the detector changes T1-T13) and what is still left out.
 
 ## Browser Compatibility
@@ -338,7 +338,7 @@ Run `bash scripts/analyze_corpus.sh` for live numbers.
 
 ```
 samples-webgl/
-├── agent_outputs/           # Agent-generated seeds (207 HTML, batches b55–b99)
+├── agent_outputs/           # Agent-generated seeds (253 HTML, batches b55–b104)
 │   └── mutator_baseline/    # core/ (12) + chrome_extensions/ (2) symlinks: deployable mutator input
 ├── samples-webgl/           # Bulk corpus (365 HTML across themed subdirs)
 │   ├── mutations/           # 259 mutation seeds, batches b1–b54
