@@ -32,7 +32,7 @@ The JSON-only proposals are now in the model: 54 categories (was 33) and 252 edg
 **Not applied (after the detector changes below):**
 
 - `context_loss` (row 7): seeds may not call `loseContext`, so the category could never be matched.
-- Row 43.
+- Row 43 (primitive restart and cross-frame result polling): value-level and structural behaviours that no method or constant marks, so no detector is added.
 - `ctx:cross_object`.
 - Struct nesting depth.
 
@@ -43,13 +43,15 @@ Rows are connected/covered/gaps/low_diversity, before then after. Per-category c
 - **T1, per-call constant sets:** each call keeps the constants it passed, and a gate matches when some call of a method passed the constant. No count changes.
 - **T2, one `UBIQUITOUS` set:** `feature_coverage` and `api_audit` share the definition in `combination_matrix.py`. No count changes. `covered_adjusted` fell (2-way 225 to 223, 3-way 1712 to 1707, 4-way 11788 to 11781).
 - **T3, per-call constant gates and OR gates (`enable(cap)`):** `depth_stencil` 191 to 246, `blending` 192 to 216, `rasterizer_state` 64 to 117, `texture_cube` 9 to 8, new `depth_textures` 32. 2-way 252/231/21/18 to 261/240/21/20; 3-way 2440/1719/721/64 to 2576/1819/757/68; 4-way 24178/11792/12386/318 to 26082/12706/13376/327.
-- **T4, constants through arrays, loop variables and subscripts:** `blending` +3, `depth_stencil` +5, `rasterizer_state` +7, `integer_textures` +4, `texture_3d` +1. 3-way low diversity 68 to 66; 4-way 12706/13376/327 to 12712/13370/297.
-- **T5, shader-source extraction (helper functions, concatenation, template pieces):** no category changes. Seeds with no extracted shader 49 to 9; `gl_Position` 521 to 563 seeds; `frexp`/`ldexp` user-defined cases no longer count. 3-way covered 1819 to 1820; 4-way 12712 to 12719.
+- **T4, constants through arrays, loop variables and subscripts:** `blending` +3, `depth_stencil` +5, `rasterizer_state` +7, `integer_textures` +4, `texture_3d` +1. 2-way 261/240/21/20 unchanged; 3-way 2576/1819/757/68 to 2576/1819/757/66; 4-way 26082/12706/13376/327 to 26082/12712/13370/297.
+- **T5, shader-source extraction (helper functions, concatenation, template pieces):** no category changes. Seeds with no extracted shader 49 to 9; `gl_Position` 521 to 563 seeds; `frexp`/`ldexp` user-defined cases no longer count. 2-way 261/240/21/20 unchanged; 3-way 2576/1819/757/66 to 2576/1820/756/66; 4-way 26082/12712/13370/297 to 26082/12719/13363/297.
 - **T6, GLSL construct gates and seven GLSL categories:** `glsl_preprocessor` 0 to 1, `glsl_control_flow` 0 to 8, `glsl_interpolation` 0 to 60, `glsl_ubo_layout` 0, `glsl_fragment_kill_depth` 0 to 17, `glsl_integer_ops` 0 to 92, `glsl_aggregates` 0 to 33. 2-way 261/240/21/20 to 295/265/30/23; 3-way 2576/1820/756/66 to 3059/2077/982/76; 4-way 26082/12719/13363/297 to 33805/15308/18497/337.
 - **T7, marker gate and context-level detection:** `context_attributes` 0 to 4, `multi_context` 0 to 2. 2-way 295/265/30/23 to 306/272/34/23; 3-way 3059/2077/982/76 to 3282/2113/1169/76; 4-way 33805/15308/18497/337 to 37535/15468/22067/337.
 - **T8, non-`gl` receivers:** `drawing_buffer` 0 to 13, `unpack_webgl_params` 0 to 3, `dom_texture_sources` 0. 2-way 306/272/34/23 to 326/279/47/24; 3-way 3282/2113/1169/76 to 3561/2166/1395/79; 4-way 37535/15468/22067/337 to 41815/15803/26012/348.
 - **T10, helper context parameters:** two seeds (`mutation_b25_s124_sync_multi_context`, `mutation_b75_s1_multicontext_pair`) gain 14 and 1 methods; `attributes`, `buffer_ops`, `shader_pipeline` and `uniforms` +1 each. 3-way 2166/1395 to 2167/1394; 4-way 15803/26005 to 15810/26005 (gaps 26012 to 26005).
 - **T11, gap recipes:** recipes now list concrete required items for every gate key, with no missing-category warnings. No count changes.
+- **T12, review fixes for T1-T8:** call receivers of `getContext` are deduplicated by source text, inline constant arrays accept identifiers, numeric context attributes normalise to booleans, and the marker and call-constant gates have regression tests. No count changes.
+- **T13, review fixes for T9-T12:** `getContext` receivers that create a canvas (`document.createElement`, other calls, `new OffscreenCanvas`) count once per call site, and only element lookups (`getElementById`, `querySelector*`, `getElementsBy*`, possibly indexed) deduplicate by text. Helper-parameter detection covers generator functions and methods, and destructured or rest parameters shadow the context name. Comments inside inline constant arrays are skipped. `drawing_buffer` marks `drawingBufferStorage` as `lane_restricted_methods`, so its recipe requires `canvas:resize` instead of a Chrome-only call. No count changes.
 - **T9, surface edits:** `gl_ClipDistance`, `gl_CullDistance`, `gl_MaxClipDistances`, `gl_MaxCullDistances`, the five `OES_sample_variables` names, `gl_DrawID` and `gl_ViewID_OVR` are grouped by extension and listed in `glsl_builtin_variable_extensions`; `--glsl-vars-detail` reports core 22/22 and extension 6/11. `frexp` and `ldexp` (ESSL 3.10) are gone from `glsl_builtins`. No count changes.
 
 Total, from the start of the plan to now (seeds 572):

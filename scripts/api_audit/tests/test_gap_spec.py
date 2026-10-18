@@ -527,11 +527,9 @@ class TestCLIIntegration:
 
 
 class TestGateKeyRecipes:
-    @pytest.fixture(scope="class")
-    def cats(self):
-        root = Path(__file__).resolve().parents[3]
-        return json.loads(
-            (root / "docs/feature_categories.json").read_text())["categories"]
+    @pytest.fixture
+    def cats(self, feature_categories):
+        return feature_categories["categories"]
 
     def test_depth_textures_call_constant(self, cats):
         req, _ = split_required_bonus_methods(cats["depth_textures"])
@@ -568,6 +566,11 @@ class TestGateKeyRecipes:
         empty = [n for n, d in cats.items()
                  if not split_required_bonus_methods(d)[0]]
         assert empty == []
+
+    def test_lane_restricted_method_is_bonus(self, cats):
+        req, bon = split_required_bonus_methods(cats["drawing_buffer"])
+        assert req == ["canvas:resize"]
+        assert "drawingBufferStorage" in bon
 
     def test_no_missing_categories(self, cats):
         missing = set()

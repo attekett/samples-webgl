@@ -59,3 +59,9 @@ def test_identifier_elements_of_inline_array(tmp_path, api_surface, feature_cate
                  "const A = gl.TEXTURE_3D; for (const t of [A, gl.TEXTURE_2D_ARRAY]) "
                  "gl.texStorage3D(t, 1, gl.RGBA8, 4, 4, 4);")
     assert {"TEXTURE_3D", "TEXTURE_2D_ARRAY"} <= set(r["method_constants"]["texStorage3D"])
+
+
+def test_comment_inside_constant_array(tmp_path, api_surface, feature_categories):
+    r = _analyze(tmp_path, api_surface, feature_categories,
+                 "for (const t of [gl.TEXTURE_2D, /* x */ gl.TEXTURE_3D]) gl.texStorage3D(t, 1, gl.RGBA8, 4, 4, 4);")
+    assert "TEXTURE_3D" in r["method_constants"]["texStorage3D"]

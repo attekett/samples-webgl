@@ -157,7 +157,7 @@ def _constant_tuple(node, consts: dict) -> tuple:
     elif node.type == 'array':
         names = []
         for e in node.children:
-            if e.type in ('[', ']', ','):
+            if e.type in ('[', ']', ',', 'comment'):
                 continue
             if e.type == 'identifier':
                 v = consts.get(e.text.decode('utf-8'))

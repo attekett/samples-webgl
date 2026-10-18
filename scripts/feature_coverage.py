@@ -24,7 +24,7 @@ from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "13"
+ANALYZER_VERSION = "14"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -638,7 +638,7 @@ def main():
             print(f"Never used ({len(core['never'])}): {', '.join(core['never'])}")
         print(f"Extension variables used ({len(extv['used'])}/{extv['total']}):")
         for name in sorted(extv["extensions"], key=lambda n: -var_counts.get(n, 0)):
-            print(f"  {name:<30} {var_counts.get(name, 0):>4} seeds  {extv['extensions'][name]}")
+            print(f"  {name:<40} {var_counts.get(name, 0):>4} seeds  {extv['extensions'][name]}")
         print()
 
     if args.glsl_detail:

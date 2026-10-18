@@ -305,6 +305,26 @@ def _is_offscreen_canvas(node, declarations) -> bool:
     return False
 
 
+def _is_element_lookup(node) -> bool:
+    """A document.getElementById/querySelector*/getElementsBy* call, possibly indexed."""
+    while node.type == 'subscript_expression':
+        node = node.child_by_field_name('object')
+    if node.type != 'call_expression':
+        return False
+    callee = node.child_by_field_name('function')
+    if callee is None or callee.type != 'member_expression':
+        return False
+    name = callee.child_by_field_name('property').text.decode('utf-8')
+    return name in ('getElementById', 'querySelector', 'querySelectorAll') or name.startswith('getElementsBy')
+
+
+def _receiver_key(receiver) -> str:
+    """Same canvas for equal source text, except expressions that create one per site."""
+    if receiver.type in ('new_expression', 'call_expression') and not _is_element_lookup(receiver):
+        return str(receiver.start_byte)
+    return receiver.text.decode('utf-8')
+
+
 def _detect_context_markers(root) -> tuple[set[str], set[str]]:
     """Markers (ctxattr:*, ctx:multiple, ctx:offscreen) and canvas receiver names."""
     declarations = collect_declarations(root)
@@ -317,9 +337,7 @@ def _detect_context_markers(root) -> tuple[set[str], set[str]]:
         receiver = call.child_by_field_name('function').child_by_field_name('object')
         if receiver.type == 'identifier':
             canvas_vars.add(receiver.text.decode('utf-8'))
-        # A new-expression receiver is a fresh canvas per site; call receivers match by source text.
-        receivers.add(f'{receiver.start_byte}' if receiver.type == 'new_expression'
-                      else receiver.text.decode('utf-8'))
+        receivers.add(_receiver_key(receiver))
         if _is_offscreen_canvas(receiver, declarations):
             markers.add('ctx:offscreen')
         args = call.child_by_field_name('arguments').named_children
@@ -430,7 +448,8 @@ def _detect_helper_functions(root, context_vars: set[str]) -> dict[str, list[str
     return helpers
 
 
-_FUNCTION_NODES = ('function_declaration', 'function_expression', 'arrow_function')
+_FUNCTION_NODES = ('function_declaration', 'function_expression', 'arrow_function',
+                   'generator_function', 'generator_function_declaration', 'method_definition')
 
 
 def _param_slots(fn) -> list[Optional[str]]:
@@ -447,8 +466,29 @@ def _param_slots(fn) -> list[Optional[str]]:
     return slots
 
 
+def _bound_names(fn) -> set:
+    """Every name the parameter list binds, destructured and rest included."""
+    params = fn.child_by_field_name('parameters') or fn.child_by_field_name('parameter')
+    names: set = set()
+
+    def visit(n):
+        if n.type == 'assignment_pattern':
+            n = n.child_by_field_name('left')
+        if n.type in ('identifier', 'shorthand_property_identifier_pattern'):
+            names.add(n.text.decode('utf-8'))
+        elif n.type == 'pair_pattern':
+            visit(n.child_by_field_name('value'))
+        else:
+            for c in n.named_children:
+                visit(c)
+
+    if params is not None:
+        visit(params)
+    return names
+
+
 def _function_name(fn) -> Optional[str]:
-    if fn.type == 'function_declaration':
+    if fn.type in ('function_declaration', 'generator_function_declaration'):
         name = fn.child_by_field_name('name')
     else:
         holder = fn.parent
@@ -466,7 +506,7 @@ def _binding_function(ident):
     name = ident.text.decode('utf-8')
     node = ident.parent
     while node is not None:
-        if node.type in _FUNCTION_NODES and name in _param_slots(node):
+        if node.type in _FUNCTION_NODES and name in _bound_names(node):
             return node
         node = node.parent
     return None
@@ -494,8 +534,10 @@ def _detect_context_params(root, info) -> set:
     calls = []
     for call in _walk(root, 'call_expression'):
         callee = call.child_by_field_name('function')
-        if callee.type == 'identifier' and callee.text.decode('utf-8') in defs:
-            calls.append((defs[callee.text.decode('utf-8')], call.child_by_field_name('arguments').named_children))
+        callee_name = callee.text.decode('utf-8')
+        if callee.type == 'identifier' and callee_name in defs:
+            args = call.child_by_field_name('arguments').named_children
+            calls.append((defs[callee_name], args))
     changed = True
     while changed:
         changed = False

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import feature_coverage
+from api_audit.__main__ import analyze_file as audit_analyze
 
 ROOT = Path(__file__).resolve().parents[3]
 SURFACE = json.loads((ROOT / "docs/webgl_api_surface.json").read_text())
@@ -22,6 +23,8 @@ makeSetup(glA); makeSetup(glB);""",
             gl="const glA = c1.getContext('webgl2'); const glB = c2.getContext('webgl2');")
     assert {'createBuffer', 'uniform4f'} <= r['all_methods']
     assert 'buffer_ops' in r['features'] and 'uniforms' in r['features']
+    a = audit_analyze(tmp_path / "seed.html", SURFACE)
+    assert {'createBuffer', 'uniform4f'} <= set(a['methods'])
 
 
 def test_renamed_param_records_constants(tmp_path):
@@ -60,3 +63,23 @@ outer(gl);""")
 def test_non_context_argument(tmp_path):
     r = run(tmp_path, "function f2(x) { x.flush(); } f2(42);")
     assert 'flush' not in r['all_methods']
+
+
+def test_nested_class_method_shadows_param(tmp_path):
+    r = run(tmp_path, "function f(c){ class K { m(c){ c.flush(); } } } f(gl);")
+    assert 'flush' not in r['all_methods']
+
+
+def test_generator_function_param(tmp_path):
+    r = run(tmp_path, "function* g(c){ c.flush(); } g(gl);")
+    assert 'flush' in r['all_methods']
+
+
+def test_destructured_param_shadows(tmp_path):
+    r = run(tmp_path, "function f(c){ const k = ({c}) => c.flush(); } f(gl);")
+    assert 'flush' not in r['all_methods']
+
+
+def test_default_value_does_not_shadow(tmp_path):
+    r = run(tmp_path, "function f(c, x = c){ c.flush(); } f(gl);")
+    assert 'flush' in r['all_methods']

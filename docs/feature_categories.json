@@ -1373,6 +1373,9 @@
         "drawingBufferStorage"
       ],
       "constants": [],
+      "lane_restricted_methods": [
+        "drawingBufferStorage"
+      ],
       "markers": [
         "canvas:resize",
         "attr:drawingBufferColorSpace=",

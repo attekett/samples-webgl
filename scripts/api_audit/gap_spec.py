@@ -87,7 +87,8 @@ def split_required_bonus_methods(category_def):
     'gl.CONST', 'glsl:<name>', markers verbatim and getExtension('X'). The
     required list can satisfy every gate the category has; for any-of gates
     the first JSON entry is the representative. Methods: first
-    REQUIRED_METHOD_CAP required.
+    REQUIRED_METHOD_CAP required. lane_restricted_methods (not available
+    in every browser lane) are bonus, so a marker can represent the category.
     """
     required, bonus = [], []
 
@@ -99,7 +100,8 @@ def split_required_bonus_methods(category_def):
         return [f"{m}({c})" for m, cs in category_def.get(key, {}).items()
                 for c in cs]
 
-    methods = list(category_def.get("methods", []))
+    restricted = category_def.get("lane_restricted_methods", [])
+    methods = [m for m in category_def.get("methods", []) if m not in restricted]
     markers = list(category_def.get("markers", []))
     extension_methods = list(category_def.get("extension_methods", []))
 
@@ -115,6 +117,8 @@ def split_required_bonus_methods(category_def):
         add(required if i < REQUIRED_METHOD_CAP else bonus, m)
     for m in extension_methods + list(category_def.get("glsl_functions", [])):
         add(required, m)
+    for m in restricted:
+        add(bonus, m)
 
     for item in pairs("match_if_call_constant"):
         add(bonus, item)
@@ -168,8 +172,8 @@ def build_recipe(gap, categories_config, interaction_topology,
         corpus_features: {filepath: fingerprint} from feature_detection.
         recipe_id: stable string ID like "gap_001".
         missing_categories: optional set; if provided, this function appends
-            target features that have no category definition or no methods.
-            Lets the caller surface a single warning at the end.
+            target features that have no category definition or whose
+            required list is empty. Lets the caller surface a single warning at the end.
 
     Returns:
         dict matching the recipe schema in the plan header.
@@ -302,7 +306,7 @@ def generate_recipes(matrix_report, corpus_features, categories_config,
         dict with keys:
             n_way, total_gaps_considered, recipes, batches,
             missing_categories (sorted list — features the recipes target
-            that have no entry in categories_config or no methods).
+            that have no entry in categories_config or whose required list is empty).
     """
     gaps_in = matrix_report.get("gaps", [])
     extension_categories = derive_extension_categories(categories_config)

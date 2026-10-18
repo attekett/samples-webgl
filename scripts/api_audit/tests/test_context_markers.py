@@ -128,6 +128,15 @@ def test_identical_call_receivers_are_one_context():
         "const b = document.getElementById('b').getContext('webgl2');").markers
 
 
+def test_created_canvases_are_distinct_contexts():
+    mk = "document.createElement('canvas').getContext('webgl2')"
+    assert 'ctx:multiple' in ctx(f"const a = {mk}; const b = {mk};").markers
+    assert 'ctx:multiple' in ctx("const a = makeCanvas().getContext('webgl2'); const b = makeCanvas().getContext('webgl2');").markers
+    assert 'ctx:multiple' not in ctx(
+        "const a = document.querySelectorAll('canvas')[0].getContext('webgl2'); "
+        "const b = document.querySelectorAll('canvas')[0].getContext('webgl2');").markers
+
+
 def test_numeric_attributes_normalise_to_booleans():
     assert ctx("const g = c.getContext('webgl2', {stencil: 0, alpha: 1});").markers == set()
     assert ctx("const g = c.getContext('webgl2', {stencil: 1});").markers == {'ctxattr:stencil=true'}
