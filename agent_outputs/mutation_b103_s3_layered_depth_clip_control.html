@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_clip_control',
+    'EXT_conservative_depth'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const extCC = gl.getExtension('EXT_clip_control');
+    const extCD = gl.getExtension('EXT_conservative_depth');
+
+    const texSize = 256;
+    const layerCount = 3;
+    const vertCount = 12;
+    const uboStride = 256;
+
+    const drawMode = gl.TRIANGLES;
+    const depthCmp = gl.LESS;
+    const colorFmt = gl.RGBA8;
+    const srgbFmt = gl.SRGB8_ALPHA8;
+    const depthFmt = gl.DEPTH_COMPONENT32F;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+layout(std140, row_major) uniform;
+uniform Layer {
+    mat4 xf;
+    vec4 tint;
+};
+in vec2 aPos;
+in float aZ;
+out vec2 vUv;
+out vec4 vTint;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    vTint = tint;
+    gl_Position = xf * vec4(aPos, aZ, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+#extension GL_EXT_conservative_depth : enable
+precision highp float;
+layout(depth_less) out float gl_FragDepth;
+in vec2 vUv;
+in vec4 vTint;
+layout(location = 0) out vec4 color0;
+void main() {
+    gl_FragDepth = gl_FragCoord.z * 0.98;
+    float weave = sin(vUv.x * 19.0) * cos(vUv.y * 13.0);
+    color0 = vec4(vTint.rgb * (0.6 + 0.4 * weave), vTint.a);
+}`);
+        gl.compileShader(fShader);
+        var program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        var posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1, -1, 1, 1, 1,
+            -1, -1, 1, 1, 1, -1,
+            -1, -1, 1, -1, 1, 1,
+            -1, -1, 1, 1, -1, 1
+        ]), gl.STATIC_DRAW);
+        var zBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, zBuf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            0.3, 0.3, 0.3, 0.3, 0.3, 0.3,
+            0.6, 0.6, 0.6, 0.6, 0.6, 0.6
+        ]), gl.STATIC_DRAW);
+        var gone = gl.createBuffer();
+        gl.deleteBuffer(gone);
+        gl.deleteBuffer(gone);
+        gl.isBuffer(gone);
+    } catch(e) {}
+
+    try {
+        var vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        const locZ = gl.getAttribLocation(program, 'aZ');
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locZ);
+        gl.bindBuffer(gl.ARRAY_BUFFER, zBuf);
+        gl.vertexAttribPointer(locZ, 1, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        const uboData = new Float32Array(uboStride / 4 * layerCount);
+        for (let li = 0; li < layerCount; li++) {
+            const o = li * uboStride / 4;
+            uboData.set([0.8, 0, 0, -0.15 + li * 0.15, 0, 0.8, 0, 0.1 - li * 0.1, 0, 0, 1, 0, 0, 0, 0, 1], o);
+            uboData.set([0.9 - li * 0.4, 0.3 + li * 0.25, 0.2 + li * 0.35, 0.75], o + 16);
+        }
+        var ubo = gl.createBuffer();
+        gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+        gl.bufferData(gl.UNIFORM_BUFFER, uboData, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+        gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+        var blockIdx = gl.getUniformBlockIndex(program, 'Layer');
+        gl.uniformBlockBinding(program, blockIdx, 2);
+        gl.bindBufferBase(gl.UNIFORM_BUFFER, 2, ubo);
+    } catch(e) {}
+
+    try {
+        var layerTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, layerTex);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, colorFmt, texSize, texSize, layerCount);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+        var depthTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, depthTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, depthFmt, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        var layerFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, layerFbo);
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, layerTex, 0, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthTex, 0);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    } catch(e) {}
+
+    try {
+        var srgbRbo = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, srgbRbo);
+        gl.renderbufferStorage(gl.RENDERBUFFER, srgbFmt, texSize, texSize);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, srgbRbo);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        var srgbFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, srgbFbo);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, srgbRbo);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.clearColor(0.02, 0.02, 0.04, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.getFramebufferAttachmentParameter(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, layerFbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(depthCmp);
+        gl.depthMask(true);
+        gl.clearDepth(1.0);
+        gl.clearColor(0.05, 0.03, 0.08, 1.0);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
+        gl.frontFace(gl.CW);
+        gl.enable(gl.POLYGON_OFFSET_FILL);
+        gl.polygonOffset(1.0, 1.0);
+        gl.enable(gl.BLEND);
+        gl.blendColor(0.2, 0.2, 0.2, 0.5);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendEquation(gl.FUNC_ADD);
+        extCC.clipControlEXT(extCC.LOWER_LEFT_EXT, extCC.ZERO_TO_ONE_EXT);
+        const originQ = gl.getParameter(extCC.CLIP_ORIGIN_EXT);
+        const depthQ = gl.getParameter(extCC.CLIP_DEPTH_MODE_EXT);
+        void originQ; void depthQ;
+        for (let li = 0; li < layerCount; li++) {
+            gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, layerTex, 0, li);
+            gl.bindBufferRange(gl.UNIFORM_BUFFER, 2, ubo, li * uboStride, uboStride);
+            gl.bindBufferRange(gl.UNIFORM_BUFFER, 2, ubo, li * uboStride, uboStride);
+            if (li == 1) {
+                extCC.clipControlEXT(extCC.UPPER_LEFT_EXT, extCC.ZERO_TO_ONE_EXT);
+            }
+            if (li == 2) {
+                extCC.clipControlEXT(extCC.LOWER_LEFT_EXT, extCC.NEGATIVE_ONE_TO_ONE_EXT);
+            }
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.drawArrays(drawMode, 0, vertCount);
+            gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.DEPTH_ATTACHMENT]);
+        }
+        extCC.clipControlEXT(extCC.LOWER_LEFT_EXT, extCC.NEGATIVE_ONE_TO_ONE_EXT);
+        gl.disable(gl.BLEND);
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        gl.disable(gl.CULL_FACE);
+        gl.frontFace(gl.CCW);
+        gl.disable(gl.DEPTH_TEST);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, srgbFbo);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, layerFbo);
+        const third = Math.floor(texSize / layerCount);
+        for (let li = 0; li < layerCount; li++) {
+            gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, layerTex, 0, li);
+            gl.blitFramebuffer(0, 0, texSize, texSize, li * third, 0, (li + 1) * third, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        }
+        gl.invalidateSubFramebuffer(gl.READ_FRAMEBUFFER, [gl.DEPTH_ATTACHMENT], 0, 0, texSize, texSize);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, srgbFbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

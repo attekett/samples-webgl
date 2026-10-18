@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'EXT_clip_control',
+    'EXT_conservative_depth',
+    'EXT_polygon_offset_clamp',
+    'EXT_depth_clamp',
+    'WEBGL_stencil_texturing'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { stencil: true, preserveDrawingBuffer: true });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const extCC = gl.getExtension('EXT_clip_control');
+    const extCD = gl.getExtension('EXT_conservative_depth');
+    const extPOC = gl.getExtension('EXT_polygon_offset_clamp');
+    const extDC = gl.getExtension('EXT_depth_clamp');
+    const extST = gl.getExtension('WEBGL_stencil_texturing');
+    const ctxAttrs = gl.getContextAttributes();
+
+    const texSize = 256;
+    const sampleCount = 4;
+    const stencilRef = ctxAttrs.stencil ? 1 : 0;
+    const bandCount = 3;
+    const vertCount = 6;
+
+    const drawMode = gl.TRIANGLES;
+    const depthCmp = gl.LESS;
+    const dsFormat = gl.DEPTH24_STENCIL8;
+    const colorFormat = gl.RGBA8;
+    const fboTarget = gl.FRAMEBUFFER;
+
+    try {
+        var vShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vShader, `#version 300 es
+precision highp float;
+in vec3 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos.xy * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 1.0);
+}`);
+        gl.compileShader(vShader);
+        var fShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fShader, `#version 300 es
+#extension GL_EXT_conservative_depth : enable
+precision highp float;
+layout(depth_greater) out float gl_FragDepth;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+    float cell = mod(floor(vUv.x * 12.0) + floor(vUv.y * 12.0), 3.0);
+    if (cell > 1.5) discard;
+    gl_FragDepth = min(gl_FragCoord.z + 0.02, 1.0);
+    outColor = vec4(vUv, 0.4 + 0.3 * cell, 1.0);
+}`);
+        gl.compileShader(fShader);
+        var program = gl.createProgram();
+        gl.attachShader(program, vShader);
+        gl.attachShader(program, fShader);
+        gl.linkProgram(program);
+
+        var cVShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(cVShader, `#version 300 es
+precision highp float;
+void main() {
+    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`);
+        gl.compileShader(cVShader);
+        var cFShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(cFShader, `#version 300 es
+precision highp float;
+precision highp usampler2D;
+uniform sampler2D uColor;
+uniform usampler2D uStencil;
+out vec4 outColor;
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    vec4 c = texelFetch(uColor, p, 0);
+    uint s = texelFetch(uStencil, p, 0).r;
+    outColor = vec4(mix(c.rgb, vec3(1.0, 0.9, 0.2), float(s) * 0.5), 1.0);
+}`);
+        gl.compileShader(cFShader);
+        var compProgram = gl.createProgram();
+        gl.attachShader(compProgram, cVShader);
+        gl.attachShader(compProgram, cFShader);
+        gl.linkProgram(compProgram);
+    } catch(e) {}
+
+    try {
+        var posBuf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        const verts = [-0.5, -0.5, 0.2, 0.5, -0.5, 0.2, 0.0, 0.6, 0.2];
+        const quadZ = [-0.4, 0.5, 1.5];
+        for (let bi = 0; bi < bandCount; bi++) {
+            const x0 = -0.9 + bi * 0.45;
+            const x1 = x0 + 0.9;
+            const z = quadZ[bi];
+            verts.push(x0, -0.8, z, x1, -0.8, z, x1, 0.8, z, x0, -0.8, z, x1, 0.8, z, x0, 0.8, z);
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+        var spare = gl.createBuffer();
+        gl.deleteBuffer(spare);
+        var vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const locPos = gl.getAttribLocation(program, 'aPos');
+        gl.enableVertexAttribArray(locPos);
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+        gl.vertexAttribPointer(locPos, 3, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindVertexArray(vao);
+    } catch(e) {}
+
+    try {
+        var dsTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, dsTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, dsFormat, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, extST.DEPTH_STENCIL_TEXTURE_MODE_WEBGL, extST.STENCIL_INDEX_WEBGL);
+        var stColorTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, stColorTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, colorFormat, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        var stFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, stFbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stColorTex, 0);
+        gl.framebufferTexture2D(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, gl.TEXTURE_2D, dsTex, 0);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        var msColor = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, msColor);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, sampleCount, colorFormat, texSize, texSize);
+        var msDepth = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, msDepth);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, sampleCount, dsFormat, texSize, texSize);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        var msFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, msFbo);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, msColor);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, msDepth);
+        gl.checkFramebufferStatus(fboTarget);
+        var resolveTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, resolveTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, colorFormat, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        var resolveFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, resolveFbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, resolveTex, 0);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, stColorTex, 0);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, resolveTex, 0);
+        gl.checkFramebufferStatus(fboTarget);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(program);
+        gl.bindFramebuffer(fboTarget, stFbo);
+        gl.bindFramebuffer(fboTarget, null);
+        gl.bindFramebuffer(fboTarget, stFbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(depthCmp);
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilFunc(gl.ALWAYS, stencilRef, 0xff);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+        gl.stencilMask(0xff);
+        gl.drawArrays(drawMode, 0, 3);
+        gl.disable(gl.STENCIL_TEST);
+        gl.disable(gl.DEPTH_TEST);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, msFbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.05, 0.03, 0.1, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(depthCmp);
+        gl.depthMask(true);
+        gl.enable(extDC.DEPTH_CLAMP_EXT);
+        gl.enable(gl.POLYGON_OFFSET_FILL);
+        extPOC.polygonOffsetClampEXT(2.0, 4.0, 0.01);
+        extCC.clipControlEXT(extCC.UPPER_LEFT_EXT, extCC.ZERO_TO_ONE_EXT);
+        const originQ = gl.getParameter(extCC.CLIP_ORIGIN_EXT);
+        const clampQ = gl.getParameter(extPOC.POLYGON_OFFSET_CLAMP_EXT);
+        void originQ; void clampQ;
+        for (let pass = 0; pass < bandCount; pass++) {
+            gl.drawArrays(drawMode, 3 + pass * vertCount, vertCount);
+        }
+        extCC.clipControlEXT(extCC.LOWER_LEFT_EXT, extCC.NEGATIVE_ONE_TO_ONE_EXT);
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        gl.disable(extDC.DEPTH_CLAMP_EXT);
+        gl.disable(gl.DEPTH_TEST);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msFbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resolveFbo);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, msFbo);
+        gl.invalidateFramebuffer(gl.READ_FRAMEBUFFER, [gl.COLOR_ATTACHMENT0, gl.DEPTH_STENCIL_ATTACHMENT]);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, null);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(compProgram);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, resolveTex);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, dsTex);
+        gl.uniform1i(gl.getUniformLocation(compProgram, 'uColor'), 0);
+        gl.uniform1i(gl.getUniformLocation(compProgram, 'uStencil'), 1);
+        gl.drawArrays(drawMode, 0, 3);
+        gl.activeTexture(gl.TEXTURE0);
+    } catch(e) {}
+
+    try {
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+        gl.deleteProgram(program);
+        gl.deleteProgram(compProgram);
+        gl.deleteShader(vShader);
+        gl.deleteShader(fShader);
+        gl.deleteShader(cVShader);
+        gl.deleteShader(cFShader);
+        gl.deleteFramebuffer(stFbo);
+        gl.deleteFramebuffer(msFbo);
+        gl.deleteFramebuffer(resolveFbo);
+        gl.deleteRenderbuffer(msColor);
+        gl.deleteRenderbuffer(msDepth);
+        gl.deleteTexture(dsTex);
+        gl.deleteTexture(stColorTex);
+        gl.deleteTexture(resolveTex);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

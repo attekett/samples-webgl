@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const cd = gl.getExtension('WEBGL_clip_cull_distance');
+
+    const texSize = 256;
+    const gridSide = 8;
+    const pointCount = gridSide * gridSide;
+    const capBytes = pointCount * 4;
+    const readWords = 8;
+    const seedMul = 40503;
+
+    const arrayTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const copyRead = gl.COPY_READ_BUFFER;
+    const copyWrite = gl.COPY_WRITE_BUFFER;
+    const unpackTarget = gl.PIXEL_UNPACK_BUFFER;
+
+    var tfProg, drawProg;
+    var seedBuf, capBuf, stageBuf, readBuf;
+    var tfObj, vao, capTex, fboTex, fbo;
+    var bias = 0;
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+struct Cell { uint bits; float r; };
+in uint aSeed;
+flat out uint vOut;
+void main() {
+    float w[4] = float[4](0.25, 0.5, 0.75, 1.0);
+    Cell c = Cell((aSeed ^ (uint(gl_VertexID) << 3u)) * 2654435761u, 0.0);
+    for (int i = 0; i < w.length(); i++) {
+        c.r += w[i] * float((c.bits >> uint(i * 4)) & 15u) / 15.0;
+    }
+    c.bits = ((c.bits ^ (c.bits >> 13u)) & 65535u) | (uint(c.r * 63.0) << 16u);
+    vOut = c.bits;
+    gl_ClipDistance[0] = c.r - 0.2;
+    gl_ClipDistance[1] = 2.2 - c.r;
+    gl_Position = vec4(float(gl_VertexID % 8) / 4.0 - 0.9, float(gl_VertexID / 8) / 4.0 - 0.9, 0.0, 1.0);
+    gl_PointSize = 1.0;
+}`);
+        gl.compileShader(vs);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+precision highp float;
+out vec4 col;
+void main() { col = vec4(1.0); }`);
+        gl.compileShader(fs);
+        tfProg = gl.createProgram();
+        gl.attachShader(tfProg, vs);
+        gl.attachShader(tfProg, fs);
+        gl.transformFeedbackVaryings(tfProg, ['vOut'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(tfProg);
+        gl.getProgramParameter(tfProg, gl.LINK_STATUS);
+    } catch(e) {}
+
+    try {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+precision highp float;
+void main() {
+    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`);
+        gl.compileShader(vs);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+precision highp float;
+precision highp usampler2D;
+uniform usampler2D uCap;
+uniform uint uBias;
+out vec4 col;
+void main() {
+    ivec2 cell = ivec2(gl_FragCoord.xy) / 32;
+    uint v = texelFetch(uCap, cell, 0).r;
+    if (((v ^ uBias) & 3u) == 0u) discard;
+    float lo = float(v & 255u) / 255.0;
+    float mid = float((v >> 8u) & 255u) / 255.0;
+    float hi = float(v >> 16u) / 63.0;
+    col = vec4(lo, mid, hi, 1.0);
+}`);
+        gl.compileShader(fs);
+        drawProg = gl.createProgram();
+        gl.attachShader(drawProg, vs);
+        gl.attachShader(drawProg, fs);
+        gl.linkProgram(drawProg);
+        gl.getProgramParameter(drawProg, gl.LINK_STATUS);
+    } catch(e) {}
+
+    try {
+        const seeds = new Uint32Array(pointCount);
+        for (let i = 0; i < pointCount; i++) seeds[i] = (i * seedMul + 7) >>> 0;
+        seedBuf = gl.createBuffer();
+        gl.bindBuffer(arrayTarget, seedBuf);
+        gl.bufferData(arrayTarget, seeds, gl.STATIC_DRAW);
+        capBuf = gl.createBuffer();
+        gl.bindBuffer(arrayTarget, capBuf);
+        gl.bufferData(arrayTarget, capBytes, gl.DYNAMIC_COPY);
+        gl.bindBuffer(arrayTarget, null);
+        stageBuf = gl.createBuffer();
+        gl.bindBuffer(unpackTarget, stageBuf);
+        gl.bufferData(unpackTarget, capBytes, gl.STREAM_COPY);
+        gl.bindBuffer(unpackTarget, null);
+        readBuf = gl.createBuffer();
+        gl.bindBuffer(copyWrite, readBuf);
+        gl.bufferData(copyWrite, readWords * 4, gl.STREAM_READ);
+        gl.bindBuffer(copyWrite, null);
+    } catch(e) {}
+
+    try {
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const loc = gl.getAttribLocation(tfProg, 'aSeed');
+        gl.bindBuffer(arrayTarget, seedBuf);
+        gl.bindBuffer(arrayTarget, seedBuf);
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribIPointer(loc, 1, gl.UNSIGNED_INT, 0, 0);
+        gl.bindVertexArray(null);
+        gl.bindBuffer(arrayTarget, null);
+        tfObj = gl.createTransformFeedback();
+    } catch(e) {}
+
+    try {
+        gl.useProgram(tfProg);
+        gl.bindVertexArray(vao);
+        gl.enable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.enable(cd.CLIP_DISTANCE1_WEBGL);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.getParameter(cd.MAX_CLIP_DISTANCES_WEBGL);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfObj);
+        gl.bindBufferBase(tfTarget, 0, capBuf);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+        gl.endTransformFeedback();
+        gl.bindBufferBase(tfTarget, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        gl.disable(cd.CLIP_DISTANCE1_WEBGL);
+        gl.disable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(copyRead, capBuf);
+        gl.bindBuffer(copyWrite, stageBuf);
+        gl.copyBufferSubData(copyRead, copyWrite, 0, 0, capBytes);
+        gl.bindBuffer(copyWrite, readBuf);
+        gl.copyBufferSubData(copyRead, copyWrite, 0, 0, readWords * 4);
+        const f = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        await new Promise(r => setTimeout(r, 50));
+        gl.clientWaitSync(f, 0, 0);
+        gl.deleteSync(f);
+        const got = new Uint32Array(readWords);
+        gl.getBufferSubData(copyWrite, 0, got);
+        for (let i = 0; i < readWords; i++) bias ^= got[i];
+        gl.bindBuffer(copyRead, null);
+        gl.bindBuffer(copyWrite, null);
+    } catch(e) {}
+
+    try {
+        capTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, capTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32UI, gridSide, gridSide);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.bindBuffer(unpackTarget, stageBuf);
+        gl.bindBuffer(unpackTarget, stageBuf);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gridSide, gridSide, gl.RED_INTEGER, gl.UNSIGNED_INT, 0);
+        gl.bindBuffer(unpackTarget, null);
+
+        fboTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, fboTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, texSize, texSize);
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, fboTex, 0);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(drawProg);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, capTex);
+        gl.uniform1i(gl.getUniformLocation(drawProg, 'uCap'), 0);
+        gl.uniform1ui(gl.getUniformLocation(drawProg, 'uBias'), bias >>> 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.deleteFramebuffer(fbo);
+        gl.deleteTexture(fboTex);
+        gl.deleteBuffer(readBuf);
+        gl.deleteTransformFeedback(tfObj);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

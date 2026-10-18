@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [];
+const pointCount = 24;
+const sceneSize = 64;
+const shadowSize = 128;
+const cubeSize = 16;
+const volDim = 8;
+const imgDim = 8;
+
+const vsTF = `#version 300 es
+#define SPREAD_HI 0.85
+#define SPREAD_LO 0.45
+#ifdef GL_ES
+#define SPREAD SPREAD_HI
+#else
+#define SPREAD SPREAD_LO
+#endif
+struct Light { vec3 c; float r; };
+out vec4 vOut;
+void main() {
+  float w[4] = float[4](0.25, 0.5, 0.75, 1.0);
+  Light l = Light(vec3(0.9, 0.5, 0.2), 0.6);
+  float acc = 0.0;
+  for (int i = 0; i < w.length(); i++) {
+    acc += w[i];
+  }
+  float a = float(gl_VertexID) * 0.61;
+  float rad = SPREAD * (0.3 + 0.7 * fract(float(gl_VertexID) * 0.37));
+  vOut = vec4(cos(a) * rad, sin(a) * rad, (fract(a * 0.7) * 2.0 - 1.0) * 0.9, l.r * acc * 0.2 + l.c.x * 0.1);
+  gl_Position = vec4(0.0);
+}`;
+const fsTF = `#version 300 es
+precision highp float;
+out vec4 o;
+void main() {
+  o = vec4(0.0);
+}`;
+const vsScene = `#version 300 es
+layout(location = 0) in vec4 aPt;
+out float vZ;
+out float vTint;
+void main() {
+  vZ = aPt.z;
+  vTint = aPt.w;
+  gl_PointSize = 14.0;
+  gl_Position = vec4(aPt.xy, aPt.z, 1.0);
+}`;
+const fsScene = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+uniform samplerCube uCube;
+uniform sampler3D uVol;
+in float vZ;
+in float vTint;
+out vec4 outColor;
+void main() {
+  vec2 pc = gl_PointCoord * 2.0 - 1.0;
+  vec3 c = texture(uCube, normalize(vec3(pc, 0.5 + vTint))).rgb;
+  vec3 v = texture(uVol, vec3(gl_PointCoord, vZ * 0.5 + 0.5)).rgb;
+  outColor = vec4(mix(c, v, 0.4), 1.0);
+}`;
+const vsComp = `#version 300 es
+layout(location = 0) in vec2 aPos;
+void main() {
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+const fsComp = `#version 300 es
+precision highp float;
+precision highp sampler2DShadow;
+uniform sampler2DShadow uShadow;
+uniform sampler2D uImg;
+uniform sampler2D uScene;
+uniform float uScale;
+out vec4 outColor;
+void main() {
+  vec2 uv = gl_FragCoord.xy / 256.0;
+  float lit = texture(uShadow, vec3(uv, 0.2 + 0.7 * uv.x));
+  vec3 sc = texture(uScene, uv).rgb;
+  vec3 im = texture(uImg, uv * 2.0).rgb;
+  vec3 col = sc * (0.5 + 0.5 * lit) * uScale + im * 0.2 * (1.0 - lit);
+  outColor = vec4(col, 1.0);
+}`;
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', {preserveDrawingBuffer: true});
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+
+    const ctxAttrs = gl.getContextAttributes();
+    const cubeTarget = gl.TEXTURE_CUBE_MAP;
+    const volTarget = gl.TEXTURE_3D;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const fboTarget = gl.FRAMEBUFFER;
+    const depthFormat = gl.DEPTH_COMPONENT24;
+
+    const cubeData = [];
+    for (let f = 0; f < 6; f++) {
+        const d = new Uint8Array(cubeSize * cubeSize * 4);
+        for (let i = 0; i < d.length; i += 4) {
+            const px = (i / 4) % cubeSize;
+            d[i] = (f * 50 + px * 8) & 255;
+            d[i + 1] = (255 - f * 40) & 255;
+            d[i + 2] = (px * 16 + f * 20) & 255;
+            d[i + 3] = 255;
+        }
+        cubeData.push(d);
+    }
+    const volData = new Uint8Array(volDim * volDim * volDim * 4);
+    for (let i = 0; i < volData.length; i += 4) {
+        volData[i] = (i * 3) & 255;
+        volData[i + 1] = (i * 7) & 255;
+        volData[i + 2] = 255 - ((i * 2) & 255);
+        volData[i + 3] = 255;
+    }
+    const img = new ImageData(imgDim, imgDim);
+    for (let i = 0; i < img.data.length; i += 4) {
+        img.data[i] = (i * 9) & 255;
+        img.data[i + 1] = 255 - ((i * 5) & 255);
+        img.data[i + 2] = 128;
+        img.data[i + 3] = 200;
+    }
+    const quad = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+
+    const progTF = gl.createProgram();
+    const progScene = gl.createProgram();
+    const progComp = gl.createProgram();
+    const compile = (prog, vsSrc, fsSrc) => {
+        const vs = gl.createShader(gl.VERTEX_SHADER);
+        const fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(vs, vsSrc);
+        gl.shaderSource(fs, fsSrc);
+        gl.compileShader(vs);
+        gl.compileShader(fs);
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        return [vs, fs];
+    };
+    const shTF = compile(progTF, vsTF, fsTF);
+    const shScene = compile(progScene, vsScene, fsScene);
+    const shComp = compile(progComp, vsComp, fsComp);
+    gl.transformFeedbackVaryings(progTF, ['vOut'], gl.INTERLEAVED_ATTRIBS);
+    gl.linkProgram(progTF);
+    gl.linkProgram(progScene);
+    gl.linkProgram(progComp);
+    [shTF, shScene, shComp].forEach(pair => pair.forEach(sh => gl.deleteShader(sh)));
+
+    const cube = gl.createTexture();
+    const vol = gl.createTexture();
+    const shadowTex = gl.createTexture();
+    const sceneTex = gl.createTexture();
+    const imgTex = gl.createTexture();
+    const strayTex = gl.createTexture();
+    const sceneFbo = gl.createFramebuffer();
+    const shadowFbo = gl.createFramebuffer();
+    const sceneDepth = gl.createRenderbuffer();
+    const tfo = gl.createTransformFeedback();
+    const capBuf = gl.createBuffer();
+    const quadBuf = gl.createBuffer();
+    const vaoPts = gl.createVertexArray();
+    const vaoQuad = gl.createVertexArray();
+    const strayBuf = gl.createBuffer();
+
+    try {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(cubeTarget, cube);
+        gl.bindTexture(cubeTarget, cube);
+        gl.texStorage2D(cubeTarget, 1, gl.RGBA8, cubeSize, cubeSize);
+        for (let f = 0; f < 6; f++) {
+            gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, 0, 0, cubeSize, cubeSize, gl.RGBA, gl.UNSIGNED_BYTE, cubeData[f]);
+        }
+        gl.texParameteri(cubeTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(cubeTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(cubeTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(cubeTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(cubeTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    } catch(e) {}
+
+    try {
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(volTarget, vol);
+        gl.bindTexture(volTarget, vol);
+        gl.texStorage3D(volTarget, 1, gl.RGBA8, volDim, volDim, volDim);
+        gl.texSubImage3D(volTarget, 0, 0, 0, 0, volDim, volDim, volDim, gl.RGBA, gl.UNSIGNED_BYTE, volData);
+        gl.texParameteri(volTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(volTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(volTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    } catch(e) {}
+
+    try {
+        gl.activeTexture(gl.TEXTURE4);
+        gl.bindTexture(gl.TEXTURE_2D, imgTex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.deleteTexture(strayTex);
+        gl.deleteBuffer(strayBuf);
+    } catch(e) {}
+
+    try {
+        gl.activeTexture(gl.TEXTURE5);
+        gl.bindTexture(gl.TEXTURE_2D, sceneTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, sceneSize, sceneSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, sceneDepth);
+        gl.renderbufferStorage(gl.RENDERBUFFER, depthFormat, sceneSize, sceneSize);
+        gl.bindFramebuffer(fboTarget, sceneFbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, sceneTex, 0);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, sceneDepth);
+        gl.checkFramebufferStatus(fboTarget);
+
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, shadowTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, depthFormat, shadowSize, shadowSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+        gl.bindFramebuffer(fboTarget, shadowFbo);
+        gl.framebufferTexture2D(fboTarget, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowTex, 0);
+        gl.drawBuffers([gl.NONE]);
+        gl.readBuffer(gl.NONE);
+        gl.checkFramebufferStatus(fboTarget);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.bindBuffer(bufferTarget, capBuf);
+        gl.bufferData(bufferTarget, pointCount * 16, gl.DYNAMIC_COPY);
+        gl.bindBuffer(bufferTarget, null);
+        gl.useProgram(progTF);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
+        gl.bindBufferBase(tfTarget, 0, capBuf);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+        gl.endTransformFeedback();
+        gl.bindBufferBase(tfTarget, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.disable(gl.RASTERIZER_DISCARD);
+    } catch(e) {}
+
+    try {
+        gl.bindVertexArray(vaoPts);
+        gl.bindBuffer(bufferTarget, capBuf);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(vaoQuad);
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.bufferData(bufferTarget, quad, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    let scale = 1;
+    try {
+        gl.bindFramebuffer(fboTarget, shadowFbo);
+        gl.viewport(0, 0, shadowSize, shadowSize);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.clearBufferfv(gl.DEPTH, 0, [1]);
+        gl.useProgram(progScene);
+        gl.uniform1i(gl.getUniformLocation(progScene, 'uCube'), 1);
+        gl.uniform1i(gl.getUniformLocation(progScene, 'uVol'), 2);
+        gl.bindVertexArray(vaoPts);
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+
+        gl.bindFramebuffer(fboTarget, sceneFbo);
+        gl.viewport(0, 0, sceneSize, sceneSize);
+        gl.clearColor(0.05, 0.05, 0.1, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+        gl.invalidateSubFramebuffer(fboTarget, [gl.DEPTH_ATTACHMENT], 0, 0, sceneSize, sceneSize);
+        gl.invalidateFramebuffer(fboTarget, [gl.DEPTH_ATTACHMENT]);
+        gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
+        const px = new Uint8Array(4 * 4 * 4);
+        gl.readPixels(30, 30, 4, 4, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        scale = 0.8 + (px[0] + px[1] + px[2] + px[3]) / 1020;
+        gl.bindFramebuffer(fboTarget, null);
+        gl.bindVertexArray(null);
+        gl.disable(gl.DEPTH_TEST);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.02, 0.02, 0.04, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.useProgram(progComp);
+        gl.uniform1i(gl.getUniformLocation(progComp, 'uShadow'), 3);
+        gl.uniform1i(gl.getUniformLocation(progComp, 'uImg'), 4);
+        gl.uniform1i(gl.getUniformLocation(progComp, 'uScene'), 5);
+        gl.uniform1f(gl.getUniformLocation(progComp, 'uScale'), ctxAttrs.preserveDrawingBuffer ? scale : 1);
+        gl.bindVertexArray(vaoQuad);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance',
+    'WEBGL_multi_draw'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const cd = gl.getExtension('WEBGL_clip_cull_distance');
+    const md = gl.getExtension('WEBGL_multi_draw');
+
+    const texSize = 256;
+    const pointCount = 8;
+    const capBytes = pointCount * 16;
+    const instCount = 8;
+    const clipLimit = 0.55;
+    const polyFactor = 1.5;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const tfTarget = gl.TRANSFORM_FEEDBACK_BUFFER;
+    const fboTarget = gl.FRAMEBUFFER;
+    const capQuery = gl.TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN;
+    const passQuery = gl.ANY_SAMPLES_PASSED_CONSERVATIVE;
+
+    var tfProg, drawProg;
+    var srcBuf, capBuf, cornerBuf;
+    var tfo, tfVao, drawVao;
+    var colorRb, depthRb, fbo;
+    var q1, q2, fence;
+
+    try {
+        const compile = (type, src) => {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, src);
+            gl.compileShader(s);
+            return s;
+        };
+        const tfVs = compile(gl.VERTEX_SHADER, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+in vec2 aPos;
+out vec4 vCap;
+void main() {
+    gl_ClipDistance[0] = aPos.x + 0.9;
+    gl_ClipDistance[1] = 0.9 - aPos.x;
+    vCap = vec4(aPos, aPos.x * aPos.y, 1.0);
+    gl_PointSize = 4.0;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        const tfFs = compile(gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float;
+layout(location = 0) out vec4 outColor;
+void main() {
+    outColor = vec4(1.0, 1.0, 1.0, 1.0);
+}`);
+        tfProg = gl.createProgram();
+        gl.attachShader(tfProg, tfVs);
+        gl.attachShader(tfProg, tfFs);
+        gl.transformFeedbackVaryings(tfProg, ['vCap'], gl.INTERLEAVED_ATTRIBS);
+        gl.linkProgram(tfProg);
+
+        const dVs = compile(gl.VERTEX_SHADER, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+in vec2 aCorner;
+in vec4 aInst;
+flat out int vId;
+centroid out vec2 vUv;
+smooth out float vShade;
+void main() {
+    vec2 p = aInst.xy + aCorner * (0.12 + 0.05 * aInst.w);
+    gl_ClipDistance[0] = 0.55 - abs(p.y);
+    gl_ClipDistance[1] = 0.95 - abs(p.x);
+    vId = gl_InstanceID;
+    vUv = aCorner;
+    vShade = aInst.z * 4.0 + 0.5;
+    gl_Position = vec4(p, aInst.z, 1.0);
+}`);
+        const dFs = compile(gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float;
+flat in int vId;
+centroid in vec2 vUv;
+smooth in float vShade;
+layout(location = 0) out vec4 outColor;
+void main() {
+    if ((vId & 1) == 1 && length(vUv) > 0.9) discard;
+    outColor = vec4(vShade, float(vId) / 8.0, 0.5 + 0.5 * vUv.x, 1.0);
+}`);
+        drawProg = gl.createProgram();
+        gl.attachShader(drawProg, dVs);
+        gl.attachShader(drawProg, dFs);
+        gl.linkProgram(drawProg);
+    } catch(e) {}
+
+    try {
+        srcBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, srcBuf);
+        const pts = new Float32Array(pointCount * 2);
+        for (let i = 0; i < pointCount; i++) {
+            pts[i * 2] = -0.85 + i * 0.24;
+            pts[i * 2 + 1] = (i % 2 ? 0.3 : -0.3) * (1 + i * 0.1);
+        }
+        gl.bufferData(bufferTarget, pts, gl.STATIC_DRAW);
+        gl.bindBuffer(bufferTarget, srcBuf);
+
+        capBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, capBuf);
+        gl.bufferData(bufferTarget, capBytes, gl.DYNAMIC_COPY);
+        gl.bindBuffer(bufferTarget, null);
+
+        cornerBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, cornerBuf);
+        gl.bufferData(bufferTarget, new Float32Array([
+            -1, -1, 1, -1, 0, 1,
+            -1, 1, 1, 1, 0, -1
+        ]), gl.STATIC_DRAW);
+        gl.bindBuffer(bufferTarget, null);
+    } catch(e) {}
+
+    try {
+        tfVao = gl.createVertexArray();
+        gl.bindVertexArray(tfVao);
+        const locSrc = gl.getAttribLocation(tfProg, 'aPos');
+        gl.bindBuffer(bufferTarget, srcBuf);
+        gl.enableVertexAttribArray(locSrc);
+        gl.vertexAttribPointer(locSrc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+
+        tfo = gl.createTransformFeedback();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
+        gl.bindBufferBase(tfTarget, 0, capBuf);
+        gl.bindBufferBase(tfTarget, 0, capBuf);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    } catch(e) {}
+
+    try {
+        colorRb = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, colorRb);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, texSize, texSize);
+        depthRb = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depthRb);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH24_STENCIL8, texSize, texSize);
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferRenderbuffer(fboTarget, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colorRb);
+        gl.framebufferRenderbuffer(fboTarget, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, depthRb);
+        gl.checkFramebufferStatus(fboTarget);
+        gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.enable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.enable(cd.CLIP_DISTANCE1_WEBGL);
+        gl.getParameter(cd.MAX_CLIP_DISTANCES_WEBGL);
+
+        gl.useProgram(tfProg);
+        gl.bindVertexArray(tfVao);
+        q1 = gl.createQuery();
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
+        gl.beginQuery(capQuery, q1);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+        gl.endTransformFeedback();
+        gl.endQuery(capQuery);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.bindBufferBase(tfTarget, 0, null);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        drawVao = gl.createVertexArray();
+        gl.bindVertexArray(drawVao);
+        const locCorner = gl.getAttribLocation(drawProg, 'aCorner');
+        const locInst = gl.getAttribLocation(drawProg, 'aInst');
+        gl.bindBuffer(bufferTarget, cornerBuf);
+        gl.enableVertexAttribArray(locCorner);
+        gl.vertexAttribPointer(locCorner, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, capBuf);
+        gl.enableVertexAttribArray(locInst);
+        gl.vertexAttribPointer(locInst, 4, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribDivisor(locInst, 1);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(drawProg);
+        gl.bindVertexArray(drawVao);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
+        gl.frontFace(gl.CCW);
+        gl.enable(gl.POLYGON_OFFSET_FILL);
+        gl.polygonOffset(polyFactor, 1.0);
+        q2 = gl.createQuery();
+        gl.beginQuery(passQuery, q2);
+        const firsts = new Int32Array([0, 3]);
+        const counts = new Int32Array([3, 3]);
+        const insts = new Int32Array([instCount, instCount]);
+        md.multiDrawArraysInstancedWEBGL(gl.TRIANGLES, firsts, 0, counts, 0, insts, 0, 2);
+        gl.endQuery(passQuery);
+        gl.frontFace(gl.CW);
+        gl.cullFace(gl.FRONT);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, 3);
+        gl.disable(gl.POLYGON_OFFSET_FILL);
+        gl.disable(gl.CULL_FACE);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.disable(cd.CLIP_DISTANCE1_WEBGL);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        gl.waitSync(fence, 0, gl.TIMEOUT_IGNORED);
+        gl.clientWaitSync(fence, 0, 0);
+        gl.getSyncParameter(fence, gl.SYNC_STATUS);
+
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, texSize, texSize, 0, 0, texSize, texSize, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(fboTarget, null);
+        gl.deleteSync(fence);
+    } catch(e) {}
+
+    try {
+        await new Promise(r => setTimeout(r, 200));
+        gl.getQueryParameter(q1, gl.QUERY_RESULT_AVAILABLE);
+        gl.getQueryParameter(q2, gl.QUERY_RESULT_AVAILABLE);
+        gl.deleteQuery(q1);
+        gl.deleteQuery(q2);
+        gl.deleteTransformFeedback(tfo);
+        gl.deleteRenderbuffer(colorRb);
+        gl.deleteRenderbuffer(depthRb);
+        void clipLimit;
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
