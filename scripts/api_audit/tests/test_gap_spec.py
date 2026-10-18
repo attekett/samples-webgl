@@ -524,3 +524,53 @@ class TestCLIIntegration:
         assert "missing_categories" in data
         assert "generated_from_matrix" in data
         assert len(data["recipes"]) <= 5
+
+
+class TestGateKeyRecipes:
+    @pytest.fixture(scope="class")
+    def cats(self):
+        root = Path(__file__).resolve().parents[3]
+        return json.loads(
+            (root / "docs/feature_categories.json").read_text())["categories"]
+
+    def test_depth_textures_call_constant(self, cats):
+        req, _ = split_required_bonus_methods(cats["depth_textures"])
+        assert req[0] == "texImage2D(DEPTH_COMPONENT16)"
+        assert "texImage2D" not in req
+
+    def test_pbo_bind_buffer(self, cats):
+        req, _ = split_required_bonus_methods(cats["pbo"])
+        assert "bindBuffer(PIXEL_PACK_BUFFER)" in req
+
+    def test_or_gate_is_bonus(self, cats):
+        req, bon = split_required_bonus_methods(cats["depth_stencil"])
+        assert "enable(DEPTH_TEST)" in bon and "enable(DEPTH_TEST)" not in req
+
+    def test_glsl_patterns(self, cats):
+        req, bon = split_required_bonus_methods(cats["glsl_fragment_kill_depth"])
+        assert req == ["glsl:discard"]
+        assert "glsl:gl_FragDepth" in bon
+
+    def test_extension_before_glsl(self, cats):
+        req, _ = split_required_bonus_methods(cats["ext_conservative_depth"])
+        assert req == ["getExtension('EXT_conservative_depth')",
+                       "glsl:depth_layout"]
+
+    def test_marker_only(self, cats):
+        req, _ = split_required_bonus_methods(cats["dom_texture_sources"])
+        assert req == ["src:ImageData"]
+
+    def test_constant_only(self, cats):
+        req, _ = split_required_bonus_methods(cats["rasterizer_discard"])
+        assert req == ["gl.RASTERIZER_DISCARD"]
+
+    def test_every_category_has_required(self, cats):
+        empty = [n for n, d in cats.items()
+                 if not split_required_bonus_methods(d)[0]]
+        assert empty == []
+
+    def test_no_missing_categories(self, cats):
+        missing = set()
+        gap = {"combo": ["glsl_ubo_layout", "fbo"], "priority": "high"}
+        build_recipe(gap, cats, {}, {}, "gap_001", missing)
+        assert missing == set()

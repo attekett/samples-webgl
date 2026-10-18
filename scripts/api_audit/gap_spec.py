@@ -81,28 +81,68 @@ REQUIRED_METHOD_CAP = 5
 
 
 def split_required_bonus_methods(category_def):
-    """Split a category's methods into required (core) and bonus (optional).
+    """Split a category's gate items into required (core) and bonus (optional).
 
-    Heuristic: first REQUIRED_METHOD_CAP methods are required, remainder is
-    bonus. extension_methods and glsl_functions are always required because
-    the category match rules depend on them.
-    For extension-only categories (requires_any_extension, no core methods),
-    the extension name itself is treated as a required gate.
+    Items are strings: methods, 'method(CONST)' call-constant pairs,
+    'gl.CONST', 'glsl:<name>', markers verbatim and getExtension('X'). The
+    required list can satisfy every gate the category has; for any-of gates
+    the first JSON entry is the representative. Methods: first
+    REQUIRED_METHOD_CAP required.
     """
+    required, bonus = [], []
+
+    def add(lst, item):
+        if item not in required and item not in bonus:
+            lst.append(item)
+
+    def pairs(key):
+        return [f"{m}({c})" for m, cs in category_def.get(key, {}).items()
+                for c in cs]
+
     methods = list(category_def.get("methods", []))
+    markers = list(category_def.get("markers", []))
     extension_methods = list(category_def.get("extension_methods", []))
-    glsl_functions = list(category_def.get("glsl_functions", []))
 
-    required_methods = methods[:REQUIRED_METHOD_CAP]
-    bonus_methods = methods[REQUIRED_METHOD_CAP:]
+    rcc = pairs("requires_call_constant")
+    if rcc:
+        add(required, rcc[0])
+        for item in rcc[1:]:
+            add(bonus, item)
+        first = next(iter(category_def["requires_call_constant"]))
+        methods = [m for m in methods if m != first]
 
-    required = required_methods + extension_methods + glsl_functions
+    for i, m in enumerate(methods):
+        add(required if i < REQUIRED_METHOD_CAP else bonus, m)
+    for m in extension_methods + list(category_def.get("glsl_functions", [])):
+        add(required, m)
 
-    if (not required and category_def.get("requires_any_extension")
-            and category_def.get("extensions")):
-        required = ["getExtension('" + category_def["extensions"][0] + "')"]
+    for item in pairs("match_if_call_constant"):
+        add(bonus, item)
 
-    return required, bonus_methods
+    if not rcc:
+        consts = list(category_def.get("constants", []))
+        if category_def.get("requires_any_constant"):
+            n = 1
+        else:
+            n = category_def.get("min_constants_for_match", 0)
+        for c in consts[:n]:
+            add(required, f"gl.{c}")
+
+    glsl = ([f"glsl:{n}" for n in category_def.get("glsl_patterns", {})]
+            + [f"glsl:{v}" for v in category_def.get("glsl_variables", [])])
+    n = category_def.get("min_glsl_patterns_for_match", 0)
+    for i, item in enumerate(glsl):
+        add(required if i < n else bonus, item)
+
+    for i, item in enumerate(markers):
+        add(required if i == 0 and not methods and not rcc else bonus, item)
+
+    exts = category_def.get("extensions")
+    if (category_def.get("requires_any_extension") and exts
+            and not any(m in required for m in extension_methods)):
+        required.insert(0, "getExtension('" + exts[0] + "')")
+
+    return required, bonus
 
 
 SEED_CONSTRAINTS = {
