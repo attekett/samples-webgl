@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance',
+    'WEBGL_compressed_texture_s3tc',
+    'WEBGL_debug_shaders',
+    'WEBGL_debug_renderer_info'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const cd = gl.getExtension('WEBGL_clip_cull_distance');
+    const s3 = gl.getExtension('WEBGL_compressed_texture_s3tc');
+    const dsh = gl.getExtension('WEBGL_debug_shaders');
+    const dri = gl.getExtension('WEBGL_debug_renderer_info');
+
+    const texSize = 256;
+    const rtSize = 128;
+    const volDim = 4;
+    const srcSize = 8;
+    const layers = 3;
+    const clipLeft = -0.55;
+    const clipRight = 0.55;
+
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const volTarget = gl.TEXTURE_3D;
+    const arrTarget = gl.TEXTURE_2D_ARRAY;
+    const planeTarget = gl.TEXTURE_2D;
+    const fboTarget = gl.FRAMEBUFFER;
+
+    var vsSlice, fsSlice, progSlice, vsShow, fsShow, progShow;
+    var vao, quadBuf;
+    var canTex, volTex, arrTex, rtTex, scratchTex, fbo;
+    var sliceCount = 2;
+
+    try {
+        vsSlice = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vsSlice, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+#define SLICES 4
+#ifdef GL_ES
+precision highp float;
+#endif
+in vec2 aPos;
+uniform vec3 uPlaneA;
+uniform vec3 uPlaneB;
+out vec2 vUv;
+flat out int vSlice;
+void main() {
+    float s = float(gl_InstanceID);
+    vec2 p = aPos * 0.55 + vec2(0.0, (s - 1.5) * 0.35);
+    p.x += 0.12 * s;
+    gl_ClipDistance[0] = dot(vec3(p, 1.0), uPlaneA);
+    gl_ClipDistance[1] = dot(vec3(p, 1.0), uPlaneB);
+    vUv = aPos * 0.5 + 0.5;
+    vSlice = gl_InstanceID % SLICES;
+    gl_Position = vec4(p, 0.0, 1.0);
+}`);
+        gl.compileShader(vsSlice);
+        fsSlice = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsSlice, `#version 300 es
+#define SLICES 4
+#if SLICES > 2
+#define MIXW 0.5
+#else
+#define MIXW 0.25
+#endif
+precision highp float;
+precision highp sampler3D;
+precision highp sampler2DArray;
+in vec2 vUv;
+flat in int vSlice;
+uniform sampler3D uVol;
+uniform sampler2DArray uArr;
+uniform sampler2D uCan;
+out vec4 outColor;
+void main() {
+    vec4 v = texture(uVol, vec3(vUv, (float(vSlice) + 0.5) / float(SLICES)));
+    vec4 a = texture(uArr, vec3(vUv, float(vSlice % 3)));
+    vec4 c = texture(uCan, vUv);
+    vec3 rgb = mix(v.rgb, a.rgb, MIXW) * 0.6 + 0.4 * c.rgb;
+    outColor = vec4(rgb, 1.0);
+}`);
+        gl.compileShader(fsSlice);
+        progSlice = gl.createProgram();
+        gl.attachShader(progSlice, vsSlice);
+        gl.attachShader(progSlice, fsSlice);
+        gl.linkProgram(progSlice);
+
+        vsShow = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vsShow, `#version 300 es
+precision highp float;
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}`);
+        gl.compileShader(vsShow);
+        fsShow = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fsShow, `#version 300 es
+#ifndef TINT
+#define TINT 0.1
+#endif
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uRt;
+out vec4 outColor;
+void main() {
+    vec4 c = texture(uRt, vUv);
+    outColor = vec4(c.rgb + TINT * vUv.x, 1.0);
+}`);
+        gl.compileShader(fsShow);
+        progShow = gl.createProgram();
+        gl.attachShader(progShow, vsShow);
+        gl.attachShader(progShow, fsShow);
+        gl.linkProgram(progShow);
+    } catch(e) {}
+
+    try {
+        const tsrc = dsh.getTranslatedShaderSource(vsSlice);
+        const rname = gl.getParameter(dri.UNMASKED_RENDERER_WEBGL);
+        const vname = gl.getParameter(dri.UNMASKED_VENDOR_WEBGL);
+        sliceCount = 2 + (tsrc.length + rname.length + vname.length) % 3;
+        gl.getParameter(cd.MAX_CLIP_DISTANCES_WEBGL);
+    } catch(e) {}
+
+    try {
+        quadBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.bufferData(bufferTarget, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const loc = gl.getAttribLocation(progSlice, 'aPos');
+        const locShow = gl.getAttribLocation(progShow, 'aPos');
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(bufferTarget, quadBuf);
+        gl.vertexAttribPointer(locShow, 2, gl.FLOAT, false, 0, 0);
+    } catch(e) {}
+
+    const px = new Uint8ClampedArray(srcSize * srcSize * 4);
+    for (let i = 0; i < srcSize * srcSize; i++) {
+        px[i * 4] = (i * 37) % 256;
+        px[i * 4 + 1] = (i * 91 + 40) % 256;
+        px[i * 4 + 2] = 255 - (i * 13) % 256;
+        px[i * 4 + 3] = 255;
+    }
+    const imgData = new ImageData(px, srcSize, srcSize);
+    const bitmap = await createImageBitmap(imgData);
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = srcSize;
+    srcCanvas.height = srcSize;
+    const ctx = srcCanvas.getContext('2d');
+    ctx.fillStyle = '#d04020';
+    ctx.fillRect(0, 0, srcSize, srcSize);
+    ctx.fillStyle = '#2080e0';
+    ctx.fillRect(0, 0, srcSize / 2, srcSize / 2);
+
+    try {
+        canTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(planeTarget, canTex);
+        gl.bindTexture(planeTarget, null);
+        gl.bindTexture(planeTarget, canTex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+        gl.texImage2D(planeTarget, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, srcCanvas);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(planeTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(planeTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    } catch(e) {}
+
+    try {
+        volTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(volTarget, volTex);
+        gl.texStorage3D(volTarget, 1, gl.RGBA8, srcSize, srcSize, volDim);
+        gl.texParameteri(volTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(volTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(volTarget, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.texSubImage3D(volTarget, 0, 0, 0, 0, srcSize, srcSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, imgData);
+        gl.texSubImage3D(volTarget, 0, 0, 0, 1, srcSize, srcSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+        gl.texSubImage3D(volTarget, 0, 0, 0, 2, srcSize, srcSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, imgData);
+        gl.texSubImage3D(volTarget, 0, 0, 0, 3, srcSize, srcSize, 1, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+    } catch(e) {}
+
+    try {
+        arrTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(arrTarget, arrTex);
+        const blocks = new Uint8Array((srcSize / 4) * (srcSize / 4) * 16 * layers);
+        for (let i = 0; i < blocks.length; i++) {
+            blocks[i] = (i * 53 + 17) % 256;
+        }
+        gl.compressedTexImage3D(arrTarget, 0, s3.COMPRESSED_RGBA_S3TC_DXT5_EXT, srcSize, srcSize, layers, 0, blocks);
+        gl.texParameteri(arrTarget, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(arrTarget, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        scratchTex = gl.createTexture();
+        gl.bindTexture(arrTarget, scratchTex);
+        gl.bindTexture(arrTarget, arrTex);
+        gl.deleteTexture(scratchTex);
+    } catch(e) {}
+
+    try {
+        rtTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(planeTarget, rtTex);
+        gl.texStorage2D(planeTarget, 1, gl.SRGB8_ALPHA8, rtSize, rtSize);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(planeTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.framebufferTexture2D(fboTarget, gl.COLOR_ATTACHMENT0, planeTarget, rtTex, 0);
+        gl.bindFramebuffer(fboTarget, null);
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.checkFramebufferStatus(fboTarget);
+        gl.getFramebufferAttachmentParameter(fboTarget, gl.COLOR_ATTACHMENT0, gl.FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING);
+    } catch(e) {}
+
+    try {
+        gl.bindFramebuffer(fboTarget, fbo);
+        gl.viewport(0, 0, rtSize, rtSize);
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(progSlice);
+        gl.uniform1i(gl.getUniformLocation(progSlice, 'uVol'), 0);
+        gl.uniform1i(gl.getUniformLocation(progSlice, 'uArr'), 1);
+        gl.uniform1i(gl.getUniformLocation(progSlice, 'uCan'), 2);
+        gl.uniform3f(gl.getUniformLocation(progSlice, 'uPlaneA'), 1.0, 0.0, -clipLeft);
+        gl.uniform3f(gl.getUniformLocation(progSlice, 'uPlaneB'), -1.0, 0.0, clipRight);
+        gl.enable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.enable(cd.CLIP_DISTANCE1_WEBGL);
+        gl.disable(cd.CLIP_DISTANCE1_WEBGL);
+        gl.enable(cd.CLIP_DISTANCE1_WEBGL);
+        gl.bindVertexArray(vao);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, sliceCount);
+        gl.disable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.disable(cd.CLIP_DISTANCE1_WEBGL);
+        gl.bindFramebuffer(fboTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.useProgram(progShow);
+        gl.uniform1i(gl.getUniformLocation(progShow, 'uRt'), 3);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(planeTarget, rtTex);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_multi_draw',
+    'WEBGL_blend_func_extended',
+    'WEBGL_debug_shaders',
+    'WEBGL_debug_renderer_info'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const md = gl.getExtension('WEBGL_multi_draw');
+    const bfe = gl.getExtension('WEBGL_blend_func_extended');
+    const dsh = gl.getExtension('WEBGL_debug_shaders');
+    const dri = gl.getExtension('WEBGL_debug_renderer_info');
+
+    const texSize = 256;
+    const halfSize = 128;
+    const tileMax = 4;
+    const vertsPerTile = 6;
+    const uboStride = 256;
+    const uboBlockSize = 64;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const uboTarget = gl.UNIFORM_BUFFER;
+    const drawMode = gl.TRIANGLES;
+    const colorFormat = gl.RGBA8;
+    const idFormat = gl.RGBA8UI;
+
+    var p1, p2, vs1, tileCount, shot, off;
+    var vbo, ubo, fbo, fbo2, colTex, idTex, spareTex, spareBuf, spareBuf2, vao, emptyVao;
+
+    try {
+        vs1 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs1, `#version 300 es
+#extension GL_ANGLE_multi_draw : require
+precision highp float;
+precision highp int;
+in vec2 aPos;
+uniform float uScale;
+uniform vec2 uTileOff;
+flat out int vSel;
+flat out int vTile;
+void main() {
+    vSel = gl_DrawID & 1;
+    vTile = gl_DrawID;
+    gl_Position = vec4(aPos * uScale + uTileOff, 0.0, 1.0);
+}`);
+        gl.compileShader(vs1);
+        const fs1 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs1, `#version 300 es
+precision highp float;
+precision highp int;
+layout(std140, row_major) uniform;
+flat in int vSel;
+flat in int vTile;
+uniform Tiles {
+    vec4 color;
+    uvec4 id;
+    mat2 m;
+} tiles[2];
+layout(location = 0) out vec4 outColor;
+layout(location = 1) out uvec4 outId;
+void main() {
+    vec4 c = vSel == 0 ? tiles[0].color : tiles[1].color;
+    uvec4 id = vSel == 0 ? tiles[0].id : tiles[1].id;
+    mat2 m = vSel == 0 ? tiles[0].m : tiles[1].m;
+    c.rg = m * c.rg;
+    outColor = c;
+    outId = uvec4(id.r + uint(vTile), id.gba);
+}`);
+        gl.compileShader(fs1);
+        p1 = gl.createProgram();
+        gl.attachShader(p1, vs1);
+        gl.attachShader(p1, fs1);
+        gl.bindAttribLocation(p1, 0, 'aPos');
+        gl.linkProgram(p1);
+
+        const vs2 = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs2, `#version 300 es
+precision highp float;
+void main() {
+    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`);
+        gl.compileShader(vs2);
+        const fs2 = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs2, `#version 300 es
+#extension GL_EXT_blend_func_extended : require
+precision highp float;
+precision highp int;
+precision highp usampler2D;
+uniform sampler2D uColor;
+uniform usampler2D uIds;
+uniform vec2 uOff;
+layout(location = 0, index = 0) out vec4 c0;
+layout(location = 0, index = 1) out vec4 c1;
+void main() {
+    vec4 col = texture(uColor, (gl_FragCoord.xy + uOff) / 256.0);
+    uvec4 id = texelFetch(uIds, ivec2(gl_FragCoord.xy), 0);
+    c0 = vec4(col.rgb, 1.0);
+    c1 = vec4(vec3(0.55 + 0.1 * float(id.r % 4u)), 1.0);
+}`);
+        gl.compileShader(fs2);
+        p2 = gl.createProgram();
+        gl.attachShader(p2, vs2);
+        gl.attachShader(p2, fs2);
+        gl.linkProgram(p2);
+    } catch(e) {}
+
+    try {
+        const tsrc = dsh.getTranslatedShaderSource(vs1);
+        const rname = gl.getParameter(dri.UNMASKED_RENDERER_WEBGL);
+        tileCount = 2 + (tsrc.length + rname.length) % 3;
+        gl.getParameter(bfe.MAX_DUAL_SOURCE_DRAW_BUFFERS_WEBGL);
+    } catch(e) {}
+
+    try {
+        const verts = new Float32Array(tileMax * vertsPerTile * 2);
+        for (let t = 0; t < tileMax; t++) {
+            const x0 = -0.9 + (t % 2) * 0.9;
+            const y0 = -0.9 + Math.floor(t / 2) * 0.9;
+            const q = [0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1];
+            for (let i = 0; i < 12; i += 2) {
+                verts[t * 12 + i] = x0 + q[i] * 0.8;
+                verts[t * 12 + i + 1] = y0 + q[i + 1] * 0.8;
+            }
+        }
+        spareBuf = gl.createBuffer();
+        spareBuf2 = gl.createBuffer();
+        vbo = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, vbo);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(bufferTarget, vbo);
+        gl.bindBuffer(bufferTarget, spareBuf);
+        gl.bindBuffer(bufferTarget, vbo);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(bufferTarget, vbo);
+        gl.bufferData(bufferTarget, verts.byteLength, gl.DYNAMIC_DRAW);
+        gl.bufferSubData(bufferTarget, 0, verts);
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+        emptyVao = gl.createVertexArray();
+
+        const udata = new ArrayBuffer(uboStride + uboBlockSize);
+        const f = new Float32Array(udata);
+        const u = new Uint32Array(udata);
+        f.set([1.0, 0.4, 0.2, 1.0], 0);
+        u.set([10, 20, 30, 255], 4);
+        f.set([1.0, 0.25, 0, 0, 0.25, 1.0, 0, 0], 8);
+        const o = uboStride / 4;
+        f.set([0.2, 0.6, 1.0, 1.0], o);
+        u.set([50, 60, 70, 255], o + 4);
+        f.set([1.0, 0.25, 0, 0, 0.25, 1.0, 0, 0], o + 8);
+        ubo = gl.createBuffer();
+        gl.bindBuffer(uboTarget, ubo);
+        gl.bindBuffer(uboTarget, null);
+        gl.bindBuffer(uboTarget, ubo);
+        gl.bindBuffer(uboTarget, spareBuf2);
+        gl.bindBuffer(uboTarget, ubo);
+        gl.bufferData(uboTarget, uboStride + uboBlockSize, gl.STATIC_DRAW);
+        gl.bufferSubData(uboTarget, 0, udata);
+        gl.bindBuffer(uboTarget, null);
+    } catch(e) {}
+
+    try {
+        colTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindTexture(gl.TEXTURE_2D, colTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, colorFormat, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        idTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, idTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, idFormat, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        spareTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, spareTex);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.bindTexture(gl.TEXTURE_2D, spareTex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, colorFormat, texSize, texSize);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+        fbo2 = gl.createFramebuffer();
+        fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, spareTex, 0);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, spareTex, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, idTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, spareTex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+        gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.useProgram(p1);
+        for (let i = 0; i < 2; i++) {
+            const idx = gl.getUniformBlockIndex(p1, 'Tiles[' + i + ']');
+            gl.uniformBlockBinding(p1, idx, i);
+            gl.bindBufferRange(uboTarget, i, ubo, i * uboStride, uboBlockSize);
+        }
+        gl.uniform1f(gl.getUniformLocation(p1, 'uScale'), 1.0);
+        gl.uniform2f(gl.getUniformLocation(p1, 'uTileOff'), 0.0, 0.0);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.BLEND);
+        gl.disable(gl.BLEND);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.clearBufferfv(gl.COLOR, 0, new Float32Array([0.1, 0.1, 0.1, 1.0]));
+        gl.clearBufferuiv(gl.COLOR, 1, new Uint32Array([1, 0, 0, 1]));
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(0, 0, halfSize, halfSize);
+        gl.clearBufferfv(gl.COLOR, 0, new Float32Array([0.3, 0.0, 0.3, 1.0]));
+        gl.disable(gl.SCISSOR_TEST);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.bindVertexArray(emptyVao);
+        gl.bindVertexArray(vao);
+        const firsts = new Int32Array(tileCount);
+        const counts = new Int32Array(tileCount).fill(vertsPerTile);
+        for (let i = 0; i < tileCount; i++) firsts[i] = i * vertsPerTile;
+        md.multiDrawArraysWEBGL(drawMode, firsts, 0, counts, 0, tileCount);
+        gl.bindVertexArray(null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo2);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    function composite(offX) {
+        gl.useProgram(p2);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, texSize, texSize);
+        gl.clearColor(0.5, 0.5, 0.5, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, colTex);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, idTex);
+        gl.uniform1i(gl.getUniformLocation(p2, 'uColor'), 0);
+        gl.uniform1i(gl.getUniformLocation(p2, 'uIds'), 1);
+        gl.uniform2f(gl.getUniformLocation(p2, 'uOff'), offX, 0.0);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, bfe.SRC1_COLOR_WEBGL);
+        gl.bindVertexArray(emptyVao);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindVertexArray(null);
+        gl.blendFunc(gl.ONE, gl.ZERO);
+        gl.disable(gl.BLEND);
+    }
+
+    try {
+        composite(0.0);
+        canvas.width = halfSize;
+        canvas.width = texSize;
+        composite(1.0);
+        shot = canvas.toDataURL();
+        off = shot.length % 5;
+    } catch(e) {}
+
+    await new Promise(r => requestAnimationFrame(r));
+
+    try {
+        composite(off);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.COLOR_ATTACHMENT1]);
+        gl.invalidateSubFramebuffer(gl.FRAMEBUFFER, [gl.COLOR_ATTACHMENT0], 0, 0, halfSize, halfSize);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } catch(e) {}
+
+    try {
+        gl.deleteFramebuffer(fbo2);
+        gl.deleteTexture(spareTex);
+        gl.deleteBuffer(spareBuf);
+        gl.deleteBuffer(spareBuf2);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
