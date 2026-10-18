@@ -24,7 +24,7 @@ from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "8"
+ANALYZER_VERSION = "9"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -58,6 +58,8 @@ DISPLAY_NAMES = {
     "glsl_control_flow":            "GLSL Control Flow",
     "glsl_interpolation":           "GLSL Interpolation",
     "glsl_ubo_layout":              "GLSL UBO Layout",
+    "context_attributes":           "Context Attributes",
+    "multi_context":                "Multiple Contexts",
     "glsl_fragment_kill_depth":     "GLSL Discard/FragDepth",
     "glsl_integer_ops":             "GLSL Integer Ops",
     "glsl_aggregates":              "GLSL Aggregates",
@@ -417,6 +419,7 @@ def analyze_file(filepath, surface, cats_config, cache=None, config_hash=""):
         "static_calls": static_calls,
         "api_version": ctx.api_version,
         "requested_extensions": summary["extensions"],
+        "markers": summary["markers"],
     }
 
     fp = detect_features(

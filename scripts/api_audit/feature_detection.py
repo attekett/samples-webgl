@@ -59,7 +59,7 @@ def _extract_from_call_analysis(call_analysis_result):
     for name, call_records in call_analysis_result.methods.items():
         method_constants[name] = {
             _strip_gl_prefix(c) for record in call_records for c in record.constants}
-    return methods_found, constants_found, extension_methods_found, method_constants, [], set()
+    return methods_found, constants_found, extension_methods_found, method_constants, [], set(), set()
 
 
 def _extract_from_dict(result_dict):
@@ -72,7 +72,7 @@ def _extract_from_dict(result_dict):
 
     Returns:
         (methods_found, constants_found, extension_methods_found, method_constants,
-         glsl_sources, glsl_variables)
+         glsl_sources, glsl_variables, markers)
     """
     methods_found = set(result_dict.get("methods", {}).keys())
     constants_found = set()
@@ -87,7 +87,8 @@ def _extract_from_dict(result_dict):
         for m, cs in result_dict.get("method_constants", {}).items()}
     return (methods_found, constants_found, extension_methods_found, method_constants,
             list(result_dict.get("glsl_sources", ())),
-            set(result_dict.get("glsl_variables", ())))
+            set(result_dict.get("glsl_variables", ())),
+            set(result_dict.get("markers", ())))
 
 
 def _call_constant_hit(spec, method_constants):
@@ -97,7 +98,7 @@ def _call_constant_hit(spec, method_constants):
 
 def is_category_match(category_def, methods_found, constants_found,
                       extensions_loaded, glsl_found, extension_methods_found,
-                      method_constants=None, glsl_sources=(), glsl_variables=frozenset()):
+                      method_constants=None, glsl_sources=(), glsl_variables=frozenset(), markers=frozenset()):
     """Determine if a category definition matches the observed API usage.
 
     Uses AND-composed gates: all applicable gates must pass for a match.
@@ -113,6 +114,7 @@ def is_category_match(category_def, methods_found, constants_found,
             match_if_call_constant (OR) and requires_call_constant (AND) gates.
         glsl_sources: comment-stripped shader sources, searched by glsl_patterns.
         glsl_variables: gl_* names found in shaders, matched by glsl_variables.
+        markers: file-level pseudo-features (ctxattr:*, ctx:*), matched by the markers list.
 
     Returns:
         Tuple of (matched: bool, matched_methods: set, method_count: int).
@@ -131,7 +133,8 @@ def is_category_match(category_def, methods_found, constants_found,
 
     matched_methods = methods_found & cat_methods
     matched_ext_methods = extension_methods_found & cat_ext_methods
-    method_count = len(matched_methods) + len(matched_ext_methods)
+    matched_markers = set(category_def.get("markers", ())) & set(markers)
+    method_count = len(matched_methods) + len(matched_ext_methods) + len(matched_markers)
 
     method_constants = method_constants or {}
     requires_call = category_def.get("requires_call_constant")
@@ -160,7 +163,7 @@ def is_category_match(category_def, methods_found, constants_found,
     if min_glsl > 0 and len(matched_glsl) < min_glsl:
         return (False, set(), 0)
 
-    all_matched = matched_methods | matched_ext_methods
+    all_matched = matched_methods | matched_ext_methods | matched_markers
     glsl_hits = {f"glsl:{name}"
                  for name, rx in category_def.get("glsl_patterns", {}).items()
                  if any(re.search(rx, src, re.MULTILINE) for src in glsl_sources)}
@@ -198,10 +201,10 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
 
     if isinstance(call_analysis_result, dict):
         (methods_found, constants_found, ext_methods_extracted,
-         method_constants, glsl_sources, glsl_variables) = _extract_from_dict(call_analysis_result)
+         method_constants, glsl_sources, glsl_variables, markers) = _extract_from_dict(call_analysis_result)
     else:
         (methods_found, constants_found, ext_methods_extracted,
-         method_constants, glsl_sources, glsl_variables) = _extract_from_call_analysis(
+         method_constants, glsl_sources, glsl_variables, markers) = _extract_from_call_analysis(
             call_analysis_result)
 
     if extensions is None:
@@ -229,7 +232,8 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
             cat_def, methods_found, constants_found,
             extensions, glsl_builtins, extension_methods,
             method_constants=method_constants,
-            glsl_sources=glsl_sources, glsl_variables=glsl_variables
+            glsl_sources=glsl_sources, glsl_variables=glsl_variables,
+            markers=markers
         )
         if not matched:
             continue
@@ -241,6 +245,7 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
         cat_method_list = cat_def.get("methods", [])
         cat_ext_method_list = cat_def.get("extension_methods", [])
         total_available = (len(cat_method_list) + len(cat_ext_method_list)
+                           + len(cat_def.get("markers", ()))
                            + len(cat_def.get("glsl_patterns", ()))
                            + len(cat_def.get("glsl_variables", ())))
 

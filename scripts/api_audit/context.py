@@ -9,6 +9,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from api_audit.const_propagation import collect_declarations
+
+WEBGL_CONTEXT_TYPES = {'webgl', 'webgl2', 'experimental-webgl'}
+
+# antialias is omitted on purpose: antialias:false is boilerplate in most seeds.
+CONTEXT_ATTRIBUTE_DEFAULTS = {
+    'alpha': 'true', 'depth': 'true', 'stencil': 'false', 'premultipliedAlpha': 'true',
+    'preserveDrawingBuffer': 'false', 'powerPreference': 'default',
+    'failIfMajorPerformanceCaveat': 'false', 'desynchronized': 'false',
+    'xrCompatible': 'false',
+}
+
 
 @dataclass
 class ContextInfo:
@@ -17,6 +29,8 @@ class ContextInfo:
     extensions: set = field(default_factory=set)
     extension_aliases: dict = field(default_factory=dict)
     helper_functions: dict = field(default_factory=dict)
+    markers: set = field(default_factory=set)
+    canvas_vars: set = field(default_factory=set)
 
 
 def _walk(node, node_type: str) -> list:
@@ -110,7 +124,7 @@ def _detect_context_vars(root) -> tuple[set[str], str]:
 
         # Direct getContext call: const gl = canvas.getContext('webgl2')
         ctx_str = _is_get_context_call(value_node)
-        if ctx_str is not None:
+        if ctx_str in WEBGL_CONTEXT_TYPES:
             context_vars.add(var_name)
             if ctx_str in ('webgl2', 'webgl'):
                 api_version = ctx_str
@@ -131,7 +145,7 @@ def _detect_context_vars(root) -> tuple[set[str], str]:
             left_ctx = _is_get_context_call(left) if left else None
             right_ctx = _is_get_context_call(right) if right else None
 
-            if left_ctx is not None or right_ctx is not None:
+            if left_ctx in WEBGL_CONTEXT_TYPES or right_ctx in WEBGL_CONTEXT_TYPES:
                 context_vars.add(var_name)
                 # If both sides are getContext with different versions, mark as fallback
                 if left_ctx and right_ctx and left_ctx != right_ctx:
@@ -178,6 +192,17 @@ def _detect_extensions(root, resolved_consts: dict, context_vars: set[str]) -> t
             var_name = name_node.text.decode('utf-8')
             extensions.add(ext_name)
             extension_aliases[var_name] = ext_name
+
+    # Pattern 1b: assignment, `ext = gl.getExtension('X')`
+    for assign in _walk(root, 'assignment_expression'):
+        left = assign.child_by_field_name('left')
+        right = assign.child_by_field_name('right')
+        if left is None or right is None or left.type != 'identifier':
+            continue
+        ext_name = _is_get_extension_call(right)
+        if ext_name is not None:
+            extensions.add(ext_name)
+            extension_aliases[left.text.decode('utf-8')] = ext_name
 
     # Pattern 2: Bare enable (expression_statement containing getExtension call)
     for expr_stmt in _walk(root, 'expression_statement'):
@@ -228,6 +253,74 @@ def _detect_extensions(root, resolved_consts: dict, context_vars: set[str]) -> t
                     extensions.add(ext_str)
 
     return extensions, extension_aliases
+
+
+def _attribute_markers(options, declarations) -> set[str]:
+    """ctxattr markers for the literal pairs of a getContext options object."""
+    if options is not None and options.type == 'identifier':
+        options = declarations.get(options.text.decode('utf-8'))
+    if options is None or options.type != 'object':
+        return set()
+    markers = set()
+    for pair in options.children:
+        if pair.type != 'pair':
+            continue
+        key = pair.child_by_field_name('key')
+        value = pair.child_by_field_name('value')
+        if key is None or value is None:
+            continue
+        key_text = _get_string_value(key) if key.type == 'string' else key.text.decode('utf-8')
+        if value.type in ('true', 'false', 'number'):
+            value_text = value.text.decode('utf-8')
+        elif value.type == 'string':
+            value_text = _get_string_value(value)
+        else:
+            continue
+        default = CONTEXT_ATTRIBUTE_DEFAULTS.get(key_text)
+        if default is not None and value_text != default:
+            markers.add(f'ctxattr:{key_text}={value_text}')
+    return markers
+
+
+def _is_offscreen_canvas(node, declarations) -> bool:
+    if node.type == 'identifier':
+        node = declarations.get(node.text.decode('utf-8'))
+        if node is None:
+            return False
+    if node.type == 'new_expression':
+        ctor = node.child_by_field_name('constructor')
+        return ctor is not None and ctor.text.decode('utf-8') == 'OffscreenCanvas'
+    if node.type == 'call_expression':
+        callee = node.child_by_field_name('function')
+        return (callee is not None and callee.type == 'member_expression'
+                and callee.child_by_field_name('property').text.decode('utf-8')
+                == 'transferControlToOffscreen')
+    return False
+
+
+def _detect_context_markers(root) -> tuple[set[str], set[str]]:
+    """Markers (ctxattr:*, ctx:multiple, ctx:offscreen) and canvas receiver names."""
+    declarations = collect_declarations(root)
+    markers: set[str] = set()
+    canvas_vars: set[str] = set()
+    receivers: set[str] = set()
+    for call in _walk(root, 'call_expression'):
+        if _is_get_context_call(call) not in WEBGL_CONTEXT_TYPES:
+            continue
+        receiver = call.child_by_field_name('function').child_by_field_name('object')
+        if receiver.type == 'identifier':
+            canvas_vars.add(receiver.text.decode('utf-8'))
+        # A call or new-expression receiver is a fresh canvas per site.
+        receivers.add(f'{receiver.start_byte}' if receiver.type in ('call_expression', 'new_expression')
+                      else receiver.text.decode('utf-8'))
+        if _is_offscreen_canvas(receiver, declarations):
+            markers.add('ctx:offscreen')
+        args = call.child_by_field_name('arguments').named_children
+        if len(args) > 1:
+            markers |= _attribute_markers(args[1], declarations)
+    if len(receivers) > 1:
+        markers.add('ctx:multiple')
+    return markers, canvas_vars
 
 
 def _detect_helper_functions(root, context_vars: set[str]) -> dict[str, list[str]]:
@@ -298,6 +391,8 @@ def detect_context(root_node, resolved_consts: dict) -> ContextInfo:
     )
     info.extensions = extensions
     info.extension_aliases = extension_aliases
+
+    info.markers, info.canvas_vars = _detect_context_markers(root_node)
 
     # Step 3: Detect helper functions
     info.helper_functions = _detect_helper_functions(root_node, context_vars)

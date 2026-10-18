@@ -296,6 +296,17 @@
     {"pair": ["glsl_aggregates", "uniforms"], "relationship": "struct and array uniforms are located by name, e.g. s.member[2]"},
     {"pair": ["glsl_aggregates", "ubo"], "relationship": "structs and arrays inside uniform blocks"},
     {"pair": ["glsl_aggregates", "transform_feedback"], "relationship": "array varyings are captured by name (transformFeedbackVaryings 'v[0]')"},
-    {"pair": ["glsl_aggregates", "glsl_ubo_layout"], "relationship": "matrix layout qualifiers apply to struct members inside blocks"}
+    {"pair": ["glsl_aggregates", "glsl_ubo_layout"], "relationship": "matrix layout qualifiers apply to struct members inside blocks"},
+    {"pair": ["context_attributes", "fbo"], "relationship": "alpha/depth/stencil/antialias define the default framebuffer bound by bindFramebuffer(null) (WebGL1 s2.2, s5.2)"},
+    {"pair": ["context_attributes", "depth_stencil"], "relationship": "depth:false / stencil:true decide whether depth and stencil tests have a buffer to act on (WebGL1 s2.2)"},
+    {"pair": ["context_attributes", "blending"], "relationship": "alpha:false / premultipliedAlpha:false change destination alpha and compositing"},
+    {"pair": ["context_attributes", "pixel_ops"], "relationship": "readPixels from the default framebuffer depends on alpha and preserveDrawingBuffer"},
+    {"pair": ["multi_context", "buffer_ops"], "relationship": "objects belong to the context that created them; use in another context is INVALID_OPERATION (WebGL1 s5.3)"},
+    {"pair": ["multi_context", "texture_ops"], "relationship": "cross-context texture use is INVALID_OPERATION; per-context texture units"},
+    {"pair": ["multi_context", "fbo"], "relationship": "framebuffers are not shared between contexts"},
+    {"pair": ["multi_context", "shader_pipeline"], "relationship": "programs and shaders are per-context"},
+    {"pair": ["multi_context", "vao"], "relationship": "vertex array objects are per-context"},
+    {"pair": ["multi_context", "sync"], "relationship": "fences signal per context; waits across contexts"},
+    {"pair": ["multi_context", "query"], "relationship": "queries are per-context"}
   ]
 }

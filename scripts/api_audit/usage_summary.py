@@ -41,6 +41,7 @@ def summarize_usage(root, surface: dict, extra_glsl_builtins: list[str] | None =
         "api_version": ctx.api_version,
         "glsl_builtins": sorted(glsl),
         "glsl_variables": sorted(glsl_vars),
+        "markers": sorted(ctx.markers),
         "glsl_sources": collect_shader_sources(root, ctx, consts),
     }
     return summary, ctx

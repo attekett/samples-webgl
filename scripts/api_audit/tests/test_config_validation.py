@@ -216,3 +216,10 @@ def test_glsl_gates_valid(feature_categories, api_surface):
         if cat.get("min_glsl_patterns_for_match", 0) > len(patterns) + len(variables):
             bad.append(f"{name}: min_glsl_patterns_for_match unreachable")
     assert not bad, "\n".join(bad)
+
+
+def test_marker_prefixes(feature_categories):
+    allowed = ("ctxattr:", "ctx:", "canvas:", "attr:", "frame:", "src:")
+    bad = [f"{n}: {m}" for n, c in feature_categories["categories"].items()
+           for m in c.get("markers", []) if not m.startswith(allowed)]
+    assert not bad, "\n".join(bad)

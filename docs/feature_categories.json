@@ -550,7 +550,6 @@
         "getError",
         "getExtension",
         "getSupportedExtensions",
-        "getContextAttributes",
         "makeXRCompatible",
         "getParameter",
         "isContextLost"
@@ -1339,6 +1338,35 @@
       "constants": [],
       "min_methods_for_match": 0,
       "min_glsl_patterns_for_match": 1
+    },
+    "context_attributes": {
+      "description": "Non-default WebGL context creation attributes (antialias excluded) and getContextAttributes",
+      "methods": [
+        "getContextAttributes"
+      ],
+      "constants": [],
+      "markers": [
+        "ctxattr:alpha=false",
+        "ctxattr:depth=false",
+        "ctxattr:stencil=true",
+        "ctxattr:premultipliedAlpha=false",
+        "ctxattr:preserveDrawingBuffer=true",
+        "ctxattr:desynchronized=true",
+        "ctxattr:powerPreference=high-performance",
+        "ctxattr:powerPreference=low-power",
+        "ctxattr:failIfMajorPerformanceCaveat=true"
+      ],
+      "min_methods_for_match": 1
+    },
+    "multi_context": {
+      "description": "More than one WebGL context, or a context on an OffscreenCanvas",
+      "methods": [],
+      "constants": [],
+      "markers": [
+        "ctx:multiple",
+        "ctx:offscreen"
+      ],
+      "min_methods_for_match": 1
     }
   }
 }
