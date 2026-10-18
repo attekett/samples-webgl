@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from api_audit.const_propagation import GL_NAMESPACES
+from api_audit.const_propagation import GL_NAMESPACES, loop_bound_constants
 
 
 @dataclass
@@ -104,6 +104,19 @@ def _resolve_all_arg_constants(arg_node, context_vars: set, consts: dict) -> lis
         resolved = consts.get(name)
         if isinstance(resolved, str) and resolved.startswith('gl.'):
             return [resolved[3:]]
+        if isinstance(resolved, tuple):
+            return [r[3:] for r in resolved]
+        if name not in consts:
+            return list(loop_bound_constants(arg_node, consts))
+        return []
+
+    if arg_node.type == 'subscript_expression':
+        obj = arg_node.child_by_field_name('object')
+        if obj is not None and obj.type == 'identifier':
+            resolved = consts.get(_node_text(obj))
+            return [r[3:] for r in resolved] if isinstance(resolved, tuple) else []
+        if obj is not None and obj.type == 'array':
+            return _resolve_all_arg_constants(obj, context_vars, consts)
         return []
 
     if arg_node.type == 'binary_expression':
