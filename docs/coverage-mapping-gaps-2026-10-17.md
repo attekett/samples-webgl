@@ -2,6 +2,41 @@
 
 The corpus coverage model has two parts. `docs/feature_categories.json` defines 33 categories and `docs/interaction_topology.json` defines 98 edges between them. This report lists the WebGL features that model cannot see. Before `WEBGL_multi_draw` had a category and edges, seeds that used it counted toward nothing; the features below are in the same position.
 
+## Applied 2026-10-18
+
+The JSON-only proposals are now in the model: 54 categories (was 33) and 252 edges (was 98).
+
+- **New categories (21):** rows 1-6, 8-20 and the table under "Proposed new categories". `srgb` leaves out `SRGB_ALPHA`, which is not a WebGL2 constant.
+- **Defects fixed (rows 26, 27, 29, 30):**
+  - `transform_feedback` no longer lists `bindBufferBase`, `bindBufferRange` or `getIndexedParameter`, so it matches on TF methods only.
+  - `ubo` and `texture_3d` now set `requires_any_constant`.
+  - `ext_float_textures` drops the WebGL1 names.
+  - `glsl_builtins` drops `textureGather` and `textureGatherOffset`.
+  - `ext_disjoint_timer_query` gains the `*QueryEXT` methods.
+- **Edges:** every group in both edge tables, except edges to categories that do not exist (`depth_textures`, `context_loss`, `multi_context`). `depth_stencil`–`ext_draw_buffers_indexed` was removed, as proposed.
+- **Detector fix:** the new constant gates exposed a resolver blind spot. Numeric enums (`0x8C8E`, `35345`) and `WebGL2RenderingContext.X` were never resolved to constant names. They now resolve wherever the parameter is a `GLenum` and the value names exactly one constant. The `api_audit` per-file cache now carries an analyzer version, so a code change invalidates cached results.
+- **Seed count changes:**
+  - `ubo` 144 → 56 and `transform_feedback` 145 → 110; the seeds that dropped out were the shared-method false matches.
+  - `texture_3d` 134 → 62. Six `mutation_b16_s7*` and `mutation_b28_s13*` "3dtex" seeds allocate `TEXTURE_2D_ARRAY` (35866) and sample it as `sampler3D`, so they are not 3D-texture seeds.
+  - `texture_arrays` 75 → 95 and `integer_textures` 57 → 69, because numeric enums now resolve.
+- **Result (`api_audit --combination-matrix`):**
+
+  | | Covered | Gaps | Gaps involving a zero-seed category | Low diversity |
+  |---|---|---|---|---|
+  | 2-way | 231/252 | 21 | 15 | 18 |
+  | 3-way | 1719/2440 | 721 | 280 | 64 |
+  | 4-way | 11792/24178 | 12386 | 4047 | 318 |
+
+  The zero-seed categories are `ext_multiview`, `ext_blend_func_extended`, `ext_renderable_formats` and `ext_debug_info`.
+
+**Not applied:**
+
+- `context_loss` (row 7): seeds may not call `loseContext`, so the category could never be matched.
+- `depth_textures` (row 21): it needs a per-call constant gate.
+- Rows 22-25 and 32-43, and row 28 (`enable(cap)` OR gate): these need detector changes.
+- Row 31 (the two `UBIQUITOUS` sets): this is a code change.
+- The surface edits in rows 8 and 30 (`gl_ClipDistance` and the other variables; removing `frexp`/`ldexp`).
+
 ## Summary
 
 Six finder lanes (extensions, core API, a WebGL2 spec walk, WebGL1/context, GLSL and topology) reported 132 raw items. After merging duplicates and dropping items that are already mapped, the prioritised table has **46 rows**:

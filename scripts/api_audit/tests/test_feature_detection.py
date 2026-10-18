@@ -123,13 +123,13 @@ class TestIsCategoryMatch:
         assert matched is False
 
     def test_requires_any_extension_passes_when_loaded(self, categories):
-        """ext_float_textures matches when OES_texture_float is loaded."""
+        """ext_float_textures matches when OES_texture_float_linear is loaded."""
         cat = categories["ext_float_textures"]
         matched, _, _ = is_category_match(
             cat,
             methods_found=set(),
             constants_found=set(),
-            extensions_loaded={"OES_texture_float"},
+            extensions_loaded={"OES_texture_float_linear"},
             glsl_found=set(),
             extension_methods_found=set(),
         )
@@ -341,7 +341,7 @@ class TestDetectFeatures:
             MockCallAnalysis(),
             set(),
             full_config,
-            extensions={"OES_texture_float"},
+            extensions={"OES_texture_float_linear"},
         )
         assert "ext_float_textures" in result["features"]
         assert result["feature_depth"]["ext_float_textures"] == "deep"
@@ -380,3 +380,27 @@ class TestDetectFeatures:
         )
         assert "ext_draw_buffers_indexed" in result["features"]
         assert result["method_counts"]["ext_draw_buffers_indexed"] == 2
+
+
+def test_raw_enum_literals_resolve_at_glenum_params(api_surface, feature_categories, tmp_path):
+    """Hex/decimal enums and WebGL2RenderingContext.X count as constants;
+    plain numbers at non-GLenum params do not."""
+    from feature_coverage import analyze_file
+    seed = tmp_path / "raw.html"
+    seed.write_text("""<!DOCTYPE html><html><body>
+    <canvas id="c"></canvas><script>
+    const gl = document.getElementById('c').getContext('webgl2');
+    const UNIFORM_BUFFER = 35345;
+    const tex3d = WebGL2RenderingContext.TEXTURE_3D;
+    const buf = gl.createBuffer();
+    gl.bindBuffer(UNIFORM_BUFFER, buf);
+    gl.bindBufferBase(0x8A11, 0, buf);
+    const tex = gl.createTexture();
+    gl.bindTexture(tex3d, tex);
+    gl.texStorage3D(tex3d, 1, gl.RGBA8, 4, 4, 4);
+    gl.bufferData(gl.ARRAY_BUFFER, 36096, gl.STATIC_DRAW);
+    </script></body></html>""")
+    result = analyze_file(seed, api_surface, feature_categories)
+    assert "ubo" in result["features"]
+    assert "texture_3d" in result["features"]
+    assert "DEPTH_ATTACHMENT" not in result["constants"]

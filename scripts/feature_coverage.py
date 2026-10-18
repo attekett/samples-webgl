@@ -26,7 +26,7 @@ from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "2"
+ANALYZER_VERSION = "3"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -62,6 +62,28 @@ DISPLAY_NAMES = {
     "ext_compressed_textures":      "EXT: Compressed Textures",
     "ext_texture_filter_anisotropic": "EXT: Anisotropic Filter",
     "ext_disjoint_timer_query":     "EXT: Disjoint Timer Query",
+    "rasterizer_discard":           "Rasterizer Discard",
+    "fbo_invalidate":               "Framebuffer Invalidation",
+    "srgb":                         "sRGB Formats",
+    "shadow_compare":               "Shadow Compare",
+    "texture_lod_range":            "Texture LOD Range",
+    "texture_cube":                 "Cube Map Faces",
+    "integer_attributes":           "Integer Attributes",
+    "buffer_copy_readback":         "Buffer Copy/Readback",
+    "multisample_rb":               "Multisample Renderbuffers",
+    "pbo":                          "Pixel Buffer Objects",
+    "WEBGL_multi_draw":             "EXT: Multi Draw",
+    "ext_clip_control":             "EXT: Clip Control",
+    "ext_float_blend":              "EXT: Float Blend",
+    "ext_rasterizer_ext":           "EXT: Rasterizer Controls",
+    "ext_texture_params":           "EXT: Texture Params",
+    "ext_clip_cull_distance":       "EXT: Clip/Cull Distance",
+    "ext_conservative_depth":       "EXT: Conservative Depth",
+    "ext_sample_shading":           "EXT: Sample Shading",
+    "ext_blend_func_extended":      "EXT: Dual-Source Blend",
+    "ext_renderable_formats":       "EXT: Renderable Formats",
+    "ext_multiview":                "EXT: Multiview",
+    "ext_debug_info":               "EXT: Debug Info",
     "glsl_builtins":                None,  # skip — always matches every file
 }
 

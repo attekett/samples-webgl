@@ -11,6 +11,9 @@ from __future__ import annotations
 from typing import Optional
 
 
+GL_NAMESPACES = {'gl', 'WebGL2RenderingContext', 'WebGLRenderingContext'}
+
+
 def _walk(node, node_type: str) -> list:
     """Recursively collect all descendant nodes of the given type."""
     results = []
@@ -31,6 +34,7 @@ def _resolve_node(node, declarations: dict, seen: set) -> Optional[str | list[st
 
     Returns:
         str for gl.PROP, template strings, and chain-resolved identifiers;
+        int for integer literals;
         list[str] for arrays of string literals;
         None for unresolvable expressions.
     """
@@ -43,10 +47,17 @@ def _resolve_node(node, declarations: dict, seen: set) -> Optional[str | list[st
     if ntype == 'member_expression':
         obj = node.child_by_field_name('object')
         prop = node.child_by_field_name('property')
-        if obj and prop and obj.type == 'identifier' and obj.text.decode('utf-8') == 'gl':
+        if obj and prop and obj.type == 'identifier' and obj.text.decode('utf-8') in GL_NAMESPACES:
             return f'gl.{prop.text.decode("utf-8")}'
         # Non-gl member expressions (e.g. canvas.getContext) are not resolvable
         return None
+
+    # Integer literal (raw enum such as 0x8C8E); call_analysis maps it at GLenum params
+    if ntype == 'number':
+        try:
+            return int(node.text.decode('utf-8'), 0)
+        except ValueError:
+            return None
 
     # Identifier referencing another declaration -> follow chain
     if ntype == 'identifier':

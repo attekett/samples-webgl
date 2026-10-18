@@ -26,7 +26,6 @@
     },
     "transform_feedback": {
       "description": "Transform feedback capture and playback of vertex shader outputs",
-      "overlap_note": "bindBufferBase, bindBufferRange, getIndexedParameter also appear in ubo. Both features use indexed buffer bindings, so the overlap is intentional.",
       "methods": [
         "beginTransformFeedback",
         "endTransformFeedback",
@@ -37,9 +36,6 @@
         "pauseTransformFeedback",
         "resumeTransformFeedback",
         "getTransformFeedbackVarying",
-        "bindBufferBase",
-        "bindBufferRange",
-        "getIndexedParameter",
         "isTransformFeedback"
       ],
       "constants": [
@@ -113,7 +109,8 @@
       "constants": [
         "TEXTURE_3D"
       ],
-      "min_methods_for_match": 1
+      "min_methods_for_match": 1,
+      "requires_any_constant": true
     },
     "texture_arrays": {
       "description": "2D texture array operations using layered textures",
@@ -217,7 +214,7 @@
     },
     "ubo": {
       "description": "Uniform buffer object binding and block configuration",
-      "overlap_note": "bindBufferBase, bindBufferRange, getIndexedParameter also appear in transform_feedback. Both features use indexed buffer bindings, so the overlap is intentional.",
+      "overlap_note": "bindBufferBase, bindBufferRange and getIndexedParameter are shared with transform feedback, so ubo also requires UNIFORM_BUFFER; transform_feedback matches on its own methods only.",
       "methods": [
         "getUniformBlockIndex",
         "uniformBlockBinding",
@@ -233,7 +230,8 @@
         "UNIFORM_BUFFER",
         "UNIFORM_BUFFER_BINDING"
       ],
-      "min_methods_for_match": 1
+      "min_methods_for_match": 1,
+      "requires_any_constant": true
     },
     "integer_textures": {
       "description": "Integer format textures and integer clear operations",
@@ -533,8 +531,6 @@
       "methods": [],
       "constants": [],
       "extensions": [
-        "OES_texture_float",
-        "OES_texture_half_float",
         "OES_texture_float_linear",
         "OES_texture_half_float_linear"
       ],
@@ -609,7 +605,14 @@
         "EXT_disjoint_timer_query"
       ],
       "extension_methods": [
-        "queryCounterEXT"
+        "queryCounterEXT",
+        "createQueryEXT",
+        "deleteQueryEXT",
+        "isQueryEXT",
+        "beginQueryEXT",
+        "endQueryEXT",
+        "getQueryEXT",
+        "getQueryObjectEXT"
       ],
       "min_methods_for_match": 0,
       "requires_any_extension": true
@@ -637,8 +640,6 @@
         "textureProjGrad",
         "texelFetch",
         "texelFetchOffset",
-        "textureGather",
-        "textureGatherOffset",
         "dFdx",
         "dFdy",
         "fwidth",
@@ -670,6 +671,333 @@
         "multiDrawElementsInstancedWEBGL"
       ],
       "min_methods_for_match": 1
+    },
+    "rasterizer_discard": {
+      "description": "RASTERIZER_DISCARD: primitives skip rasterisation after transform feedback capture",
+      "methods": [],
+      "constants": [
+        "RASTERIZER_DISCARD"
+      ],
+      "min_methods_for_match": 0,
+      "min_constants_for_match": 1
+    },
+    "fbo_invalidate": {
+      "description": "Framebuffer invalidation",
+      "methods": [
+        "invalidateFramebuffer",
+        "invalidateSubFramebuffer"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "srgb": {
+      "description": "sRGB texture and renderbuffer formats",
+      "methods": [
+        "texImage2D",
+        "texImage3D",
+        "texStorage2D",
+        "texStorage3D",
+        "renderbufferStorage",
+        "renderbufferStorageMultisample",
+        "compressedTexImage2D"
+      ],
+      "constants": [
+        "SRGB8",
+        "SRGB8_ALPHA8",
+        "SRGB",
+        "FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING"
+      ],
+      "min_methods_for_match": 1,
+      "requires_any_constant": true
+    },
+    "shadow_compare": {
+      "description": "Depth-compare texture sampling (shadow samplers)",
+      "methods": [
+        "texParameteri",
+        "texParameterf",
+        "samplerParameteri",
+        "samplerParameterf"
+      ],
+      "constants": [
+        "TEXTURE_COMPARE_MODE",
+        "TEXTURE_COMPARE_FUNC",
+        "COMPARE_REF_TO_TEXTURE"
+      ],
+      "min_methods_for_match": 1,
+      "requires_any_constant": true
+    },
+    "texture_lod_range": {
+      "description": "Mip level and LOD range clamps",
+      "methods": [
+        "texParameteri",
+        "texParameterf",
+        "samplerParameteri",
+        "samplerParameterf"
+      ],
+      "constants": [
+        "TEXTURE_BASE_LEVEL",
+        "TEXTURE_MAX_LEVEL",
+        "TEXTURE_MIN_LOD",
+        "TEXTURE_MAX_LOD"
+      ],
+      "min_methods_for_match": 1,
+      "requires_any_constant": true
+    },
+    "texture_cube": {
+      "description": "Cube map face uploads, storage and attachments",
+      "methods": [
+        "texImage2D",
+        "texStorage2D",
+        "texSubImage2D",
+        "framebufferTexture2D",
+        "generateMipmap"
+      ],
+      "constants": [
+        "TEXTURE_CUBE_MAP_POSITIVE_X",
+        "TEXTURE_CUBE_MAP_NEGATIVE_X",
+        "TEXTURE_CUBE_MAP_POSITIVE_Y",
+        "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+        "TEXTURE_CUBE_MAP_POSITIVE_Z",
+        "TEXTURE_CUBE_MAP_NEGATIVE_Z",
+        "TEXTURE_BINDING_CUBE_MAP"
+      ],
+      "min_methods_for_match": 1,
+      "requires_any_constant": true
+    },
+    "integer_attributes": {
+      "description": "Integer vertex attributes",
+      "methods": [
+        "vertexAttribIPointer",
+        "vertexAttribI4i",
+        "vertexAttribI4iv",
+        "vertexAttribI4ui",
+        "vertexAttribI4uiv"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "buffer_copy_readback": {
+      "description": "Buffer-to-buffer copies and buffer readback",
+      "methods": [
+        "copyBufferSubData",
+        "getBufferSubData"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "multisample_rb": {
+      "description": "Multisample renderbuffer storage",
+      "methods": [
+        "renderbufferStorageMultisample"
+      ],
+      "constants": [],
+      "min_methods_for_match": 1
+    },
+    "pbo": {
+      "description": "Pixel buffer objects as pack/unpack targets",
+      "methods": [
+        "readPixels",
+        "texImage2D",
+        "texSubImage2D",
+        "texImage3D",
+        "texSubImage3D",
+        "compressedTexImage2D",
+        "compressedTexSubImage2D"
+      ],
+      "constants": [
+        "PIXEL_PACK_BUFFER",
+        "PIXEL_UNPACK_BUFFER"
+      ],
+      "min_methods_for_match": 1,
+      "requires_any_constant": true
+    },
+    "ext_clip_control": {
+      "description": "EXT_clip_control clip origin and depth mode",
+      "methods": [],
+      "constants": [
+        "LOWER_LEFT_EXT",
+        "UPPER_LEFT_EXT",
+        "NEGATIVE_ONE_TO_ONE_EXT",
+        "ZERO_TO_ONE_EXT",
+        "CLIP_ORIGIN_EXT",
+        "CLIP_DEPTH_MODE_EXT"
+      ],
+      "extensions": [
+        "EXT_clip_control"
+      ],
+      "extension_methods": [
+        "clipControlEXT"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_float_blend": {
+      "description": "EXT_float_blend: blending into 32-bit float attachments",
+      "methods": [],
+      "constants": [],
+      "extensions": [
+        "EXT_float_blend"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_rasterizer_ext": {
+      "description": "Rasterizer extensions: polygon offset clamp, depth clamp, polygon mode",
+      "methods": [],
+      "constants": [
+        "POLYGON_OFFSET_CLAMP_EXT",
+        "DEPTH_CLAMP_EXT",
+        "POLYGON_MODE_WEBGL",
+        "POLYGON_OFFSET_LINE_WEBGL",
+        "LINE_WEBGL",
+        "FILL_WEBGL"
+      ],
+      "extensions": [
+        "EXT_polygon_offset_clamp",
+        "EXT_depth_clamp",
+        "WEBGL_polygon_mode"
+      ],
+      "extension_methods": [
+        "polygonOffsetClampEXT",
+        "polygonModeWEBGL"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_texture_params": {
+      "description": "Texture parameter extensions: stencil texturing, mirror clamp",
+      "methods": [],
+      "constants": [
+        "DEPTH_STENCIL_TEXTURE_MODE_WEBGL",
+        "STENCIL_INDEX_WEBGL",
+        "MIRROR_CLAMP_TO_EDGE_EXT"
+      ],
+      "extensions": [
+        "WEBGL_stencil_texturing",
+        "EXT_texture_mirror_clamp_to_edge"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_clip_cull_distance": {
+      "description": "WEBGL_clip_cull_distance user clip planes",
+      "methods": [],
+      "constants": [
+        "MAX_CLIP_DISTANCES_WEBGL",
+        "MAX_CULL_DISTANCES_WEBGL",
+        "MAX_COMBINED_CLIP_AND_CULL_DISTANCES_WEBGL",
+        "CLIP_DISTANCE0_WEBGL",
+        "CLIP_DISTANCE1_WEBGL",
+        "CLIP_DISTANCE2_WEBGL",
+        "CLIP_DISTANCE3_WEBGL",
+        "CLIP_DISTANCE4_WEBGL",
+        "CLIP_DISTANCE5_WEBGL",
+        "CLIP_DISTANCE6_WEBGL",
+        "CLIP_DISTANCE7_WEBGL"
+      ],
+      "extensions": [
+        "WEBGL_clip_cull_distance"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_conservative_depth": {
+      "description": "EXT_conservative_depth layout(depth_*) qualifiers",
+      "methods": [],
+      "constants": [],
+      "extensions": [
+        "EXT_conservative_depth"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_sample_shading": {
+      "description": "Per-sample shading and interpolation extensions",
+      "methods": [],
+      "constants": [
+        "MIN_FRAGMENT_INTERPOLATION_OFFSET_OES",
+        "MAX_FRAGMENT_INTERPOLATION_OFFSET_OES",
+        "FRAGMENT_INTERPOLATION_OFFSET_BITS_OES"
+      ],
+      "extensions": [
+        "OES_sample_variables",
+        "OES_shader_multisample_interpolation",
+        "NV_shader_noperspective_interpolation"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_blend_func_extended": {
+      "description": "WEBGL_blend_func_extended dual-source blending",
+      "methods": [],
+      "constants": [
+        "SRC1_COLOR_WEBGL",
+        "SRC1_ALPHA_WEBGL",
+        "ONE_MINUS_SRC1_COLOR_WEBGL",
+        "ONE_MINUS_SRC1_ALPHA_WEBGL",
+        "MAX_DUAL_SOURCE_DRAW_BUFFERS_WEBGL"
+      ],
+      "extensions": [
+        "WEBGL_blend_func_extended"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_renderable_formats": {
+      "description": "Renderable norm16, snorm and shared-exponent formats",
+      "methods": [],
+      "constants": [
+        "R16_EXT",
+        "RG16_EXT",
+        "RGB16_EXT",
+        "RGBA16_EXT",
+        "R16_SNORM_EXT",
+        "RG16_SNORM_EXT",
+        "RGB16_SNORM_EXT",
+        "RGBA16_SNORM_EXT"
+      ],
+      "extensions": [
+        "EXT_texture_norm16",
+        "EXT_render_snorm",
+        "WEBGL_render_shared_exponent"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_multiview": {
+      "description": "OVR_multiview2 layered multiview rendering",
+      "methods": [],
+      "constants": [
+        "FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR",
+        "FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR",
+        "MAX_VIEWS_OVR",
+        "FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR"
+      ],
+      "extensions": [
+        "OVR_multiview2"
+      ],
+      "extension_methods": [
+        "framebufferTextureMultiviewOVR"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
+    },
+    "ext_debug_info": {
+      "description": "Debug extensions: translated shader source, unmasked renderer",
+      "methods": [],
+      "constants": [
+        "UNMASKED_VENDOR_WEBGL",
+        "UNMASKED_RENDERER_WEBGL"
+      ],
+      "extensions": [
+        "WEBGL_debug_shaders",
+        "WEBGL_debug_renderer_info"
+      ],
+      "extension_methods": [
+        "getTranslatedShaderSource"
+      ],
+      "min_methods_for_match": 0,
+      "requires_any_extension": true
     }
   }
 }

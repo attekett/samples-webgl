@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from api_audit.const_propagation import GL_NAMESPACES
+
 
 @dataclass
 class CallRecord:
@@ -53,7 +55,8 @@ def _resolve_arg_constant(arg_node, context_vars: set, consts: dict) -> Optional
     if arg_node.type == 'member_expression':
         obj = arg_node.child_by_field_name('object')
         prop = arg_node.child_by_field_name('property')
-        if obj and prop and obj.type == 'identifier' and _node_text(obj) in context_vars:
+        if obj and prop and obj.type == 'identifier' and (
+                _node_text(obj) in context_vars or _node_text(obj) in GL_NAMESPACES):
             return _node_text(prop)
         return None
 
@@ -91,7 +94,8 @@ def _resolve_all_arg_constants(arg_node, context_vars: set, consts: dict) -> lis
     if arg_node.type == 'member_expression':
         obj = arg_node.child_by_field_name('object')
         prop = arg_node.child_by_field_name('property')
-        if obj and prop and obj.type == 'identifier' and _node_text(obj) in context_vars:
+        if obj and prop and obj.type == 'identifier' and (
+                _node_text(obj) in context_vars or _node_text(obj) in GL_NAMESPACES):
             return [_node_text(prop)]
         return []
 
@@ -120,6 +124,39 @@ def _resolve_all_arg_constants(arg_node, context_vars: set, consts: dict) -> lis
         return result
 
     return []
+
+
+_ENUM_NAMES = {}
+
+
+def _numeric_enum(arg_node, consts: dict, surface: dict) -> Optional[str]:
+    """Name of the core constant a raw integer enum argument (0x8C8E, 35345) stands for.
+
+    Returns None unless exactly one surface constant has that value.
+    """
+    if arg_node.type == 'number':
+        try:
+            value = int(_node_text(arg_node), 0)
+        except ValueError:
+            return None
+    elif arg_node.type == 'identifier':
+        value = consts.get(_node_text(arg_node))
+        if not isinstance(value, int):
+            return None
+    else:
+        return None
+    cached = _ENUM_NAMES.get(id(surface))
+    if cached is None or cached[0] is not surface:
+        by_value = {}
+        for name, info in surface.get('constants', {}).items():
+            try:
+                by_value.setdefault(int(str(info.get('value')), 0), []).append(name)
+            except ValueError:
+                continue
+        cached = _ENUM_NAMES[id(surface)] = (surface, by_value)
+    by_value = cached[1]
+    names = by_value.get(value, [])
+    return names[0] if len(names) == 1 else None
 
 
 def _classify_arg_for_overload(arg_node) -> str:
@@ -263,6 +300,11 @@ def _process_call(call_node, context_vars: set, extension_aliases: dict,
                 if i < len(params):
                     param_name = params[i].get('name', '')
                     arg_constants = _resolve_all_arg_constants(arg, context_vars, consts)
+                    if not arg_constants and params[i].get('type') == 'GLenum':
+                        enum_name = _numeric_enum(arg, consts, surface)
+                        if enum_name:
+                            arg_constants = [enum_name]
+                            constants.add(enum_name)
                     for const_name in arg_constants:
                         constant_roles[const_name] = param_name
 

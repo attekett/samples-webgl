@@ -16,13 +16,17 @@ from api_audit.cache import FileCache
 from api_audit.report import generate_report, generate_delta_report
 
 
+# Bump when analysis output changes; the per-file cache is keyed on content plus this.
+ANALYZER_VERSION = "2"
+
+
 def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None,
                  extra_glsl_builtins: list[str] | None = None):
     """Run full analysis pipeline on a single HTML file."""
     content = filepath.read_text()
 
     if cache:
-        cached = cache.lookup(filepath.name, content)
+        cached = cache.lookup(filepath.name, content, config_hash=ANALYZER_VERSION)
         if cached:
             return cached
 
@@ -70,7 +74,7 @@ def analyze_file(filepath: Path, surface: dict, cache: FileCache | None = None,
             result['extension_methods'][ext_name][method_name] = len(records) if isinstance(records, list) else records
 
     if cache:
-        cache.store(filepath.name, content, result)
+        cache.store(filepath.name, content, result, config_hash=ANALYZER_VERSION)
 
     return result
 
