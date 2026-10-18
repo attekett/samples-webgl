@@ -404,3 +404,68 @@ def test_raw_enum_literals_resolve_at_glenum_params(api_surface, feature_categor
     assert "ubo" in result["features"]
     assert "texture_3d" in result["features"]
     assert "DEPTH_ATTACHMENT" not in result["constants"]
+
+
+# ---------------------------------------------------------------------------
+# Call-level constant gates (match_if_call_constant / requires_call_constant)
+# ---------------------------------------------------------------------------
+
+def _match(categories, name, methods, method_constants):
+    consts = {c for cs in method_constants.values() for c in cs}
+    return is_category_match(categories[name], set(methods), consts, set(), set(), set(),
+                             method_constants=method_constants)[0]
+
+
+class TestCallConstantGates:
+    def test_enable_or_gate(self, categories):
+        assert _match(categories, "depth_stencil", {"enable"}, {"enable": {"DEPTH_TEST"}})
+        assert not _match(categories, "depth_stencil", {"enable"}, {})
+
+    def test_rasterizer_ignores_stencil_separate_faces(self, categories):
+        assert not _match(categories, "rasterizer_state", {"stencilOpSeparate", "enable"},
+                          {"stencilOpSeparate": {"BACK"}, "enable": {"SCISSOR_TEST"}})
+        assert _match(categories, "rasterizer_state", {"enable"}, {"enable": {"CULL_FACE"}})
+
+    def test_depth_textures_needs_tex_call(self, categories):
+        assert not _match(categories, "depth_textures", {"renderbufferStorage", "texImage2D"},
+                          {"renderbufferStorage": {"DEPTH24_STENCIL8"},
+                           "texImage2D": {"RGBA8"}})
+        assert _match(categories, "depth_textures", {"texImage2D"},
+                      {"texImage2D": {"DEPTH_COMPONENT24"}})
+
+    def test_texture_cube_ignores_binding_query(self, categories):
+        assert not _match(categories, "texture_cube", {"getParameter", "texImage2D"},
+                          {"getParameter": {"TEXTURE_BINDING_CUBE_MAP"},
+                           "texImage2D": {"TEXTURE_2D"}})
+
+    def test_pbo_needs_bindbuffer(self, categories):
+        assert not _match(categories, "pbo", {"getBufferSubData", "readPixels"},
+                          {"getBufferSubData": {"PIXEL_PACK_BUFFER"}})
+        assert _match(categories, "pbo", {"readPixels", "bindBuffer"},
+                      {"bindBuffer": {"PIXEL_PACK_BUFFER"}})
+
+    def test_or_gate_keeps_extension_gate(self):
+        cat = {"methods": ["x"], "min_methods_for_match": 1,
+               "match_if_call_constant": {"enable": ["A"]},
+               "requires_any_extension": True, "extensions": ["EXT_a"]}
+        assert not is_category_match(cat, {"enable"}, {"A"}, set(), set(), set(),
+                                     method_constants={"enable": {"A"}})[0]
+
+
+def test_depth_textures_end_to_end(tmp_path, categories):
+    import feature_coverage
+    from api_audit.__main__ import analyze_file as audit_analyze
+    surface = json.loads((CATEGORIES_PATH.parent / "webgl_api_surface.json").read_text())
+    html = """<canvas id=c></canvas><script>
+const gl = document.getElementById('c').getContext('webgl2');
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, 4, 4, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+gl.enable(gl.DEPTH_TEST);
+</script>"""
+    f = tmp_path / "seed.html"
+    f.write_text(html)
+    cfg = {"categories": categories}
+    a = audit_analyze(f, surface)
+    fa = detect_features(a, set(a["glsl_builtins"]), cfg, extensions=set(a["extensions"]))
+    fb = feature_coverage.analyze_file(f, surface, cfg)
+    assert "depth_textures" in fa["features"] and "depth_textures" in fb["features"]
+    assert "depth_stencil" in fa["features"]

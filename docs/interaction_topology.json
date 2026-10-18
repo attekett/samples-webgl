@@ -253,6 +253,15 @@
     {"pair": ["rasterizer_state", "shader_pipeline"], "relationship": "cull applies to polygon draws; gl_FrontFacing; coverage on multisample targets"},
     {"pair": ["rasterizer_state", "renderbuffer"], "relationship": "cull applies to polygon draws; gl_FrontFacing; coverage on multisample targets"},
     {"pair": ["glsl_builtins", "texture_ops"], "relationship": "texelFetch ignores sampler state; invalid texture offsets"},
-    {"pair": ["glsl_builtins", "sampler"], "relationship": "texelFetch ignores sampler state; invalid texture offsets"}
+    {"pair": ["glsl_builtins", "sampler"], "relationship": "texelFetch ignores sampler state; invalid texture offsets"},
+    {"pair": ["texture_ops", "depth_textures"], "relationship": "depth formats allocated through the texture API"},
+    {"pair": ["fbo", "depth_textures"], "relationship": "depth texture as DEPTH_ATTACHMENT / DEPTH_STENCIL_ATTACHMENT"},
+    {"pair": ["sampler", "depth_textures"], "relationship": "depth textures sampled with sampler-object filtering and compare state"},
+    {"pair": ["shader_pipeline", "depth_textures"], "relationship": "sampler2DShadow / depth sampling in shaders"},
+    {"pair": ["depth_stencil", "depth_textures"], "relationship": "depth test writes into a depth texture later sampled"},
+    {"pair": ["texture_arrays", "depth_textures"], "relationship": "depth formats in 2D array textures"},
+    {"pair": ["pixel_ops", "depth_textures"], "relationship": "WebGL2:4091 FLOAT_32_UNSIGNED_INT_24_8_REV upload rules; depth readback is invalid"},
+    {"pair": ["ext_texture_params", "depth_textures"], "relationship": "DEPTH_STENCIL_TEXTURE_MODE_WEBGL selects the sampled component of a depth-stencil texture"},
+    {"pair": ["shadow_compare", "depth_textures"], "relationship": "WebGL2:3996 the sampler type must match the texture's compare mode and format"}
   ]
 }

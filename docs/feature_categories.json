@@ -287,7 +287,17 @@
         "DEPTH_TEST",
         "STENCIL_TEST"
       ],
-      "min_methods_for_match": 1
+      "min_methods_for_match": 1,
+      "match_if_call_constant": {
+        "enable": [
+          "DEPTH_TEST",
+          "STENCIL_TEST"
+        ],
+        "disable": [
+          "DEPTH_TEST",
+          "STENCIL_TEST"
+        ]
+      }
     },
     "blending": {
       "description": "Color blending equation and function configuration",
@@ -301,7 +311,15 @@
       "constants": [
         "BLEND"
       ],
-      "min_methods_for_match": 1
+      "min_methods_for_match": 1,
+      "match_if_call_constant": {
+        "enable": [
+          "BLEND"
+        ],
+        "disable": [
+          "BLEND"
+        ]
+      }
     },
     "pixel_ops": {
       "description": "Pixel read-back and pixel store parameter operations",
@@ -504,7 +522,21 @@
         "SAMPLE_COVERAGE",
         "SAMPLE_ALPHA_TO_COVERAGE"
       ],
-      "min_methods_for_match": 1
+      "min_methods_for_match": 1,
+      "match_if_call_constant": {
+        "enable": [
+          "CULL_FACE",
+          "POLYGON_OFFSET_FILL",
+          "SAMPLE_COVERAGE",
+          "SAMPLE_ALPHA_TO_COVERAGE"
+        ],
+        "disable": [
+          "CULL_FACE",
+          "POLYGON_OFFSET_FILL",
+          "SAMPLE_COVERAGE",
+          "SAMPLE_ALPHA_TO_COVERAGE"
+        ]
+      }
     },
     "pipeline_state": {
       "description": "Generic pipeline-state toggling, error/state inspection, and context introspection (effectively ubiquitous)",
@@ -699,7 +731,8 @@
         "texStorage3D",
         "renderbufferStorage",
         "renderbufferStorageMultisample",
-        "compressedTexImage2D"
+        "compressedTexImage2D",
+        "getFramebufferAttachmentParameter"
       ],
       "constants": [
         "SRGB8",
@@ -708,7 +741,46 @@
         "FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING"
       ],
       "min_methods_for_match": 1,
-      "requires_any_constant": true
+      "requires_call_constant": {
+        "texImage2D": [
+          "SRGB8",
+          "SRGB8_ALPHA8",
+          "SRGB"
+        ],
+        "texImage3D": [
+          "SRGB8",
+          "SRGB8_ALPHA8",
+          "SRGB"
+        ],
+        "texStorage2D": [
+          "SRGB8",
+          "SRGB8_ALPHA8",
+          "SRGB"
+        ],
+        "texStorage3D": [
+          "SRGB8",
+          "SRGB8_ALPHA8",
+          "SRGB"
+        ],
+        "renderbufferStorage": [
+          "SRGB8",
+          "SRGB8_ALPHA8",
+          "SRGB"
+        ],
+        "renderbufferStorageMultisample": [
+          "SRGB8",
+          "SRGB8_ALPHA8",
+          "SRGB"
+        ],
+        "compressedTexImage2D": [
+          "SRGB8",
+          "SRGB8_ALPHA8",
+          "SRGB"
+        ],
+        "getFramebufferAttachmentParameter": [
+          "FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING"
+        ]
+      }
     },
     "shadow_compare": {
       "description": "Depth-compare texture sampling (shadow samplers)",
@@ -746,23 +818,100 @@
     "texture_cube": {
       "description": "Cube map face uploads, storage and attachments",
       "methods": [
+        "bindTexture",
+        "compressedTexImage2D",
+        "compressedTexSubImage2D",
+        "copyTexImage2D",
+        "copyTexSubImage2D",
+        "framebufferTexture2D",
+        "generateMipmap",
         "texImage2D",
         "texStorage2D",
-        "texSubImage2D",
-        "framebufferTexture2D",
-        "generateMipmap"
+        "texSubImage2D"
       ],
       "constants": [
         "TEXTURE_CUBE_MAP_POSITIVE_X",
-        "TEXTURE_CUBE_MAP_NEGATIVE_X",
         "TEXTURE_CUBE_MAP_POSITIVE_Y",
-        "TEXTURE_CUBE_MAP_NEGATIVE_Y",
         "TEXTURE_CUBE_MAP_POSITIVE_Z",
+        "TEXTURE_CUBE_MAP_NEGATIVE_X",
+        "TEXTURE_CUBE_MAP_NEGATIVE_Y",
         "TEXTURE_CUBE_MAP_NEGATIVE_Z",
-        "TEXTURE_BINDING_CUBE_MAP"
+        "TEXTURE_CUBE_MAP"
       ],
       "min_methods_for_match": 1,
-      "requires_any_constant": true
+      "requires_call_constant": {
+        "texImage2D": [
+          "TEXTURE_CUBE_MAP_POSITIVE_X",
+          "TEXTURE_CUBE_MAP_POSITIVE_Y",
+          "TEXTURE_CUBE_MAP_POSITIVE_Z",
+          "TEXTURE_CUBE_MAP_NEGATIVE_X",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Z"
+        ],
+        "texSubImage2D": [
+          "TEXTURE_CUBE_MAP_POSITIVE_X",
+          "TEXTURE_CUBE_MAP_POSITIVE_Y",
+          "TEXTURE_CUBE_MAP_POSITIVE_Z",
+          "TEXTURE_CUBE_MAP_NEGATIVE_X",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Z"
+        ],
+        "copyTexImage2D": [
+          "TEXTURE_CUBE_MAP_POSITIVE_X",
+          "TEXTURE_CUBE_MAP_POSITIVE_Y",
+          "TEXTURE_CUBE_MAP_POSITIVE_Z",
+          "TEXTURE_CUBE_MAP_NEGATIVE_X",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Z"
+        ],
+        "copyTexSubImage2D": [
+          "TEXTURE_CUBE_MAP_POSITIVE_X",
+          "TEXTURE_CUBE_MAP_POSITIVE_Y",
+          "TEXTURE_CUBE_MAP_POSITIVE_Z",
+          "TEXTURE_CUBE_MAP_NEGATIVE_X",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Z"
+        ],
+        "framebufferTexture2D": [
+          "TEXTURE_CUBE_MAP_POSITIVE_X",
+          "TEXTURE_CUBE_MAP_POSITIVE_Y",
+          "TEXTURE_CUBE_MAP_POSITIVE_Z",
+          "TEXTURE_CUBE_MAP_NEGATIVE_X",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Z"
+        ],
+        "compressedTexImage2D": [
+          "TEXTURE_CUBE_MAP_POSITIVE_X",
+          "TEXTURE_CUBE_MAP_POSITIVE_Y",
+          "TEXTURE_CUBE_MAP_POSITIVE_Z",
+          "TEXTURE_CUBE_MAP_NEGATIVE_X",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Z"
+        ],
+        "compressedTexSubImage2D": [
+          "TEXTURE_CUBE_MAP_POSITIVE_X",
+          "TEXTURE_CUBE_MAP_POSITIVE_Y",
+          "TEXTURE_CUBE_MAP_POSITIVE_Z",
+          "TEXTURE_CUBE_MAP_NEGATIVE_X",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Z"
+        ],
+        "bindTexture": [
+          "TEXTURE_CUBE_MAP"
+        ],
+        "texStorage2D": [
+          "TEXTURE_CUBE_MAP_POSITIVE_X",
+          "TEXTURE_CUBE_MAP_POSITIVE_Y",
+          "TEXTURE_CUBE_MAP_POSITIVE_Z",
+          "TEXTURE_CUBE_MAP_NEGATIVE_X",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Y",
+          "TEXTURE_CUBE_MAP_NEGATIVE_Z",
+          "TEXTURE_CUBE_MAP"
+        ],
+        "generateMipmap": [
+          "TEXTURE_CUBE_MAP"
+        ]
+      }
     },
     "integer_attributes": {
       "description": "Integer vertex attributes",
@@ -809,7 +958,12 @@
         "PIXEL_UNPACK_BUFFER"
       ],
       "min_methods_for_match": 1,
-      "requires_any_constant": true
+      "requires_call_constant": {
+        "bindBuffer": [
+          "PIXEL_PACK_BUFFER",
+          "PIXEL_UNPACK_BUFFER"
+        ]
+      }
     },
     "ext_clip_control": {
       "description": "EXT_clip_control clip origin and depth mode",
@@ -998,6 +1152,83 @@
       ],
       "min_methods_for_match": 0,
       "requires_any_extension": true
+    },
+    "depth_textures": {
+      "description": "Depth and depth-stencil format textures (DEPTH_COMPONENT*/DEPTH*_STENCIL8 passed to a texture upload or allocation)",
+      "methods": [
+        "texImage2D",
+        "texImage3D",
+        "texStorage2D",
+        "texStorage3D",
+        "texSubImage2D",
+        "texSubImage3D"
+      ],
+      "constants": [
+        "DEPTH_COMPONENT16",
+        "DEPTH_COMPONENT24",
+        "DEPTH_COMPONENT32F",
+        "DEPTH24_STENCIL8",
+        "DEPTH32F_STENCIL8",
+        "DEPTH_COMPONENT",
+        "DEPTH_STENCIL"
+      ],
+      "min_methods_for_match": 1,
+      "requires_call_constant": {
+        "texImage2D": [
+          "DEPTH_COMPONENT16",
+          "DEPTH_COMPONENT24",
+          "DEPTH_COMPONENT32F",
+          "DEPTH24_STENCIL8",
+          "DEPTH32F_STENCIL8",
+          "DEPTH_COMPONENT",
+          "DEPTH_STENCIL"
+        ],
+        "texImage3D": [
+          "DEPTH_COMPONENT16",
+          "DEPTH_COMPONENT24",
+          "DEPTH_COMPONENT32F",
+          "DEPTH24_STENCIL8",
+          "DEPTH32F_STENCIL8",
+          "DEPTH_COMPONENT",
+          "DEPTH_STENCIL"
+        ],
+        "texStorage2D": [
+          "DEPTH_COMPONENT16",
+          "DEPTH_COMPONENT24",
+          "DEPTH_COMPONENT32F",
+          "DEPTH24_STENCIL8",
+          "DEPTH32F_STENCIL8",
+          "DEPTH_COMPONENT",
+          "DEPTH_STENCIL"
+        ],
+        "texStorage3D": [
+          "DEPTH_COMPONENT16",
+          "DEPTH_COMPONENT24",
+          "DEPTH_COMPONENT32F",
+          "DEPTH24_STENCIL8",
+          "DEPTH32F_STENCIL8",
+          "DEPTH_COMPONENT",
+          "DEPTH_STENCIL"
+        ],
+        "texSubImage2D": [
+          "DEPTH_COMPONENT16",
+          "DEPTH_COMPONENT24",
+          "DEPTH_COMPONENT32F",
+          "DEPTH24_STENCIL8",
+          "DEPTH32F_STENCIL8",
+          "DEPTH_COMPONENT",
+          "DEPTH_STENCIL"
+        ],
+        "texSubImage3D": [
+          "DEPTH_COMPONENT16",
+          "DEPTH_COMPONENT24",
+          "DEPTH_COMPONENT32F",
+          "DEPTH24_STENCIL8",
+          "DEPTH32F_STENCIL8",
+          "DEPTH_COMPONENT",
+          "DEPTH_STENCIL"
+        ]
+      }
     }
   }
 }

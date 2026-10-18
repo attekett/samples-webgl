@@ -41,7 +41,8 @@ def _extract_from_call_analysis(call_analysis_result):
     """Extract methods, constants, and extension methods from a CallAnalysisResult object.
 
     Returns:
-        (methods_found: set, constants_found: set, extension_methods_found: set)
+        (methods_found, constants_found, extension_methods_found, method_constants)
+        where method_constants is {method: set of constants passed to it}.
     """
     methods_found = set(call_analysis_result.methods.keys())
     constants_found = set()
@@ -53,7 +54,11 @@ def _extract_from_call_analysis(call_analysis_result):
     for ext_name, ext_methods in call_analysis_result.extension_methods.items():
         for method_name in ext_methods:
             extension_methods_found.add(method_name)
-    return methods_found, constants_found, extension_methods_found
+    method_constants = {}
+    for name, call_records in call_analysis_result.methods.items():
+        method_constants[name] = {
+            _strip_gl_prefix(c) for record in call_records for c in record.constants}
+    return methods_found, constants_found, extension_methods_found, method_constants
 
 
 def _extract_from_dict(result_dict):
@@ -65,7 +70,7 @@ def _extract_from_dict(result_dict):
       - "extension_methods": {ext_name: {method_name: count}}
 
     Returns:
-        (methods_found: set, constants_found: set, extension_methods_found: set)
+        (methods_found, constants_found, extension_methods_found, method_constants)
     """
     methods_found = set(result_dict.get("methods", {}).keys())
     constants_found = set()
@@ -75,11 +80,20 @@ def _extract_from_dict(result_dict):
     for ext_name, ext_methods in result_dict.get("extension_methods", {}).items():
         for method_name in ext_methods:
             extension_methods_found.add(method_name)
-    return methods_found, constants_found, extension_methods_found
+    method_constants = {
+        m: {_strip_gl_prefix(c) for c in cs}
+        for m, cs in result_dict.get("method_constants", {}).items()}
+    return methods_found, constants_found, extension_methods_found, method_constants
+
+
+def _call_constant_hit(spec, method_constants):
+    """True if some call of a method in spec passed one of its listed constants."""
+    return any(c in method_constants.get(m, ()) for m, consts in spec.items() for c in consts)
 
 
 def is_category_match(category_def, methods_found, constants_found,
-                      extensions_loaded, glsl_found, extension_methods_found):
+                      extensions_loaded, glsl_found, extension_methods_found,
+                      method_constants=None):
     """Determine if a category definition matches the observed API usage.
 
     Uses AND-composed gates: all applicable gates must pass for a match.
@@ -91,6 +105,8 @@ def is_category_match(category_def, methods_found, constants_found,
         extensions_loaded: Set of extension names loaded by the file.
         glsl_found: Set of GLSL builtin names found in shaders.
         extension_methods_found: Set of extension method names found.
+        method_constants: {method: set of constants passed to it}, for the
+            match_if_call_constant (OR) and requires_call_constant (AND) gates.
 
     Returns:
         Tuple of (matched: bool, matched_methods: set, method_count: int).
@@ -111,15 +127,23 @@ def is_category_match(category_def, methods_found, constants_found,
     matched_ext_methods = extension_methods_found & cat_ext_methods
     method_count = len(matched_methods) + len(matched_ext_methods)
 
-    if min_methods > 0 and method_count < min_methods:
+    method_constants = method_constants or {}
+    requires_call = category_def.get("requires_call_constant")
+    if requires_call and not _call_constant_hit(requires_call, method_constants):
         return (False, set(), 0)
 
+    or_gate = _call_constant_hit(category_def.get("match_if_call_constant", {}),
+                                 method_constants)
     matched_constants = constants_found & cat_constants
-    if requires_any_constant and not matched_constants:
-        return (False, set(), 0)
+    if not or_gate:
+        if min_methods > 0 and method_count < min_methods:
+            return (False, set(), 0)
 
-    if min_constants > 0 and len(matched_constants) < min_constants:
-        return (False, set(), 0)
+        if requires_any_constant and not matched_constants:
+            return (False, set(), 0)
+
+        if min_constants > 0 and len(matched_constants) < min_constants:
+            return (False, set(), 0)
 
     if requires_any_extension:
         matched_extensions = extensions_loaded & cat_extensions
@@ -159,13 +183,11 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
     categories = _load_categories(categories_config)
 
     if isinstance(call_analysis_result, dict):
-        methods_found, constants_found, ext_methods_extracted = _extract_from_dict(
-            call_analysis_result
-        )
+        (methods_found, constants_found, ext_methods_extracted,
+         method_constants) = _extract_from_dict(call_analysis_result)
     else:
-        methods_found, constants_found, ext_methods_extracted = _extract_from_call_analysis(
-            call_analysis_result
-        )
+        (methods_found, constants_found, ext_methods_extracted,
+         method_constants) = _extract_from_call_analysis(call_analysis_result)
 
     if extensions is None:
         extensions = set()
@@ -190,7 +212,8 @@ def detect_features(call_analysis_result, glsl_builtins, categories_config,
     for cat_name, cat_def in categories.items():
         matched, matched_methods, method_count = is_category_match(
             cat_def, methods_found, constants_found,
-            extensions, glsl_builtins, extension_methods
+            extensions, glsl_builtins, extension_methods,
+            method_constants=method_constants
         )
         if not matched:
             continue

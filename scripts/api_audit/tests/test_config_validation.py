@@ -180,3 +180,19 @@ def test_category_glsl_functions_in_surface_or_known_extras(
     assert not missing, (
         f"GLSL functions not in surface or known extras:\n" + "\n".join(missing)
     )
+
+
+def test_call_constant_gates_reference_surface(feature_categories, api_surface):
+    """match_if_call_constant / requires_call_constant name real methods and constants."""
+    methods = set(api_surface["methods"])
+    consts = set(api_surface["constants"])
+    for ext in api_surface["extensions"].values():
+        consts.update(ext.get("constants", {}))
+    bad = []
+    for cat_name, cat in feature_categories["categories"].items():
+        for key in ("match_if_call_constant", "requires_call_constant"):
+            for m, cs in cat.get(key, {}).items():
+                if m not in methods:
+                    bad.append(f"{cat_name}.{key}: method {m}")
+                bad += [f"{cat_name}.{key}.{m}: {c}" for c in cs if c not in consts]
+    assert not bad, "\n".join(bad)

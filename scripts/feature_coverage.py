@@ -24,7 +24,7 @@ from api_audit.cache import FileCache
 from api_audit.value_classes import static_overload_calls, overload_requirement
 
 
-ANALYZER_VERSION = "4"
+ANALYZER_VERSION = "5"
 
 
 # Display names for feature categories (matches old shell script terminology)
@@ -66,6 +66,7 @@ DISPLAY_NAMES = {
     "shadow_compare":               "Shadow Compare",
     "texture_lod_range":            "Texture LOD Range",
     "texture_cube":                 "Cube Map Faces",
+    "depth_textures":               "Depth Textures",
     "integer_attributes":           "Integer Attributes",
     "buffer_copy_readback":         "Buffer Copy/Readback",
     "multisample_rb":               "Multisample Renderbuffers",
