@@ -11,8 +11,10 @@ from itertools import combinations
 SECURITY_RELEVANT = {"fbo", "buffer_ops", "transform_feedback",
                      "renderbuffer", "sync", "ext_color_buffer_float"}
 
-UBIQUITOUS = {"shader_pipeline", "draw_calls", "attributes", "uniforms",
-              "viewport_scissor", "pixel_ops"}
+# feature_coverage imports this as its display skip set.
+UBIQUITOUS = frozenset({"attributes", "uniforms", "shader_pipeline",
+                        "draw_calls", "viewport_scissor", "buffer_ops",
+                        "pipeline_state"})
 
 
 def is_topology_connected(combo, topology):

@@ -15,6 +15,7 @@ from pathlib import Path
 # Allow running from project root without installing
 sys.path.insert(0, str(Path(__file__).parent))
 
+from api_audit.combination_matrix import UBIQUITOUS as SKIP_UBIQUITOUS
 from api_audit.html_extract import extract_script
 from api_audit.parse import parse_js
 from api_audit.usage_summary import summarize_usage
@@ -83,11 +84,6 @@ DISPLAY_NAMES = {
     "ext_debug_info":               "EXT: Debug Info",
     "glsl_builtins":                None,  # skip — always matches every file
 }
-
-# Ordered display groups (omit ubiquitous features from the matrix by default)
-SKIP_UBIQUITOUS = {"attributes", "uniforms", "shader_pipeline", "draw_calls",
-                   "viewport_scissor", "buffer_ops", "glsl_builtins",
-                   "pipeline_state"}
 
 
 def is_passed(filepath: Path) -> bool:

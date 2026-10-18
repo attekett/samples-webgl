@@ -322,3 +322,15 @@ class TestGenerateReport:
         assert "covered" in report
         assert "gaps" in report
         assert report["phase2_enriched"] is False
+
+
+class TestUbiquitousShared:
+    def test_feature_coverage_shares_set(self):
+        import feature_coverage
+        from api_audit import combination_matrix
+        assert feature_coverage.SKIP_UBIQUITOUS is combination_matrix.UBIQUITOUS
+        assert "pixel_ops" not in combination_matrix.UBIQUITOUS
+
+    def test_priority_skip_only_for_all_ubiquitous(self):
+        assert priority_label(compute_priority_key(("buffer_ops", "pipeline_state"), 0, [])) == "skip"
+        assert priority_label(compute_priority_key(("draw_calls", "pixel_ops"), 0, [])) != "skip"
