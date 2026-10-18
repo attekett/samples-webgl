@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="webgl-canvas" width="256" height="256"></canvas>
+<script>
+const REQUIRED_EXTENSIONS = [
+    'WEBGL_clip_cull_distance',
+    'WEBGL_blend_func_extended',
+    'EXT_disjoint_timer_query_webgl2',
+    'WEBGL_debug_shaders',
+    'WEBGL_debug_renderer_info'
+];
+
+async function main() {
+    const canvas = document.getElementById('webgl-canvas');
+    const gl = canvas.getContext('webgl2', { antialias: false, stencil: true, depth: true });
+    if (!gl) throw new Error("WebGL2 not supported");
+
+    const missingExtensions = REQUIRED_EXTENSIONS.filter(ext => !gl.getExtension(ext));
+    if (missingExtensions.length > 0) {
+        throw new Error(`UNSUPPORTED_EXTENSIONS: ${missingExtensions.join(', ')}`);
+    }
+    REQUIRED_EXTENSIONS.forEach(ext => gl.getExtension(ext));
+    const cd = gl.getExtension('WEBGL_clip_cull_distance');
+    const bfe = gl.getExtension('WEBGL_blend_func_extended');
+    const tq = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    const dsh = gl.getExtension('WEBGL_debug_shaders');
+    const dri = gl.getExtension('WEBGL_debug_renderer_info');
+
+    const faceSize = 16;
+    const faceBytes = faceSize * faceSize * 4;
+    const gridDivs = 8;
+    const vertCount = gridDivs * gridDivs * 6;
+    const clipLimit = 0.9;
+    const bufferTarget = gl.ARRAY_BUFFER;
+    const cubeTarget = gl.TEXTURE_CUBE_MAP;
+    const stencilRef = 1;
+    const hashSeed = 7;
+
+    var vs, fs, program, vao, posBuf, cubeTex, q1, q2;
+    var hashIters = 2;
+    var tintScale = 1;
+
+    try {
+        vs = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vs, `#version 300 es
+#extension GL_ANGLE_clip_cull_distance : require
+precision highp float;
+in vec2 aPos;
+uniform float uClip;
+out vec3 vDir;
+out float vFresnel;
+void main() {
+    float z = 0.45 * sin(aPos.x * 3.0) * cos(aPos.y * 3.0);
+    vec3 n = normalize(vec3(aPos, 0.6 + z));
+    vDir = reflect(vec3(0.0, 0.0, -1.0), n);
+    vFresnel = smoothstep(0.0, 1.0, 1.0 - abs(n.z));
+    gl_ClipDistance[0] = uClip - aPos.x;
+    gl_CullDistance[0] = uClip + aPos.y;
+    gl_Position = vec4(aPos * 0.95, z * 0.5, 1.0);
+}`);
+        gl.compileShader(vs);
+
+        fs = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fs, `#version 300 es
+#extension GL_EXT_blend_func_extended : require
+precision highp float;
+precision highp int;
+in vec3 vDir;
+in float vFresnel;
+uniform samplerCube uEnv;
+uniform int uIters;
+uniform uint uSeed;
+layout(location = 0, index = 0) out vec4 c0;
+layout(location = 0, index = 1) out vec4 c1;
+void main() {
+    vec4 env = texture(uEnv, normalize(vDir));
+    uint h = uSeed ^ uint(gl_FragCoord.x) * 73u ^ uint(gl_FragCoord.y) * 151u;
+    int i = 0;
+    while (i < uIters) {
+        h ^= h << 5u;
+        h ^= h >> 3u;
+        h = h % 65521u + 17u;
+        i++;
+    }
+    if ((h & 63u) == 0u) {
+        discard;
+    }
+    float tint = float(h & 255u) / 255.0;
+    c0 = vec4(env.rgb * (0.4 + 0.6 * tint), 1.0);
+    c1 = vec4(vec3(vFresnel), vFresnel);
+}`);
+        gl.compileShader(fs);
+
+        program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+    } catch(e) {}
+
+    try {
+        const tsrc = dsh.getTranslatedShaderSource(vs);
+        const rname = gl.getParameter(dri.UNMASKED_RENDERER_WEBGL);
+        hashIters = 2 + (tsrc.length % 3);
+        tintScale = 1 + (rname.length % 2) * 0.5;
+        gl.useProgram(program);
+        gl.uniform1i(gl.getUniformLocation(program, 'uIters'), hashIters);
+        gl.uniform1ui(gl.getUniformLocation(program, 'uSeed'), hashSeed * hashIters);
+        gl.uniform1f(gl.getUniformLocation(program, 'uClip'), clipLimit * tintScale - 0.5);
+        gl.uniform1i(gl.getUniformLocation(program, 'uEnv'), 0);
+    } catch(e) {}
+
+    try {
+        const pos = [];
+        for (let y = 0; y < gridDivs; y++) {
+            for (let x = 0; x < gridDivs; x++) {
+                const x0 = -1 + 2 * x / gridDivs, x1 = -1 + 2 * (x + 1) / gridDivs;
+                const y0 = -1 + 2 * y / gridDivs, y1 = -1 + 2 * (y + 1) / gridDivs;
+                pos.push(x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1);
+            }
+        }
+        posBuf = gl.createBuffer();
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.bindBuffer(bufferTarget, null);
+        gl.bindBuffer(bufferTarget, posBuf);
+        gl.bufferData(bufferTarget, new Float32Array(pos), gl.STATIC_DRAW);
+        vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const loc = gl.getAttribLocation(program, 'aPos');
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+    } catch(e) {}
+
+    try {
+        cubeTex = gl.createTexture();
+        gl.bindTexture(cubeTarget, cubeTex);
+        gl.texStorage2D(cubeTarget, 1, gl.RGBA8, faceSize, faceSize);
+        for (let i = 0; i < 6; i++) {
+            const data = new Uint8Array(faceBytes);
+            for (let p = 0; p < faceBytes; p += 4) {
+                data[p] = (i * 43 + p) & 255;
+                data[p + 1] = (i & 1) ? 220 : (p >> 2) * 9 & 255;
+                data[p + 2] = (i & 2) ? 200 : 60 + i * 30;
+                data[p + 3] = 255;
+            }
+            gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, 0, 0, faceSize, faceSize, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        }
+        gl.texParameteri(cubeTarget, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(cubeTarget, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(cubeTarget, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(cubeTarget, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.bindTexture(cubeTarget, null);
+        gl.bindTexture(cubeTarget, cubeTex);
+    } catch(e) {}
+
+    try {
+        q1 = gl.createQuery();
+        q2 = gl.createQuery();
+        gl.getParameter(cd.MAX_CLIP_DISTANCES_WEBGL);
+        gl.getParameter(bfe.MAX_DUAL_SOURCE_DRAW_BUFFERS_WEBGL);
+        gl.viewport(0, 0, 256, 256);
+        gl.clearColor(0.05, 0.05, 0.1, 1.0);
+        gl.clearDepth(1.0);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.enable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.disable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.enable(cd.CLIP_DISTANCE0_WEBGL);
+    } catch(e) {}
+
+    try {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.depthMask(true);
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilFunc(gl.ALWAYS, stencilRef, 255);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+        gl.stencilMask(255);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, bfe.SRC1_COLOR_WEBGL);
+        gl.useProgram(program);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(cubeTarget, cubeTex);
+        gl.bindVertexArray(vao);
+        gl.beginQuery(tq.TIME_ELAPSED_EXT, q1);
+        gl.drawArrays(gl.TRIANGLES, 0, vertCount);
+        gl.endQuery(tq.TIME_ELAPSED_EXT);
+        tq.queryCounterEXT(q2, tq.TIMESTAMP_EXT);
+    } catch(e) {}
+
+    try {
+        gl.blendFuncSeparate(bfe.SRC1_ALPHA_WEBGL, bfe.ONE_MINUS_SRC1_COLOR_WEBGL, gl.ONE, bfe.ONE_MINUS_SRC1_ALPHA_WEBGL);
+        gl.stencilFunc(gl.NOTEQUAL, stencilRef, 255);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+        gl.depthMask(false);
+        gl.uniform1f(gl.getUniformLocation(program, 'uClip'), 0.25);
+        gl.drawArrays(gl.TRIANGLES, 0, vertCount / 2);
+        gl.blendFunc(gl.ONE, gl.ZERO);
+        gl.disable(gl.BLEND);
+        gl.disable(gl.STENCIL_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(cd.CLIP_DISTANCE0_WEBGL);
+        gl.bindVertexArray(null);
+        gl.bindTexture(cubeTarget, null);
+    } catch(e) {}
+
+    try {
+        gl.getQueryParameter(q1, gl.QUERY_RESULT_AVAILABLE);
+        gl.getParameter(tq.GPU_DISJOINT_EXT);
+        gl.deleteQuery(q1);
+        gl.deleteQuery(q2);
+        gl.deleteTexture(cubeTex);
+        gl.deleteBuffer(posBuf);
+    } catch(e) {}
+}
+
+main().catch(err => { throw err; });
+</script>
+</body>
+</html>
